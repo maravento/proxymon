@@ -32,6 +32,12 @@ $month     =$co->param('month');
 $day       =$co->param('day');
 $oversize  =$co->param('oversize');
 
+# Validate all CGI parameters before use in filesystem paths.
+# Reject anything that could be used for path traversal.
+MyDie("invalid year")  unless defined $year  && $year  =~ /^\d{4}$/;
+MyDie("invalid month") unless defined $month && $month =~ /^\d{2}$/;
+MyDie("invalid day")   unless defined $day   && $day   =~ /^\d{2}$/;
+
 InitTPL("day_detail", scalar $co->param('tpl'));
 
 
@@ -148,7 +154,6 @@ HideTPL("putpost")    if ($showputpost   == 0);
 PrintTPL();
 
 __END__
-2004-12-18 ADD : Показываем дату и имя пользователя в скрипте
 2005-04-14 ADD : usertrafficlimit support
 2005-04-17 ADD : TemplateEngine
 2005-05-01 ADD : Time Report Support

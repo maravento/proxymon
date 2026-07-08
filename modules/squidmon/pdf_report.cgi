@@ -101,7 +101,7 @@ HTMLHEAD
                    : "Last $time_range Hours";
 
     if ($specific_client) {
-        print "<h1>Proxy Monitor - Client Traffic Report: $specific_client</h1>";
+        print "<h1>Proxy Monitor - Client Traffic Report: " . html_escape_pdf($specific_client) . "</h1>";
     } else {
         print "<h1>Proxy Monitor - Traffic Report</h1>";
     }

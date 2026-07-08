@@ -173,11 +173,5 @@ if (!@results) {
 
 print "</div></body></html>";
 
-sub escapeHtml {
-    my $text = shift;
-    $text =~ s/&/&amp;/g;
-    $text =~ s/</&lt;/g;
-    $text =~ s/>/&gt;/g;
-    $text =~ s/"/&quot;/g;
-    return $text;
-}
+# escapeHtml is now defined in common.pl (required above) so the other
+# LightSquid CGIs can reuse it too.

@@ -193,7 +193,15 @@ private $fp;
 	function implode_with_keys($array, $glue) {
 		$ret = [];
 		foreach ($array as $key=>$v){
-			$ret[]=$key.'='.htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+			// This value ends up inside a JS string literal that itself
+			// sits inside an HTML attribute (onMouseover="ddrivetip('...')").
+			// The browser decodes HTML entities before the JS parses the
+			// attribute, so htmlspecialchars() alone isn't enough — a raw
+			// quote survives that round-trip and breaks out of the JS
+			// string. addslashes() first escapes it for the JS context so
+			// the backslash (untouched by htmlspecialchars) survives and
+			// the decoded quote stays literal inside the string.
+			$ret[]=$key.'='.htmlspecialchars(addslashes($v), ENT_QUOTES, 'UTF-8');
 		}
 		return implode($glue, $ret);
 	}

@@ -101,8 +101,8 @@ foreach $site (sort {$h{$b}{size} <=> $h{$a}{size}} keys %h)  {
   $printsize =FineDec($size);
   $printtotal=FineDec($total);
 
-  $siteurl_L="http://$site";
-  $siteurl_B="$site";
+  $siteurl_L="http://" . escapeHtml($site);
+  $siteurl_B=escapeHtml($site);
 
   $rowattr = ($N & 1)?$hTPLVARIABLE{oddattr}:$hTPLVARIABLE{evenattr};
   
@@ -140,7 +140,6 @@ PrintTPL();
 
 __END__
 2004-11-09 ADD : Total column, commulative total
-2004-12-18 ADD : Показываем дату и имя пользователя в скрипте
 2005-01-31 ADD : New Param (month=1) if, then show whole month user report, else only selected day
 2005-04-14 FIX : in CONNECT column displayed size column
 2005-04-17 ADD : TemplateEngine

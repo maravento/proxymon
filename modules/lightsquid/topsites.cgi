@@ -99,10 +99,10 @@ foreach $site (sort {$hash{$sortorder}{$b} <=> $hash{$sortorder}{$a}} keys  %{$h
   $printhit =FineDec($hash{hits}{$site});
   $printsize=FineDec($hash{size}{$site});
   
-  $siteurlwho_L = "$whourl=$site";
+  $siteurlwho_L = "$whourl=" . escapeHtml($site);
   $siteurlwho_B = "##MSG_WHO##";
-  $siteurl_L    = "http://$site";
-  $siteurl_B    = "$site";
+  $siteurl_L    = "http://" . escapeHtml($site);
+  $siteurl_B    = escapeHtml($site);
 
   $N++;
   

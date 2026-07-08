@@ -288,6 +288,20 @@ $COPYRIGHT="<font size=\"-1\"><b><center><a href=\"http://lightsquid.sf.net\">Li
 sub URLEncode { my ($s)=@_; $s=~s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*'()])/sprintf("%%%02X",ord $1)/sge; return $s }
 sub URLDecode { my ($s)=@_; $s=~tr/+/ /; $s=~s/%([0-9A-Fa-f]{2})/chr(hex($1))/esg; return $s }
 
+# ApplyTPL/ReplaceTPL do plain text substitution with no HTML escaping, so
+# any value that isn't already constrained to a safe charset (site/domain
+# names pulled straight from the Squid log, unlike usernames which are
+# whitelisted before reaching a template) must be escaped at the call site
+# before being inserted.
+sub escapeHtml {
+    my $text = shift;
+    $text =~ s/&/&amp;/g;
+    $text =~ s/</&lt;/g;
+    $text =~ s/>/&gt;/g;
+    $text =~ s/"/&quot;/g;
+    return $text;
+}
+
 sub ErrPrintConfig($) {
     my $msg=shift;
     print "<b>LigthSquid diagnostic.</b><br>";
