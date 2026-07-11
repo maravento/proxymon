@@ -53,6 +53,19 @@ define('LOG_FILE', $proxymonEnv['SQUID_LOG_FILE'] ?? '/var/log/squid/access.log'
 define('MIN_LOG_LINES_REQUEST', 50);
 define('MAX_LOG_LINES_REQUEST', 5000);
 
+// Use the time zone configured in the system (same detection as worker.php,
+// so Logview timestamps match the rest of the panel instead of showing UTC)
+$sysTz = '';
+if (is_readable('/etc/timezone')) {
+    $sysTz = trim(file_get_contents('/etc/timezone'));
+}
+if (!$sysTz) {
+    $sysTz = trim(shell_exec('timedatectl show --property=Timezone --value 2>/dev/null') ?? '');
+}
+if ($sysTz && @timezone_open($sysTz)) {
+    date_default_timezone_set($sysTz);
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function err($msg, $code = 500) {
@@ -88,7 +101,7 @@ function parse_line($line) {
     }
 
     // Format timestamp
-    $dt = gmdate('Y-m-d H:i:s', (int)$ts);
+    $dt = date('Y-m-d H:i:s', (int)$ts);
 
     return [
         'ts'         => $dt,

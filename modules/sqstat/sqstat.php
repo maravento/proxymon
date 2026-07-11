@@ -1,7 +1,5 @@
 <?php
-/*               *** sqstat - Squid Proxy Server realtime stat ***
-(c) Alex Samorukov, samm@os2.kiev.ua
-*/
+/*               *** sqstat - Squid Proxy Server realtime stat *** */
 
 error_reporting(E_ALL);
 ini_set('display_errors', '0');

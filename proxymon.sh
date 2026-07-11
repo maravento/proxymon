@@ -127,7 +127,7 @@ check_dependencies() {
         [apache2]="apache2 apache2-bin apache2-data apache2-doc apache2-utils"
     )
 
-    pkgs='wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu'
+    pkgs='wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl sudo fonts-lato fonts-liberation fonts-dejavu'
     for p in "${!pkgs_alts[@]}"; do
         pkgs+=" $p"
     done
@@ -219,7 +219,8 @@ check_squid_traffic() {
         return 0
     fi
 
-    log_entries=$(grep -cE "TCP_(HIT|MISS|TUNNEL|DENIED|ERROR)" /var/log/squid/access.log 2>/dev/null || echo 0)
+    log_entries=$(grep -cE "TCP_(HIT|MISS|TUNNEL|DENIED|ERROR)" /var/log/squid/access.log 2>/dev/null || true)
+    log_entries=${log_entries:-0}
 
     if [ "$log_entries" -eq 0 ]; then
         echo -e "${YELLOW}WARNING: no valid traffic found ($log_lines lines, 0 valid) — check Squid ACLs, port,${NC}"
@@ -552,7 +553,7 @@ install_proxymon() {
     [ -f /etc/sarg/usertab.bak ] || cp -f /etc/sarg/usertab{,.bak} &>/dev/null
 
     if [ -n "$SERVER_IP" ]; then
-        if ! grep -q "^$SERVER_IP" /etc/sarg/usertab; then
+        if ! grep -q "^${SERVER_IP//./\\.}[[:space:]]" /etc/sarg/usertab; then
             echo "$SERVER_IP $HOSTNAME" >> /etc/sarg/usertab
             echo -e "${GREEN}Added $SERVER_IP $HOSTNAME to usertab${NC}"
         fi

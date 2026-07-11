@@ -137,9 +137,10 @@ $allowedOrigins = ['http://127.0.0.1:18080'];
 if ($serverIp !== '') {
     $allowedOrigins[] = 'http://' . $serverIp . ':18080';
 }
-$requestOrigin = 'http://' . ($_SERVER['HTTP_HOST'] ?? '');
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($requestOrigin, $allowedOrigins, true)) {
     header('Access-Control-Allow-Origin: ' . $requestOrigin);
+    header('Vary: Origin');
 }
 // ──────────────────────────────────────────────────────────────────
 

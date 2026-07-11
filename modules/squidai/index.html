@@ -785,7 +785,7 @@ async function sendMessage() {
   const welcome = document.getElementById('welcomeScreen');
   if (welcome) welcome.remove();
   // Add user message
-  appendMessage('user', text);
+  appendMessage('user', escHtml(text).replace(/\n/g, '<br>'));
   input.value = '';
   input.style.height = 'auto';
   // Handle pending confirmation
@@ -1964,7 +1964,7 @@ function levenshtein(a, b) {
 
 function renderUserList(users) {
   if (!users || !users.length) return `<p class="warn-line">${t.noUsers}</p>`;
-  const rows = users.map(u => `<tr><td>${u.ip}</td><td>${u.name}</td></tr>`).join('');
+  const rows = users.map(u => `<tr><td>${escHtml(u.ip)}</td><td>${escHtml(u.name)}</td></tr>`).join('');
   return `<table><thead><tr><th>IP</th><th>${t.labelName}</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
@@ -2001,7 +2001,7 @@ function renderSecurityIncidents(data) {
   const tableRows = rows.map(r =>
     `<tr>
       <td style="font-family:var(--mono);font-size:12px">${r.ip}</td>
-      <td>${r.name}</td>
+      <td>${escHtml(r.name)}</td>
       <td>${r.pat}</td>
       <td style="text-align:center">${r.hits}</td>
       <td>${severityBadge(r.sev)}</td>
@@ -2048,7 +2048,7 @@ function renderBlockTable(data, title, mode) {
       const sev = inc.severity === 'CRITICAL' ? ' style="color:var(--red);font-weight:600"'
                 : inc.severity === 'HIGH'     ? ' style="color:var(--amber)"' : '';
       const pat = `<code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--accent)">${escHtml(inc.pattern || inc.domain || '')}</code>`;
-      return `<tr><td>${inc.ip}</td><td>${inc.name}</td><td>${pat}</td><td${sev}>${inc.hits}</td></tr>`;
+      return `<tr><td>${inc.ip}</td><td>${escHtml(inc.name)}</td><td>${pat}</td><td${sev}>${inc.hits}</td></tr>`;
     }).join('');
     return `<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
       <table>
@@ -2065,7 +2065,7 @@ function renderBlockTable(data, title, mode) {
     domainList.forEach((dom, i) => {
       rows += `<tr>
         <td>${i === 0 ? inc.ip : ''}</td>
-        <td>${i === 0 ? inc.name : ''}</td>
+        <td>${i === 0 ? escHtml(inc.name) : ''}</td>
         <td style="font-family:var(--mono);font-size:12px">${escHtml(dom)}</td>
         <td${sev}>${i === 0 ? inc.hits : ''}</td>
       </tr>`;
