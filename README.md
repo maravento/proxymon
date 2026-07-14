@@ -2,8 +2,9 @@
 
 [![status-maintained](https://img.shields.io/badge/status-maintained-purple.svg)](https://github.com/maravento/proxymon)
 [![last commit](https://img.shields.io/github/last-commit/maravento/proxymon)](https://github.com/maravento/proxymon)
+[![Stargazers](https://img.shields.io/github/stars/maravento/proxymon?label=Stargazers)](https://github.com/maravento/proxymon/stargazers)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/maravento/proxymon)
-[![Twitter Follow](https://img.shields.io/twitter/follow/maraventostudio.svg?style=social)](https://twitter.com/maraventostudio)
+[![Twitter Follow](https://img.shields.io/twitter/follow/maraventostudio.svg)](https://twitter.com/maraventostudio)
 
 <!-- markdownlint-disable MD033 -->
 
@@ -286,7 +287,7 @@ sudo nano /etc/squid/squid.conf
 #
 include /etc/squid/conf.d/*.conf
 # Block: TLDs
-# For more information visit: https://github.com/maravento/blackweb
+# For more information visit: https://github.com/maravento/proxymon
 acl blocktlds dstdomain "/etc/acl/acl_squid/blocktlds.txt"
 http_access deny workdays blocktlds
 # Block: domains
@@ -1341,12 +1342,6 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
     </td>
   </tr>
 </table>
-
-## STARGAZERS
-
----
-
-[![Stargazers](https://bytecrank.com/nastyox/reporoster/php/stargazersSVG.php?user=maravento&repo=proxymon)](https://github.com/maravento/proxymon)
 
 ## SPONSOR THIS PROJECT
 
