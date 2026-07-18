@@ -645,7 +645,7 @@ const t = new Proxy(_tStore, {
 let conversationHistory = [];
 let currentMode = 'user';
 let pendingConfirmation = null;
-let apiKey = ''; // gestionada por el servidor
+let apiKey = ''; // managed by the server
 const WORKER_URL = 'worker.php';
 
 // ── MODE ──
@@ -677,7 +677,7 @@ async function checkLLMStatus() {
   const label  = document.getElementById('llmModel');
   const stat   = document.getElementById('statLLM');
 
-  // Estado inicial: checking
+  // Initial state: checking
   dot.className   = 'dot checking';
   label.textContent = 'LLM Checking…';
   if (stat) { stat.textContent = 'Checking…'; stat.className = 'stat-val warn'; }
@@ -1084,7 +1084,7 @@ async function processQuery(userText) {
       removeTyping();
       btn.disabled = false;
       
-      // Texto para cada opción con "hoy" explícito
+      // Text for each option with "today" explicit
       const networkQuery  = t.queryNetworkToday;
       const blockedQuery  = t.queryBlockedToday;
       const securityQuery = t.querySecurityToday;
@@ -1137,11 +1137,11 @@ window.askForUserToday = function() {
   const welcome = document.getElementById('welcomeScreen');
   if (welcome) welcome.remove();
   pendingConfirmation = { type: 'awaiting_username_today' };
-  appendMessage('ai', `<p>${t.userAskWhich}</p><p style="font-size:12px;color:var(--text-muted);margin-top:4px">📅 Se usará la fecha de hoy automáticamente.</p>`);
+  appendMessage('ai', `<p>${t.userAskWhich}</p><p style="font-size:12px;color:var(--text-muted);margin-top:4px">${t.userTodayNote}</p>`);
 };
 
 window.loadNetworkDate = async function(folder, label) {
-  const originalQuery = pendingConfirmation?.originalQuery || t.networkDateFallback ? t.networkDateFallback(label) : `Dame el reporte de red del ${label}`;
+  const originalQuery = pendingConfirmation?.originalQuery || t.networkDateFallback(label);
   pendingConfirmation = null;
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
@@ -1228,7 +1228,7 @@ async function handleConfirmationReply(text) {
       btn.disabled = false;
       return;
     }
-    // Múltiples matches
+    // Multiple matches
     pendingConfirmation = { type: 'multi_user', matches, query: text.trim() };
     let rows = matches.map((u, i) => `<tr><td><button class="confirm-btn" onclick="selectUser(${i})">${i+1}</button></td><td>${u.ip}</td><td>${u.name}</td></tr>`).join('');
     const html = `<p>${t.userFoundSeveral(text.trim())}</p>
@@ -1323,6 +1323,7 @@ window.checkThresholdDate = async function(dateFolder, thresholdGb) {
   const thresholdBytes = thresholdGb * 1073741824;
   const netData = await fetchWorker('get_network_summary', { date: dateFolder });
   if (netData.error) {
+    removeTyping();
     appendMessage('ai', `<p class="warn-line">${t.errGeneric(netData.error)}</p>`);
     btn.disabled = false;
     return;
@@ -1722,7 +1723,7 @@ const FALLBACK_SECTION_MAP = {
  * Reads "CHECKLISTS" from dataset.md and populates the global lists.
  */
 function loadControlLists(markdownText) {
-  // Palabras genéricas
+  // Generic words
   const genericMatch = markdownText.match(/### Palabras genéricas[^\n]*\n\n([^\n#]+)/);
   if (genericMatch) {
     genericWords = new Set(
@@ -1777,7 +1778,7 @@ function loadControlLists(markdownText) {
     for (const row of m[1].split('\n')) {
       if (!row.trim() || !row.includes('|')) continue;
       const cells = row.split('|').map(c => c.trim()).filter(Boolean);
-      if (cells[0]) words.push(cells[0].toLowerCase()); // Español
+      if (cells[0]) words.push(cells[0].toLowerCase()); // Spanish
       if (cells[1]) words.push(cells[1].toLowerCase()); // English
     }
     fallbackKeywords[intentType] = words;
@@ -1972,7 +1973,7 @@ function getSeverity(pattern, hits) {
   const p = (pattern || '').toLowerCase();
   // CRITICAL sin importar hits
   if (p.includes('jndi') || p.includes('.onion')) return 'CRITICAL';
-  // IPv4 directa y patrones P2P: por hits
+  // Direct IPv4 and P2P patterns: by hits
   if (hits >= 20) return 'CRITICAL';
   if (hits >= 5)  return 'HIGH';
   return 'MEDIUM';

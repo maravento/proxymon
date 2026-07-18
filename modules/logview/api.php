@@ -205,12 +205,24 @@ if (isset($_GET['since'])) {
     $new_data = fread($fh, $file_size - $since);
     fclose($fh);
 
+    // Keep only complete lines — an in-progress write can leave a partial
+    // line at the end, which would parse as a truncated row and be lost
+    // on the next poll (it starts past this offset).
+    $last_nl = strrpos($new_data, "\n");
+    if ($last_nl !== false) {
+        $new_data = substr($new_data, 0, $last_nl);
+        $offset = $since + $last_nl + 1;
+    } else {
+        $new_data = '';
+        $offset = $since;
+    }
+
     $rows = [];
     foreach (explode("\n", $new_data) as $line) {
         $r = parse_line($line);
         if ($r) $rows[] = $r;
     }
-    echo json_encode(['rows' => $rows, 'offset' => $file_size]);
+    echo json_encode(['rows' => $rows, 'offset' => $offset]);
     exit;
 }
 

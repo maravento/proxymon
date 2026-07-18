@@ -148,7 +148,7 @@ a2enmod -q php || true
 # Description:
 #   This script installs, updates, or uninstalls the Proxy Monitor application.
 #   Proxy Monitor provides traffic monitoring and reporting for Squid proxy servers
-#   with Squidmon, LightSquid, SARG, Sqstat and Squid Analyzer modules.
+#   with Squidmon, LightSquid, SARG, Sqstat, Squid Analyzer, Logview and SquidAI modules.
 #
 # Features:
 # - LightSquid traffic reporting module (fast reports, per-user statistics, and daily/monthly traffic)
@@ -158,6 +158,8 @@ a2enmod -q php || true
 # - Bandata script for bandwidth control, usage limits, and quota management (integrated with LightSquid)
 #   Configuration: /etc/proxymon/proxymon.env — automatically syncs quota values to the warning portal
 # - Squidmon statistics module (advanced statistics, report printing, and ACL-driven operations)
+# - Logview module (live tail of Squid access.log with search and filters)
+# - SquidAI module (LLM-powered assistant for traffic reports and security incidents)
 # - Warning portal for quota limit notifications
 # - Automatic dependency checking
 # - Crontab task management
@@ -715,9 +717,9 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
 </table>
 
 ```bash
-# Bandata - Monitor bandwidth usage and enforce data limits (every 12 minutes)
+# Bandata - Monitor bandwidth usage and enforce data limits (every 5 minutes)
 sudo crontab -e
-*/12 * * * * /var/www/proxymon/tools/bandata.sh
+*/5 * * * * /var/www/proxymon/tools/bandata.sh
 ```
 
 [![bandata terminal](https://raw.githubusercontent.com/maravento/proxymon/master/img/bandata-terminal.png)](https://www.maravento.com/)
@@ -904,6 +906,17 @@ sudo systemctl restart cron
     </td>
     <td style="width: 50%; vertical-align: top;">
      <b>SqStat</b> es un script que permite verificar las conexiones activas de los usuarios. Utiliza el protocolo cachemgr para obtener información de Squid.
+    </td>
+  </tr>
+</table>
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+     The password in <code>sqstat/config.inc.php</code> (<code>$cachemgr_passwd[0]="mypass";</code>) must match your Squid's <code>cachemgr_passwd</code> directive in <code>squid.conf</code> (<code>cachemgr_passwd mypass all</code>) — unless you're not using these directives at all, in which case leave both blank/commented. <code>install</code> fills this in automatically with the local user detected on the system; edit it manually afterward if you use a different password in <code>squid.conf</code>.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+     La contraseña en <code>sqstat/config.inc.php</code> (<code>$cachemgr_passwd[0]="mipass";</code>) debe coincidir con la directiva <code>cachemgr_passwd</code> de tu Squid en <code>squid.conf</code> (<code>cachemgr_passwd mipass all</code>) — salvo que no uses estas directivas, en cuyo caso deja ambas en blanco/comentadas. <code>install</code> la completa automáticamente con el usuario local detectado en el sistema; edítala manualmente después si usas una contraseña distinta en <code>squid.conf</code>.
     </td>
   </tr>
 </table>

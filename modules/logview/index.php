@@ -739,7 +739,7 @@ function renderTable(q, animateFirst) {
   tbody.innerHTML = slice.map(function(r, i) {
     var rowClass = i < animateFirst ? 'new-row' : '';
     return '<tr class="' + rowClass + '">' +
-      '<td class="col-ts">'     + hl(new Date(r.ts.replace(' ', 'T') + 'Z').toLocaleString(), q) + '</td>' +
+      '<td class="col-ts">'     + hl(r.ts, q) + '</td>' +
       '<td class="col-client">' + hl(r.client, q)      + '</td>' +
       '<td><span class="pill ' + pillClass(r.cache_code) + '">' + hl(r.cache_code, q) + '</span></td>' +
       '<td class="' + httpClass(r.http_code) + '">'   + hl(r.http_code, q) + '</td>' +

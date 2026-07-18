@@ -21,7 +21,7 @@ $config{'acl_list'} =~ s/\\n/\n/g if $config{'acl_list'};
 $config{'squid_log'} ||= '/var/log/squid/access.log';
 $config{'max_lines'} ||= 50000;
 $config{'time_range'} ||= 24;
-$config{'acl_list'} ||= "/etc/acl/acl_squid/blocktlds.txt=Blocked TLD\n/etc/acl/acl_squid/blockdomains.txt=Blocked Domains\nregex:^(http|https)://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+=Block IPv4";
+$config{'acl_list'} ||= "/etc/acl/acl_squid/blocktlds.txt=Blocked TLD\n/etc/acl/acl_squid/blockdomains.txt=Blocked Domains\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4";
 $config{'auto_refresh'} ||= 0;
 $config{'refresh_interval'} ||= 60;
 
@@ -139,7 +139,7 @@ print <<'HTML_START';
             document.getElementById('squid_log').value = '/var/log/squid/access.log';
             document.getElementById('max_lines').value = '50000';
             document.getElementById('time_range').value = '24';
-            document.getElementById('acl_list').value = '/etc/acl/acl_squid/blocktlds.txt=Blocked TLD\n/etc/acl/acl_squid/blockdomains.txt=Blocked Domains\nregex:^(http|https)://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+=Block IPv4';
+            document.getElementById('acl_list').value = '/etc/acl/acl_squid/blocktlds.txt=Blocked TLD\n/etc/acl/acl_squid/blockdomains.txt=Blocked Domains\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4';
             document.getElementById('auto_refresh').checked = false;
             document.getElementById('refresh_interval').value = '60';
         }

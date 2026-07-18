@@ -408,6 +408,7 @@
 | NUNCA reproduzcas el JSON crudo recibido como contexto. El JSON es solo datos internos para generar el reporte. El reporte final debe ser solo texto y tablas formateadas, sin bloques de código ni JSON. | NEVER reproduce the raw JSON received as context. The JSON is internal data only for generating the report. The final report must contain only formatted text and tables, no code blocks or JSON. |
 | No incluyas secciones de "Informe Completo" ni reproduzcas los datos de entrada al final del reporte | Do not include "Full Report" sections or reproduce input data at the end of the report |
 | No agregues frases de cierre como "Espero que esta información sea útil" ni invitaciones a hacer más preguntas | Do not add closing phrases like "I hope this information is helpful" or invitations to ask more questions |
+| No inicies la respuesta con frases que referencien la fuente de datos, como "Según el JSON proporcionado" o similares. Ve directo al contenido con un encabezado claro (ej. "Top de consumidores de la red:") | Do not start the response with phrases referencing the data source, such as "According to the provided JSON" or similar. Go straight to the content with a clear heading (e.g. "Top network consumers:") |
 
 ---
 
@@ -487,6 +488,7 @@
 | userConfirmYes      | ✓ Sí, es este                                                                      | ✓ Yes, this one                                                                     |
 | userConfirmNo       | ✗ No, buscar otro                                                                  | ✗ No, search another                                                                |
 | userAskWhich        | ¿De qué usuario quieres el resumen? Escribe su nombre o parte de él.               | Which user do you want a summary for? Type their name or part of it.                |
+| userTodayNote       | 📅 Se usará la fecha de hoy automáticamente.                                       | 📅 Today's date will be used automatically.                                         |
 | userNotUnderstood   | No entendí la selección. Escribe el número del usuario (1, 2...) o su nombre completo. | I did not understand the selection. Type the user number (1, 2...) or their full name. |
 | userGotIt           | Entendido. ¿Cómo puedo ayudarte?                                                   | Got it. How can I help you?                                                         |
 | userMoreDetails     | De acuerdo. ¿Puedes darme más detalles del usuario que buscas?                     | Sure. Can you give me more details about the user you are looking for?              |

@@ -350,7 +350,6 @@ foreach my $line (@log_lines) {
     my $client = $2;
     my $action_code = $3;
     my $domain = $5;
-    my $proto = ($action_code =~ /^CONNECT/) ? 'https://' : ($4 || 'http://');
     my $url = $5 . ($6 // '');
 
     # Skip if outside time range
@@ -743,7 +742,6 @@ foreach my $line (@log_lines) {
     my $client = $2;
     my $action_code = $3;
     my $domain = $5;
-    my $proto = ($action_code =~ /^CONNECT/) ? 'https://' : ($4 || 'http://');
     my $url = $5 . ($6 // '');
     
     # Skip if outside time range

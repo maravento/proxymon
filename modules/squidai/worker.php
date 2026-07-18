@@ -266,7 +266,7 @@ try {
             cachedJson("get_blocked_tlds:$date", WORKER_CACHE_TTL, fn() => getBlockedByType('tlds', $date));
             break;
 
-        case 'get_security_incidents': // compatibilidad hacia atrás
+        case 'get_security_incidents': // backward compatibility
             $date = $_GET['date'] ?? 'today';
             cachedJson("get_blocked_domains:$date", WORKER_CACHE_TTL, fn() => getBlockedByType('domains', $date));
             break;
@@ -494,7 +494,7 @@ function readLinesLocked(string $path): array {
 
 /**
  * Read realname.cfg and return list of users
- * Format: 192.168.10.73 S-DEMO
+ * Format: 192.168.0.73 S-DEMO
  */
 function getUsers(): array {
     if (!file_exists(REALNAME_CFG)) {
@@ -510,7 +510,7 @@ function getUsers(): array {
             $sl = trim($sl);
             if ($sl && $sl[0] !== '#') {
                 $slParts = preg_split('/\s+/', $sl, 2);
-                $skipIps[] = $slParts[0]; // solo la IP
+                $skipIps[] = $slParts[0]; // IP only
             }
         }
     }
@@ -523,7 +523,7 @@ function getUsers(): array {
         $parts = preg_split('/\s+/', $line, 2);
         if (count($parts) === 2) {
             $ip = $parts[0];
-            if (in_array($ip, $skipIps)) continue; // excluir impresoras, APs, etc.
+            if (in_array($ip, $skipIps)) continue; // exclude printers, APs, etc.
             $users[] = ['ip' => $ip, 'name' => $parts[1]];
         }
     }
@@ -541,7 +541,7 @@ function getAvailableDates(string $ip): array {
     // Sanitize and validate IP
     $ip = basename(trim($ip));
     
-    // Validar formato de IP válida (IPv4)
+    // Validate valid IP format (IPv4)
     if (!preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $ip)) {
         return ['dates' => [], 'error' => 'Invalid IP format'];
     }
@@ -628,7 +628,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
     $hits      = 0;
     $ipTargets = [];
 
-    // Logs posibles: access.log, access.log.1, etc. (mismo orden que getBlockedByType)
+    // Possible logs: access.log, access.log.1, etc. (same order as getBlockedByType)
     $rotated = glob(SQUID_LOG_DIR . '/access.log.*');
     if ($rotated) {
         $rotated = array_filter($rotated, fn($f) => preg_match('/access\.log\.\d+$/', $f));
@@ -659,6 +659,8 @@ function getDeniedDirectIps(string $ip, string $date): array {
             $parts = preg_split('/\s+/', trim($line));
             if (count($parts) < 7) continue;
 
+            if (($parts[2] ?? '') !== $ip) continue;
+
             $ts  = (float) $parts[0];
             if ($ts < $startTs || $ts >= $endTs) continue;
 
@@ -684,7 +686,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
     return [
         'hits'        => $hits,
         'severity'    => $severity,
-        'type'        => 'IPv4 directa',
+        'type'        => 'Direct IPv4',
         'top_targets' => array_slice($ipTargets, 0, 5, true),
     ];
 }
@@ -768,7 +770,7 @@ function parseAccessLog(string $ip, string $date): array {
     $startTs    = strtotime($targetDate . ' 00:00:00');
     $endTs      = $startTs + 86400;
 
-    // Logs posibles: access.log, access.log.1, etc.
+    // Possible logs: access.log, access.log.1, etc.
     // Order chronologically (oldest first): higher .N suffix = older,
     // and the active access.log (most recent) goes last. This makes the
     // "already past target window" early-exit below safe across rotation.
@@ -812,7 +814,7 @@ function parseAccessLog(string $ip, string $date): array {
             // Filter by IP and date
             if ($clientIp !== $ip) continue;
             if ($ts < $startTs || $ts >= $endTs) {
-                // Optimización: si ya pasamos la fecha, salir
+                // Optimization: if we're already past the date, exit
                 if ($ts >= $endTs && count($domains) > 0) break 2;
                 continue;
             }
@@ -908,7 +910,7 @@ function checkBlacklist(string $ip, string $date): array {
  */
 function getBlockedByType(string $type, string $date = 'today'): array {
 
-    // Normalizar fecha (mismo patrón que getNetworkSummary)
+    // Normalize date (same pattern as getNetworkSummary)
     if ($date === 'today' || !$date) {
         $hoy = date('Y-m-d');
     } else {
@@ -944,8 +946,8 @@ function getBlockedByType(string $type, string $date = 'today'): array {
 
     // PATTERNS
     if ($type === 'patterns') {
-        // IPv4 directa SIEMPRE
-        $patterns[] = ['/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/', 'IPv4 directa'];
+        // Direct IPv4 ALWAYS
+        $patterns[] = ['/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/', 'Direct IPv4'];
 
         if (file_exists(BLOCKPATTERNS)) {
             foreach (readLinesLocked(BLOCKPATTERNS) as $line) {
@@ -978,10 +980,10 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         }
     }
 
-    // Logs posibles: access.log, access.log.1, etc. (mismo orden que getNetworkSummary)
+    // Possible logs: access.log, access.log.1, etc. (same order as getNetworkSummary)
     $rotated = glob(SQUID_LOG_DIR . '/access.log.*');
     if ($rotated) {
-        // Solo archivos sin extensión adicional (.gz no es legible vía fopen directo)
+        // Only files without an additional extension (.gz is not readable directly via fopen)
         $rotated = array_filter($rotated, fn($f) => preg_match('/access\.log\.\d+$/', $f));
         usort($rotated, function($a, $b) {
             $na = (int)preg_replace('/^.*\.(\d+)$/', '$1', $a);
@@ -1019,7 +1021,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
             $domain = strtolower(extractDomain($url));
             if (!$domain) $domain = $url;
 
-            // 🔴 FILTRO REAL POR PATRONES
+            // 🔴 REAL FILTER BY PATTERNS
             if ($type === 'patterns') {
                 $matched = null;
 
@@ -1125,7 +1127,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
  * Global network summary — read LightSquid (same source as web UI)
  */
 function getNetworkSummary(string $date = 'today'): array {
-    // Normalizar fecha
+    // Normalize date
     if ($date === 'today' || !$date) {
         $today = date('Y-m-d');
     } else {

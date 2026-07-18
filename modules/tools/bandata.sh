@@ -157,14 +157,14 @@ else
         _tmp_day=$(mktemp)
         _subshell_ok=0
         (
-            cd "$day_logs" || { log "ERROR: cannot cd into $day_logs"; exit 1; }
+            cd "$day_logs" || { log "ERROR: cannot cd into $day_logs" >&2; exit 1; }
             shopt -s nullglob
             for file in $range; do
                 total=$(awk '$1=="total:" {print $2}' "$file")
                 if [[ "$total" =~ ^[0-9]+$ ]] && (( total > max_bw_day )); then
                     echo "$file"
                 elif [ -n "$total" ] && ! [[ "$total" =~ ^[0-9]+$ ]]; then
-                    log "WARNING: non-numeric total '$total' in $day_logs/$file — skipping"
+                    log "WARNING: non-numeric total '$total' in $day_logs/$file — skipping" >&2
                 fi
             done
             exit 0
