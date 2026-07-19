@@ -26,7 +26,7 @@
 ```bash
 git clone --depth=1 https://github.com/maravento/proxymon.git
 cd proxymon
-sudo bash proxymon.sh
+sudo bash pminstall.sh
 ```
 
 ### Minimum Requirements
@@ -37,13 +37,13 @@ sudo bash proxymon.sh
 
 ### Installing Dependencies
 
-`proxymon.sh` checks that Squid, Apache, PHP, and a set of supporting packages
+`pminstall.sh` checks that Squid, Apache, PHP, and a set of supporting packages
 are installed before proceeding, but it does not install them for you —
 installation aborts with a list of missing packages if any of this hasn't
 been done first.
 
 ```bash
-# other required packages (checked by proxymon.sh, no extra setup needed)
+# other required packages (checked by pminstall.sh, no extra setup needed)
 apt install -y wget git rsync ipset nbtscan libcgi-session-perl libgd-perl \
                 coreutils sarg fonts-lato fonts-liberation fonts-dejavu
 
@@ -166,7 +166,7 @@ a2enmod -q php || true
 # - Apache virtual host configuration
 #
 # Usage:
-#   sudo ./proxymon.sh [OPTIONS]
+#   sudo ./pminstall.sh [OPTIONS]
 #
 # Options:
 #   install      Install Proxy Monitor
@@ -175,10 +175,10 @@ a2enmod -q php || true
 #   -h, --help   Show help message
 #
 # Examples:
-#   sudo ./proxymon.sh              # Interactive menu
-#   sudo ./proxymon.sh install      # Direct installation
-#   sudo ./proxymon.sh update       # Direct update
-#   sudo ./proxymon.sh uninstall    # Direct uninstallation
+#   sudo ./pminstall.sh              # Interactive menu
+#   sudo ./pminstall.sh install      # Direct installation
+#   sudo ./pminstall.sh update       # Direct update
+#   sudo ./pminstall.sh uninstall    # Direct uninstallation
 ```
 
 <table width="100%">
