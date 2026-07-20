@@ -3,79 +3,79 @@
 #
 ################################################################################
 #
-# Proxy Monitor (Proxymon) — install / update / uninstall script
+# Proxy Monitor (Proxymon) -- install / update / uninstall script
 #
 # Proxymon bundles Squid bandwidth monitoring (Bandata), LightSquid,
 # SARG, SquidAnalyzer and SquidMon behind an Apache web panel, with
 # optional Unifi Hotspot integration.
 #
 # USAGE
-#   ./pminstall.sh install     Fresh install. Aborts if /var/www/proxymon
-#                              already exists (use update or uninstall
-#                              first — see below).
-#   ./pminstall.sh update      Refresh code and permissions under
-#                              /var/www/proxymon. Stops Apache, backs up
-#                              live data, replaces code, restores live
-#                              data, resets permissions, restarts Apache.
-#                              Does not touch Apache/PHP/SARG system
-#                              config, cron, ACL lists, or
-#                              /etc/proxymon/proxymon.env.
-#   ./pminstall.sh uninstall   Remove Proxymon: Apache sites, cron entries,
-#                              iptables/ipset rules, restore .bak configs.
-#                              Prompts before deleting /etc/proxymon and
-#                              /etc/acl (ACLs, MAC registrations, LLM
-#                              credentials).
-#   ./pminstall.sh             Interactive menu with the same 3 options.
-#   ./pminstall.sh -h|--help   Show usage.
+# ./pminstall.sh install Fresh install. Aborts if /var/www/proxymon
+# already exists (use update or uninstall
+# first -- see below).
+# ./pminstall.sh update Refresh code and permissions under
+# /var/www/proxymon. Stops Apache, backs up
+# live data, replaces code, restores live
+# data, resets permissions, restarts Apache.
+# Does not touch Apache/PHP/SARG system
+# config, cron, ACL lists, or
+# /etc/proxymon/proxymon.env.
+# ./pminstall.sh uninstall Remove Proxymon: Apache sites, cron entries,
+# iptables/ipset rules, restore .bak configs.
+# Prompts before deleting /etc/proxymon and
+# /etc/acl (ACLs, MAC registrations, LLM
+# credentials).
+# ./pminstall.sh Interactive menu with the same 3 options.
+# ./pminstall.sh -h|--help Show usage.
 #
 # REQUIREMENTS
-#   - Run as root (via sudo, from a regular user's session — update needs
-#     a resolvable local user to place its backup folder; see below).
-#   - Must be run from a directory containing a populated modules/
-#     folder — obtained by cloning the full repository (see check_repo()).
-#     install and update both read from this local modules/ tree; the
-#     script itself does not fetch or pull anything from git.
-#   - System packages from check_dependencies() (squid, apache2, sarg,
-#     php, rsync, etc.) must already be installed.
+# - Run as root (via sudo, from a regular user's session -- update needs
+# a resolvable local user to place its backup folder; see below).
+# - Must be run from a directory containing a populated modules/
+# folder -- obtained by cloning the full repository (see check_repo()).
+# install and update both read from this local modules/ tree; the
+# script itself does not fetch or pull anything from git.
+# - System packages from check_dependencies() (squid, apache2, sarg,
+# php, rsync, etc.) must already be installed.
 #
-# INSTALL vs UPDATE — WHAT EACH TOUCHES
-#   install_proxymon() writes everything from scratch: Apache vhosts and
-#   Listen directives, /etc/proxymon/proxymon.env (interactive prompts),
-#   ACL directories/lists (with a fresh download), SARG config and
-#   usertab, SquidAnalyzer, PHP/Apache hardening (php.ini, security.conf,
-#   apache2.conf, mpm_prefork.conf), cron entries, and enables the sites.
-#   Because it prompts for configuration and can overwrite an existing
-#   setup, it refuses to run if /var/www/proxymon already exists.
+# INSTALL vs UPDATE -- WHAT EACH TOUCHES
+# install_proxymon() writes everything from scratch: Apache vhosts and
+# Listen directives, /etc/proxymon/proxymon.env (interactive prompts),
+# ACL directories/lists (with a fresh download), SARG config and
+# usertab, SquidAnalyzer, PHP/Apache hardening (php.ini, security.conf,
+# apache2.conf, mpm_prefork.conf), cron entries, and enables the sites.
+# Because it prompts for configuration and can overwrite an existing
+# setup, it refuses to run if /var/www/proxymon already exists.
 #
-#   update_proxymon() only refreshes code and permissions under
-#   /var/www/proxymon. It never touches Apache/PHP/SARG system config,
-#   cron, ACL lists, or proxymon.env, and it never prompts. Sequence:
-#     1. Stop Apache (avoid serving a half-swapped tree).
-#     2. rsync live data that isn't part of the modules/ repo tree into
-#        ~<local_user>/proxymonbak/ (a real, persistent folder — never
-#        /tmp, which may be a small tmpfs and fail mid-copy on a large
-#        report set). The local user is auto-detected (graphical
-#        session, logname, SUDO_USER, active session, or first /home
-#        entry) so the backup lands in a real home directory, not root's.
-#     3. cp -rf modules/* into /var/www/proxymon (same method install
-#        uses).
-#     4. rsync proxymonbak/ back into /var/www/proxymon, restoring the
-#        live data over the freshly-copied placeholders.
-#     5. Reset permissions/ownership on /var/www/proxymon.
-#     6. Restart Apache.
-#   The backup at ~<local_user>/proxymonbak/ is kept after a successful
-#   update (not auto-deleted) as a safety net. Live data preserved:
-#     - lightsquid/report          (daily LightSquid reports)
-#     - lightsquid/realname.cfg    (hostname mappings)
-#     - lightsquid/skipuser.cfg    (excluded users)
-#     - sarg/squid-reports         (SARG rendered reports)
-#     - squidmon/etc/config        (SquidMon config file)
-#     - squidanalyzer/output       (SquidAnalyzer rendered reports)
-#     - sqstat/config.inc.php      (SQStat custom config, e.g. cachemgr credentials)
+# update_proxymon() only refreshes code and permissions under
+# /var/www/proxymon. It never touches Apache/PHP/SARG system config,
+# cron, ACL lists, or proxymon.env, and it never prompts. Sequence:
+# 1. Stop Apache (avoid serving a half-swapped tree).
+# 2. rsync live data that isn't part of the modules/ repo tree into
+# ~<local_user>/proxymonbak/ (a real, persistent folder -- never
+# /tmp, which may be a small tmpfs and fail mid-copy on a large
+# report set). The local user is auto-detected (graphical
+# session, logname, SUDO_USER, active session, or first /home
+# entry) so the backup lands in a real home directory, not root's.
+# 3. cp -rf modules/* into /var/www/proxymon (same method install
+# uses).
+# 4. rsync proxymonbak/ back into /var/www/proxymon, restoring the
+# live data over the freshly-copied placeholders.
+# 5. Reset permissions/ownership on /var/www/proxymon.
+# 6. Restart Apache.
+# The backup at ~<local_user>/proxymonbak/ is kept after a successful
+# update (not auto-deleted) as a safety net. Live data preserved:
+# - lightsquid/report (daily LightSquid reports)
+# - lightsquid/realname.cfg (hostname mappings)
+# - lightsquid/skipuser.cfg (excluded users)
+# - sarg/squid-reports (SARG rendered reports)
+# - squidmon/etc/config (SquidMon config file)
+# - squidanalyzer/output (SquidAnalyzer rendered reports)
+# - sqstat/config.inc.php (SQStat custom config, e.g. cachemgr credentials)
 #
 ################################################################################
 
-set -e
+set -Euo pipefail
 trap 'echo "Error on line $LINENO"; exit 1' ERR
 
 RED='\033[0;31m'
@@ -84,9 +84,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # INITIAL CHECKS
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 
 ## root check
 if [ "$(id -u)" != "0" ]; then
@@ -96,11 +96,50 @@ fi
 
 # prevent overlapping runs
 SCRIPT_LOCK="/var/lock/$(basename "$0" .sh).lock"
+(umask 077; : >> "$SCRIPT_LOCK")
 exec 200>"$SCRIPT_LOCK"
 if ! flock -n 200; then
     echo "Script $(basename "$0") is already running"
     exit 1
 fi
+
+# LOCAL USER detection
+detect_local_user() {
+    local uid_min uid_max
+    local user uid best_user="" best_uid=999999
+
+    uid_min=$(awk '/^UID_MIN/{print $2}' /etc/login.defs 2>/dev/null)
+    uid_max=$(awk '/^UID_MAX/{print $2}' /etc/login.defs 2>/dev/null)
+    uid_min=${uid_min:-1000}
+    uid_max=${uid_max:-60000}
+
+    while IFS=: read -r user _ uid _ _ _ shell; do
+        [ "$user" = "root" ] && continue
+        [ -z "$uid" ] && continue
+        [ "$uid" -lt "$uid_min" ] && continue
+        [ "$uid" -gt "$uid_max" ] && continue
+
+        case "$shell" in
+            */false|*/nologin) continue ;;
+        esac
+
+        id -nG "$user" 2>/dev/null | grep -qw sudo || continue
+
+        if [ "$uid" -lt "$best_uid" ]; then
+            best_uid="$uid"
+            best_user="$user"
+        fi
+    done </etc/passwd
+
+    [ -n "$best_user" ] || return 1
+    echo "$best_user"
+}
+
+if ! local_user=$(detect_local_user); then
+    echo "ERROR: No valid local user found. Create one with sudo access."
+    exit 1
+fi
+echo "Using local user: $local_user"
 
 retry_cmd() {
     local max_attempts=10
@@ -115,24 +154,6 @@ retry_cmd() {
         sleep 10
     done
 }
-
-# LOCAL USER (multi-strategy detection with validation)
-local_user=""
-# 1. Local graphical session (:0)
-local_user=$(who | awk '/\(:0\)/{print $1; exit}')
-# 2. Parent process logname (works well with sudo)
-[ -z "$local_user" ] && local_user=$(logname 2>/dev/null || true)
-# 3. SUDO_USER variable (when run via sudo from terminal)
-[ -z "$local_user" ] && local_user="${SUDO_USER:-}"
-# 4. First active session user (SSH or other)
-[ -z "$local_user" ] && local_user=$(who | awk 'NR==1{print $1}')
-# 5. First valid home directory
-[ -z "$local_user" ] && local_user=$(ls -l /home 2>/dev/null | awk '/^d/{print $3; exit}')
-# Validate the user actually exists on the system
-if [ -z "$local_user" ] || ! id "$local_user" &>/dev/null; then
-    echo "ERROR: Cannot determine a valid local user"
-    exit 1
-fi
 
 check_dependencies() {
     declare -A pkgs_alts
@@ -186,7 +207,7 @@ check_apache_config() {
         echo -e "${RED}Could not determine PHP version (got '$PHP_VERSION'). Is PHP working correctly?${NC}"
         exit 1
     fi
-    
+
     config_errors=""
 
     if [ ! -f /etc/apache2/mods-available/mpm_prefork.conf ]; then
@@ -228,7 +249,7 @@ check_squid_traffic() {
     log_lines=$(wc -l < /var/log/squid/access.log 2>/dev/null || echo 0)
 
     if [ "$log_lines" -eq 0 ]; then
-        echo -e "${YELLOW}WARNING: access.log is empty (0 lines) — Squid may not have served any traffic yet.${NC}"
+        echo -e "${YELLOW}WARNING: access.log is empty (0 lines) -- Squid may not have served any traffic yet.${NC}"
         echo -e "${YELLOW}Continuing anyway; reports will be empty until traffic starts flowing.${NC}"
         return 0
     fi
@@ -237,7 +258,7 @@ check_squid_traffic() {
     log_entries=${log_entries:-0}
 
     if [ "$log_entries" -eq 0 ]; then
-        echo -e "${YELLOW}WARNING: no valid traffic found ($log_lines lines, 0 valid) — check Squid ACLs, port,${NC}"
+        echo -e "${YELLOW}WARNING: no valid traffic found ($log_lines lines, 0 valid) -- check Squid ACLs, port,${NC}"
         echo -e "${YELLOW}and that clients are actually pointing at this proxy. Continuing anyway.${NC}"
     else
         echo -e "${GREEN}Squid traffic: $log_lines lines, $log_entries valid entries${NC}"
@@ -252,9 +273,9 @@ run_initial_checks() {
     echo -e "${GREEN}All checks passed!${NC}\n"
 }
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # REPOSITORY STRUCTURE CHECK
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 
 check_repo() {
     local missing=0
@@ -265,22 +286,22 @@ check_repo() {
         echo ""
         echo "ERROR: Repository files not found. Run:"
         echo ""
-        echo "  git clone https://github.com/maravento/proxymon"
+        echo "git clone https://github.com/maravento/proxymon"
         echo ""
         exit 1
     fi
 }
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # PROXYMON ENV CONFIGURATION
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 
 create_proxymon_env() {
     local env_file="/etc/proxymon/proxymon.env"
     mkdir -p /etc/proxymon
 
     if [ -f "$env_file" ]; then
-        echo -e "${GREEN}$env_file already exists — skipping configuration${NC}"
+        echo -e "${GREEN}$env_file already exists -- skipping configuration${NC}"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
         local required_vars="LAN SERVER_IP RANGE REPORT_IP_GLOB REPORT_PATH ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH UNIFI_HOTSPOT_ENABLED HOTSPOT_PATH UPDATE_REALNAME"
@@ -290,8 +311,8 @@ create_proxymon_env() {
         done
         if [ -n "$missing" ]; then
             echo -e "${YELLOW}WARNING: $env_file is missing variables expected by this version:${NC}"
-            echo -e "${YELLOW}  $missing${NC}"
-            echo -e "${YELLOW}  Add them manually, or remove $env_file and re-run install to regenerate.${NC}"
+            echo -e "${YELLOW} $missing${NC}"
+            echo -e "${YELLOW} Add them manually, or remove $env_file and re-run install to regenerate.${NC}"
         fi
 
         # RANGE used to hold a filename-matching glob (e.g. "192.168.10*"),
@@ -302,20 +323,20 @@ create_proxymon_env() {
         _range_val=$(grep "^RANGE=" "$env_file" | head -n1 | cut -d'=' -f2-)
         if [ -n "$_range_val" ] && ! [[ "$_range_val" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
             echo -e "${YELLOW}WARNING: RANGE='$_range_val' in $env_file is not a network CIDR (e.g. 192.168.10.0/24).${NC}"
-            echo -e "${YELLOW}  This looks like the old filename-glob value. Add REPORT_IP_GLOB=$_range_val,${NC}"
-            echo -e "${YELLOW}  then set RANGE to your actual LAN subnet (e.g. RANGE=192.168.10.0/24).${NC}"
+            echo -e "${YELLOW} This looks like the old filename-glob value. Add REPORT_IP_GLOB=$_range_val,${NC}"
+            echo -e "${YELLOW} then set RANGE to your actual LAN subnet (e.g. RANGE=192.168.10.0/24).${NC}"
         fi
         return 0
     fi
 
-    echo -e "${BLUE}════════════════════════════════════════${NC}"
-    echo -e "${BLUE}    Bandata Configuration${NC}"
-    echo -e "${BLUE}════════════════════════════════════════${NC}"
+    echo -e "${BLUE}----------------------------------------${NC}"
+    echo -e "${BLUE} Bandata Configuration${NC}"
+    echo -e "${BLUE}----------------------------------------${NC}"
     printf "\n"
 
     # LAN interface
     echo -e "${YELLOW}Available network interfaces:${NC}"
-    ip -o link | awk '$2 != "lo:" {print "  " $2, $(NF-2)}' | sed 's_: _ _'
+    ip -o link | awk '$2 != "lo:" {print " " $2, $(NF-2)}' | sed 's_: _ _'
     _lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}')
     _lan_default=${_lan_default:-eth0}
     while true; do
@@ -343,17 +364,17 @@ create_proxymon_env() {
 
     # Glob pattern used to match per-IP report filenames under REPORT_PATH
     # (e.g. bandata.sh's "for file in $REPORT_IP_GLOB"). This is NOT a
-    # network range — it's a filename-matching pattern derived from the
+    # network range -- it's a filename-matching pattern derived from the
     # server's own /24, since report files are named after client IPs.
     _report_ip_glob="$(echo "$_serverip" | cut -d'.' -f1-3)*"
 
-    # Real network range (CIDR) for the LAN this server serves — used to
+    # Real network range (CIDR) for the LAN this server serves -- used to
     # restrict the web panel to LAN clients. Derived from the same /24
     # assumption as above. For a non-standard subnet, edit RANGE manually
     # in /etc/proxymon/proxymon.env after installation.
     _range="$(echo "$_serverip" | cut -d'.' -f1-3).0/24"
 
-    # Bandwidth limits — validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
+    # Bandwidth limits -- validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
     read_bandwidth() {
         local prompt="$1" default="$2" result
         while true; do
@@ -366,11 +387,11 @@ create_proxymon_env() {
             echo -e "${RED}'$result' is not a valid size (e.g. 500M, 1G, 1.5G). Try again.${NC}" >&2
         done
     }
-    _bw_day=$(read_bandwidth "Max bandwidth per day   (default: 1G): " "1G")
-    _bw_week=$(read_bandwidth "Max bandwidth per week  (default: 5G): " "5G")
+    _bw_day=$(read_bandwidth "Max bandwidth per day (default: 1G): " "1G")
+    _bw_week=$(read_bandwidth "Max bandwidth per week (default: 5G): " "5G")
     _bw_month=$(read_bandwidth "Max bandwidth per month (default: 20G): " "20G")
 
-    # Unifi Hotspot — only ask if /etc/uhotspot exists
+    # Unifi Hotspot -- only ask if /etc/uhotspot exists
     _hotspot_enabled=false
     _hotspot_path="/etc/uhotspot"
     if [ -d "/etc/uhotspot" ]; then
@@ -389,7 +410,7 @@ create_proxymon_env() {
     fi
 
     cat > "$env_file" << ENVEOF
-# proxymon.env — Bandata configuration
+# proxymon.env -- Bandata configuration
 # Generated by pminstall.sh on $(date '+%Y-%m-%d %H:%M:%S')
 # Edit manually if needed. Re-run pminstall.sh install to regenerate.
 
@@ -399,7 +420,7 @@ SERVER_IP=${_serverip}
 RANGE=${_range}
 REPORT_IP_GLOB=${_report_ip_glob}
 
-# Paths (defaults — edit only if your setup differs)
+# Paths (defaults -- edit only if your setup differs)
 LIGHTSQUID_DIR=/var/www/proxymon/lightsquid
 REPORT_PATH=\$LIGHTSQUID_DIR/report
 REALNAME_CFG=\$LIGHTSQUID_DIR/realname.cfg
@@ -434,9 +455,9 @@ ENVEOF
     printf "\n"
 }
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # INSTALL FUNCTION
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 
 install_proxymon() {
     if [[ -d "/var/www/proxymon" ]]; then
@@ -454,17 +475,17 @@ install_proxymon() {
     fi
 
     echo -e "${YELLOW}Configuring Apache...${NC}"
-    
+
     if [[ -f "/var/www/proxymon/tools/proxymon.conf" ]]; then
         cp -f /var/www/proxymon/tools/proxymon.conf /etc/apache2/sites-available/proxymon.conf
         echo -e "${GREEN}Proxymon virtualhost configured${NC}"
     fi
-    
+
     if [[ -f "/var/www/proxymon/warning/warning.conf" ]]; then
         cp -f /var/www/proxymon/warning/warning.conf /etc/apache2/sites-available/warning.conf
         echo -e "${GREEN}Warning virtualhost configured${NC}"
     fi
-    
+
     [ -f /etc/apache2/ports.conf.bak ] || cp -f /etc/apache2/ports.conf{,.bak} &>/dev/null || true
 
     echo -e "${YELLOW}Configuring Squid Monitor...${NC}"
@@ -476,7 +497,7 @@ install_proxymon() {
 
     echo -e "${YELLOW}Configuring ACL directories and files...${NC}"
     # Load env to get ACL paths defined by create_proxymon_env()
-    # Verify ownership/permissions before sourcing — this file is executed
+    # Verify ownership/permissions before sourcing -- this file is executed
     # as root, so it must not be writable by anyone other than root.
     _env_file="/etc/proxymon/proxymon.env"
     _env_owner=$(stat -c '%U' "$_env_file" 2>/dev/null)
@@ -499,11 +520,11 @@ install_proxymon() {
         done
         _detected_ip=$(ip -4 addr show "$LAN" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
         if [ -n "$_detected_ip" ]; then
-            # 18080 is the app — reachable from the LAN and from loopback
+            # 18080 is the app -- reachable from the LAN and from loopback
             # (e.g. a local Cloudflare Tunnel connecting to the origin).
             echo "Listen ${_detected_ip}:18080" >> /etc/apache2/ports.conf
             echo "Listen 127.0.0.1:18080" >> /etc/apache2/ports.conf
-            # 18081 is Bandata's warning page — LAN-only, no loopback needed.
+            # 18081 is Bandata's warning page -- LAN-only, no loopback needed.
             echo "Listen ${_detected_ip}:18081" >> /etc/apache2/ports.conf
             echo -e "${GREEN}Port 18080 bound to ${_detected_ip} and 127.0.0.1${NC}"
             echo -e "${GREEN}Port 18081 bound to ${_detected_ip}${NC}"
@@ -516,7 +537,7 @@ install_proxymon() {
             exit 1
         fi
     else
-        echo -e "${RED}SERVER_IP not set in proxymon.env — cannot configure Listen. Set it and re-run install.${NC}"
+        echo -e "${RED}SERVER_IP not set in proxymon.env -- cannot configure Listen. Set it and re-run install.${NC}"
         exit 1
     fi
 
@@ -568,15 +589,15 @@ install_proxymon() {
         echo "*/5 * * * * /var/www/proxymon/tools/bandata.sh >> /var/log/bandata.log 2>&1"
     } | crontab -
     echo -e "${GREEN}Squid Monitor crontab added${NC}"
-    
+
     echo -e "${YELLOW}Configuring SARG...${NC}"
     mkdir -p /var/www/proxymon/sarg/squid-reports
-    
+
     [ -f /etc/sarg/sarg.conf.bak ] || cp -f /etc/sarg/sarg.conf{,.bak} &>/dev/null || true
     sed -i 's|output_dir /var/lib/sarg|output_dir /var/www/proxymon/sarg/squid-reports|g' /etc/sarg/sarg.conf
     sed -i 's|^resolve_ip .*|resolve_ip no|g' /etc/sarg/sarg.conf
     sed -i 's|lastlog 0|lastlog 7|g' /etc/sarg/sarg.conf
-    
+
     HOSTNAME=$(hostname)
     [ -f /etc/sarg/usertab.bak ] || cp -f /etc/sarg/usertab{,.bak} &>/dev/null || true
 
@@ -586,13 +607,13 @@ install_proxymon() {
             echo -e "${GREEN}Added $SERVER_IP $HOSTNAME to usertab${NC}"
         fi
     else
-        echo -e "${RED}SERVER_IP not set in proxymon.env — skipping usertab entry${NC}"
+        echo -e "${RED}SERVER_IP not set in proxymon.env -- skipping usertab entry${NC}"
     fi
-    
-    echo -e "${YELLOW}🔧 Generating Initial SARG Report...${NC}"
+
+    echo -e "${YELLOW} Generating Initial SARG Report...${NC}"
     timeout 30 /usr/bin/sarg -f /etc/sarg/sarg.conf -l /var/log/squid/access.log > /dev/null 2>&1 || true
     echo -e "${GREEN}Initial SARG report generated${NC}"
-    
+
     echo -e "${YELLOW}Configuring SquidAnalyzer...${NC}"
     chmod -R 755 /var/www/proxymon/squidanalyzer
     mkdir -p /var/www/proxymon/squidanalyzer/output
@@ -603,7 +624,7 @@ install_proxymon() {
     sudo -u www-data perl -I. ./squid-analyzer -c etc/squidanalyzer.conf -d &> /dev/null || true
     cd - > /dev/null
 
-    # ── Consolidated www-data crontab update (single atomic write) ──
+    # -- Consolidated www-data crontab update (single atomic write) --
     # All www-data cron entries (LightSquid, SARG daily/weekly, SquidAnalyzer)
     # are rewritten together to avoid leaving the crontab in a partial
     # state if the installer is interrupted between operations.
@@ -618,7 +639,7 @@ install_proxymon() {
         echo '0 2 * * * cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -c etc/squidanalyzer.conf'
     } | sudo -u www-data crontab -
     echo -e "${GREEN}www-data crontab entries updated (LightSquid, SARG, SquidAnalyzer)${NC}"
-    
+
     echo -e "${YELLOW} Updating Prefork MPM...${NC}"
     [ -f /etc/apache2/mods-available/mpm_prefork.conf.bak ] || cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null || true
     sed -i \
@@ -642,7 +663,7 @@ install_proxymon() {
       -e 's/^\s*;*\s*realpath_cache_size\s*=.*/realpath_cache_size = 16M/' \
       -e 's/^\s*;*\s*allow_url_fopen\s*=.*/allow_url_fopen = On/' \
      /etc/php/$PHP_VERSION/apache2/php.ini
-     
+
     # Hardening
     echo -e "${YELLOW} Updating Apache2 Security...${NC}"
     if [ -f /etc/apache2/conf-available/security.conf ]; then
@@ -678,32 +699,32 @@ install_proxymon() {
     sed -i -E '/^[[:space:]]*#/!s/^([[:space:]]*Options[[:space:]]+)(-?Indexes[[:space:]]+)?FollowSymLinks[[:space:]]*$/\1-Indexes +FollowSymLinks/' /etc/apache2/apache2.conf
     a2enmod headers &>/dev/null
     a2enconf security &>/dev/null
-     
+
     echo -e "${YELLOW}Configuring SquidAI...${NC}"
     mkdir -p /etc/proxymon
     if [ ! -f /etc/proxymon/.env ]; then
         cat > /etc/proxymon/.env << 'EOF'
-# SquidAI — LLM Provider Configuration
-# ─────────────────────────────────────────────────────────────────
+# SquidAI -- LLM Provider Configuration
+# -----------------------------------------------------------------
 # Uncomment ONE provider block and fill in your credentials.
 # Leave LLM_MODEL empty if the model is already part of the URL.
 # LLM_API_KEY can be left empty for local providers (Ollama, LM Studio).
 #
 # LLM_RESPONSE_FORMAT tells the worker how to read the response:
-#   openai  → choices[0].message.content  (most cloud providers)
-#   ollama  → message.content             (Ollama)
-#   gemini  → passthrough, no transform   (Google Gemini)
-# ─────────────────────────────────────────────────────────────────
+# openai -> choices[0].message.content (most cloud providers)
+# ollama -> message.content (Ollama)
+# gemini -> passthrough, no transform (Google Gemini)
+# -----------------------------------------------------------------
 
-# ── Active provider (uncomment one block below) ──────────────────
+# -- Active provider (uncomment one block below) ------------------
 LLM_URL=
 LLM_API_KEY=
 LLM_MODEL=
 LLM_RESPONSE_FORMAT=openai
 
-# ─────────────────────────────────────────────────────────────────
-# PROVIDER EXAMPLES — copy the values above and replace
-# ─────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------
+# PROVIDER EXAMPLES -- copy the values above and replace
+# -----------------------------------------------------------------
 
 # Cloudflare Workers AI (model goes in the URL, no LLM_MODEL needed)
 # LLM_URL=https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/run/@cf/meta/llama-3.1-8b-instruct-fast
@@ -776,7 +797,7 @@ EOF
     fi
     chown root:root /etc/squid/squid.conf
     chmod 644 /etc/squid/squid.conf
-    
+
     echo -e "${YELLOW} Setting Logs...${NC}"
     touch /var/log/apache2/{warning_access,warning_error,proxymon_access,proxymon_error}.log
     chown root:adm /var/log/apache2/{warning_access,warning_error,proxymon_access,proxymon_error}.log
@@ -788,10 +809,10 @@ EOF
         chown proxy:proxy "${squid_logs[@]}"
         chmod 640 "${squid_logs[@]}"
     else
-        echo -e "${YELLOW}No /var/log/squid/*.log files found yet — skipping permissions${NC}"
+        echo -e "${YELLOW}No /var/log/squid/*.log files found yet -- skipping permissions${NC}"
     fi
     shopt -u nullglob
-    
+
     echo -e "${YELLOW} Enabling Apache Modules...${NC}"
     a2dismod mpm_event 2>/dev/null || true
     # mod_cgid requires a threaded MPM (worker/event) and is incompatible
@@ -809,14 +830,14 @@ EOF
         echo -e "${RED}ERROR: failed to enable Apache module '$mod'. Is it installed?${NC}"
         exit 1
     done
-    
+
     echo -e "${YELLOW} Enabling Apache Sites...${NC}"
     a2ensite proxymon.conf || { echo -e "${RED}Failed to enable proxymon.conf${NC}"; exit 1; }
     a2ensite warning.conf || { echo -e "${RED}Failed to enable warning.conf${NC}"; exit 1; }
-    
+
     echo -e "${GREEN} Restarting Cron...${NC}"
     systemctl restart cron
-        
+
     echo -e "${YELLOW} Restarting Apache2...${NC}"
     systemctl daemon-reload
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
@@ -832,15 +853,15 @@ EOF
 
     echo -e "${GREEN} Check Active Apache sites:${NC}"
     a2query -s
-    
+
     echo -e "${GREEN}Proxy Monitor installed successfully${NC}"
     echo -e "${GREEN}Access Proxy Monitor: http://${SERVER_IP}:18080${NC}"
     echo -e "${GREEN}Access Warning Portal: http://${SERVER_IP}:18081${NC}"
 }
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # UPDATE FUNCTION
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # Refreshes code under /var/www/proxymon only. Does NOT touch anything
 # outside that path: no Apache/PHP/SARG/cron config, no ACL lists, no
 # proxymon.env, no service restarts. Preserves live data that lives
@@ -867,7 +888,7 @@ update_proxymon() {
     _backup_dir="$_user_home/proxymonbak/$(date '+%Y%m%d_%H%M%S')"
     mkdir -p "$_backup_dir"
 
-    # Live data that isn't part of the modules/ repo tree — backed up before
+    # Live data that isn't part of the modules/ repo tree -- backed up before
     # the file swap and restored after. Never modified in place.
     _protected_rel=(
         "lightsquid/report"
@@ -918,7 +939,7 @@ update_proxymon() {
     if systemctl start apache2; then
         echo -e "${GREEN}Apache started${NC}"
     else
-        echo -e "${RED}Apache failed to start — check: systemctl status apache2${NC}"
+        echo -e "${RED}Apache failed to start -- check: systemctl status apache2${NC}"
         exit 1
     fi
 
@@ -926,13 +947,13 @@ update_proxymon() {
     echo -e "${GREEN}Proxy Monitor updated successfully${NC}"
 }
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # UNINSTALL FUNCTION
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 
 uninstall_proxymon() {
     echo -e "${YELLOW} Uninstalling Proxy Monitor...${NC}"
-    
+
     if [[ ! -d "/var/www/proxymon" ]]; then
         if ! ((sudo crontab -l 2>/dev/null || true) | grep -q "/var/www/proxymon/tools/bandata.sh") && \
            ! ((sudo -u www-data crontab -l 2>/dev/null || true) | grep -q "lightparser.pl\|sarg\|squid-analyzer") && \
@@ -941,8 +962,8 @@ uninstall_proxymon() {
             return 0
         fi
     fi
-    
-    # ── Consolidated www-data crontab cleanup (single atomic write) ──
+
+    # -- Consolidated www-data crontab cleanup (single atomic write) --
     if (sudo -u www-data crontab -l 2>/dev/null || true) \
         | grep -v "lightparser.pl" \
         | grep -v "sarg.*sarg.conf.*access.log" \
@@ -951,13 +972,13 @@ uninstall_proxymon() {
         | sudo -u www-data crontab - 2>/dev/null; then
         echo -e "${GREEN}LightSquid, SARG and SquidAnalyzer crontab entries removed${NC}"
     else
-        echo -e "${YELLOW}WARNING: failed to update www-data crontab — entries may remain${NC}"
+        echo -e "${YELLOW}WARNING: failed to update www-data crontab -- entries may remain${NC}"
     fi
 
     if (crontab -l 2>/dev/null || true) | grep -v "/var/www/proxymon/tools/bandata.sh" | crontab - 2>/dev/null; then
         echo -e "${GREEN}Squid Monitor crontab removed${NC}"
     else
-        echo -e "${YELLOW}WARNING: failed to update root crontab — bandata.sh entry may remain${NC}"
+        echo -e "${YELLOW}WARNING: failed to update root crontab -- bandata.sh entry may remain${NC}"
     fi
 
     if command -v iptables >/dev/null 2>&1; then
@@ -993,14 +1014,14 @@ uninstall_proxymon() {
 
     if command -v ipset >/dev/null 2>&1 && ipset list bandata &>/dev/null; then
         ipset destroy bandata 2>/dev/null && echo -e "${GREEN}Bandata ipset destroyed${NC}" \
-            || echo -e "${YELLOW}WARNING: could not destroy ipset 'bandata' — remove manually if needed${NC}"
+            || echo -e "${YELLOW}WARNING: could not destroy ipset 'bandata' -- remove manually if needed${NC}"
     fi
 
     if [[ -f "/etc/sarg/sarg.conf.bak" ]]; then
         mv -f /etc/sarg/sarg.conf.bak /etc/sarg/sarg.conf
         echo -e "${GREEN}SARG configuration restored${NC}"
     fi
-    
+
     if [[ -f "/etc/sarg/usertab.bak" ]]; then
         mv -f /etc/sarg/usertab.bak /etc/sarg/usertab
         echo -e "${GREEN}SARG usertab restored${NC}"
@@ -1029,19 +1050,19 @@ uninstall_proxymon() {
         mv -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf
         echo -e "${GREEN}apache2.conf restored${NC}"
     fi
-        
+
     if [[ -f "/etc/apache2/sites-available/proxymon.conf" ]]; then
         a2dissite proxymon.conf 2>/dev/null || true
         rm -f /etc/apache2/sites-available/proxymon.conf
         echo -e "${GREEN}Proxymon site disabled${NC}"
     fi
-    
+
     if [[ -f "/etc/apache2/sites-available/warning.conf" ]]; then
         a2dissite warning.conf 2>/dev/null || true
         rm -f /etc/apache2/sites-available/warning.conf
         echo -e "${GREEN}Warning site disabled${NC}"
     fi
-    
+
     if [[ -d "/var/www/proxymon" ]]; then
         rm -rf /var/www/proxymon
         echo -e "${GREEN}Installation directory removed${NC}"
@@ -1053,7 +1074,7 @@ uninstall_proxymon() {
             rm -rf /etc/proxymon
             echo -e "${GREEN}SquidAI config directory removed${NC}"
         else
-            echo -e "${YELLOW} /etc/proxymon kept — remove manually if needed${NC}"
+            echo -e "${YELLOW} /etc/proxymon kept -- remove manually if needed${NC}"
         fi
     fi
 
@@ -1063,16 +1084,16 @@ uninstall_proxymon() {
             rm -rf /etc/acl
             echo -e "${GREEN}/etc/acl removed${NC}"
         else
-            echo -e "${YELLOW} /etc/acl kept — remove manually if needed${NC}"
+            echo -e "${YELLOW} /etc/acl kept -- remove manually if needed${NC}"
         fi
     fi
-    
+
     sed -i -E '/^Listen [^[:space:]]*:18080$/d; /^Listen 18080$/d' /etc/apache2/ports.conf
     echo -e "${GREEN}Port 18080 removed from Apache${NC}"
-    
+
     sed -i -E '/^Listen [^[:space:]]*:18081$/d; /^Listen 18081$/d' /etc/apache2/ports.conf
     echo -e "${GREEN}Port 18081 removed from Apache${NC}"
-    
+
     rm -f /var/log/apache2/{warning_access,warning_error,proxymon_access,proxymon_error}.log*
     echo -e "${GREEN}Proxymon log files removed${NC}"
 
@@ -1082,16 +1103,16 @@ uninstall_proxymon() {
     systemctl restart cron
     systemctl daemon-reload
     systemctl restart apache2
-    
+
     echo -e "${GREEN} Remaining Apache sites:${NC}"
     a2query -s
-    
+
     echo -e "${GREEN}Proxy Monitor uninstalled successfully${NC}"
 }
 
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 # MAIN
-# ════════════════════════════════════════════════════════════════
+# ----------------------------------------------------------------
 
 case "${1:-}" in
     install)
@@ -1119,32 +1140,32 @@ case "${1:-}" in
         echo "Usage: $0 [OPTIONS]"
         echo ""
         echo "Options:"
-        echo "  install      Install Proxy Monitor"
-        echo "  update       Update Proxy Monitor code (/var/www/proxymon only)"
-        echo "  uninstall    Uninstall Proxy Monitor"
-        echo "  -h, --help   Show this help message"
+        echo "install Install Proxy Monitor"
+        echo "update Update Proxy Monitor code (/var/www/proxymon only)"
+        echo "uninstall Uninstall Proxy Monitor"
+        echo "-h, --help Show this help message"
         exit 0
         ;;
     "")
         show_menu() {
             clear
-            echo -e "${BLUE}════════════════════════════════════════${NC}"
-            echo -e "${BLUE}    Proxy Monitor Installer${NC}"
-            echo -e "${BLUE}════════════════════════════════════════${NC}"
+            echo -e "${BLUE}----------------------------------------${NC}"
+            echo -e "${BLUE} Proxy Monitor Installer${NC}"
+            echo -e "${BLUE}----------------------------------------${NC}"
             echo ""
             echo -e "${YELLOW}1${NC} - Install Proxy Monitor"
             echo -e "${YELLOW}2${NC} - Update Proxy Monitor"
             echo -e "${YELLOW}3${NC} - Uninstall Proxy Monitor"
             echo -e "${YELLOW}4${NC} - Exit"
             echo ""
-            echo -e "${BLUE}════════════════════════════════════════${NC}"
+            echo -e "${BLUE}----------------------------------------${NC}"
             echo -n "Select an option: "
         }
 
         while true; do
             show_menu
             read -r option
-            
+
             case "$option" in
                 1)
                     echo ""

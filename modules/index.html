@@ -55,6 +55,11 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      text-decoration: none;
+    }
+
+    .header-left:hover .logo-text {
+      text-decoration: underline;
     }
 
     .logo-icon {
@@ -242,10 +247,10 @@
   <!-- Main Header -->
   <header class="header-pro">
     <div class="header-bar single">
-      <div class="header-left">
+      <a class="header-left" href="https://github.com/maravento/proxymon" target="_blank" rel="noopener noreferrer">
         <div class="logo-icon">🔍</div>
         <div class="logo-text">Proxy Monitor</div>
-      </div>
+      </a>
 
       <div class="header-center">
         <p class="subtitle">Traffic Monitoring Dashboard</p>

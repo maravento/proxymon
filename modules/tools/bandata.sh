@@ -1,9 +1,11 @@
 #!/bin/bash
 # maravento.com
-
+#
+################################################################################
+#
 # Bandata for Squid Reports
 # Data Plan for LAN
-
+#
 # Instructions:
 # Configuration is read from /etc/proxymon/proxymon.env (generated during installation)
 # Log output: /var/log/bandata.log
@@ -13,8 +15,15 @@
 #
 # NOTE on logging:
 # - Writes to /var/log/bandata.log (log + screen via tee). Rotation is
-#   handled by this script itself: it self-installs /etc/logrotate.d/bandata
-#   on first run (see below), so no manual truncate is needed.
+# handled by this script itself: it self-installs /etc/logrotate.d/bandata
+# on first run (see below), so no manual truncate is needed.
+#
+################################################################################
+
+set -uo pipefail
+
+# PATH for cron
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # logging
 log_file="/var/log/bandata.log"
@@ -90,7 +99,7 @@ block_list_month="$BLOCK_LIST_MONTH"
 realname="$REALNAME_CFG"
 skipuser="$SKIPUSERS_CFG"
 
-# Validate LAN interface — required for all iptables rules below
+# Validate LAN interface -- required for all iptables rules below
 if [ -z "$lan" ]; then
     log "ERROR: LAN is empty in $PROXYMON_ENV"
     exit 1
@@ -106,8 +115,8 @@ today=$(date +"%u")
 # reorganize IP
 reorganize="sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
 # Create folders if they don't exist
-[ -d "$ACL_PATH" ]         || mkdir -p "$ACL_PATH"
-[ -d "$ACL_MAC_PATH" ]     || mkdir -p "$ACL_MAC_PATH"
+[ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"
+[ -d "$ACL_MAC_PATH" ] || mkdir -p "$ACL_MAC_PATH"
 [ -d "$ACL_BANDATA_PATH" ] || mkdir -p "$ACL_BANDATA_PATH"
 # Create ACL files if they don't exist
 touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
@@ -164,7 +173,7 @@ else
                 if [[ "$total" =~ ^[0-9]+$ ]] && (( total > max_bw_day )); then
                     echo "$file"
                 elif [ -n "$total" ] && ! [[ "$total" =~ ^[0-9]+$ ]]; then
-                    log "WARNING: non-numeric total '$total' in $day_logs/$file — skipping" >&2
+                    log "WARNING: non-numeric total '$total' in $day_logs/$file -- skipping" >&2
                 fi
             done
             exit 0
@@ -174,7 +183,7 @@ else
             grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") "$_tmp_day" | $reorganize | uniq > "${block_list_day}.tmp" \
                 && mv -f "${block_list_day}.tmp" "$block_list_day"
         else
-            log "ERROR: subshell failed for $day_logs — keeping existing block list"
+            log "ERROR: subshell failed for $day_logs -- keeping existing block list"
         fi
         rm -f "$_tmp_day"
     fi
@@ -182,7 +191,7 @@ else
     day_count=$(wc -l < "$block_list_day" 2>/dev/null || echo 0)
     if [ "$day_count" -gt 0 ]; then
         log "Daily Blocked:"
-        sed 's/^/    /' "$block_list_day" | tee -a "$log_file"
+        sed 's/^/ /' "$block_list_day" | tee -a "$log_file"
     else
         log "No daily blocks"
     fi
@@ -215,7 +224,7 @@ if [ "$today" -eq 1 ]; then
     week_count=$(wc -l < "$block_list_week" 2>/dev/null || echo 0)
     if [ "$week_count" -gt 0 ]; then
         log "Weekly Blocked:"
-        sed 's/^/    /' "$block_list_week" | tee -a "$log_file"
+        sed 's/^/ /' "$block_list_week" | tee -a "$log_file"
     else
         log "No weekly blocks"
     fi
@@ -252,7 +261,7 @@ fi
 month_count=$(wc -l < "$block_list_month" 2>/dev/null || echo 0)
 if [ "$month_count" -gt 0 ]; then
     log "Monthly Blocked:"
-    sed 's/^/    /' "$block_list_month" | tee -a "$log_file"
+    sed 's/^/ /' "$block_list_month" | tee -a "$log_file"
 else
     log "No monthly blocks"
 fi
@@ -279,7 +288,7 @@ fi
 if ipset swap bandata_new bandata; then
     ipset destroy bandata_new
 else
-    log "ERROR: ipset swap failed — bandata_new left in place for inspection, bandata not updated"
+    log "ERROR: ipset swap failed -- bandata_new left in place for inspection, bandata not updated"
 fi
 
 if [ -n "$all_bans" ]; then
@@ -295,7 +304,7 @@ if [ -n "$all_bans" ]; then
         else
             cat_type="UNKNOWN"
         fi
-        log "  $ip [$cat_type]"
+        log "$ip [$cat_type]"
     done
 else
     log "There are no IPs in bandata"
@@ -305,7 +314,7 @@ log "Applying Iptables Rules..."
 
 # Create dedicated chains if they don't exist
 iptables -N BANDATA_FWD 2>/dev/null
-iptables -N BANDATA_IN  2>/dev/null
+iptables -N BANDATA_IN 2>/dev/null
 
 # Jump into dedicated chains from FORWARD/INPUT position 1
 iptables -C FORWARD -i "$lan" -j BANDATA_FWD 2>/dev/null || \
@@ -376,7 +385,7 @@ update_lightsquid_realname() {
     }
 
     process_acls() {
-        local mode="$1"  # "include" or "exclude"
+        local mode="$1" # "include" or "exclude"
         local file
         find "$ACL_MAC_PATH" -maxdepth 1 -type f -iname 'mac-*' | while read -r file; do
             local bn
@@ -404,13 +413,13 @@ update_lightsquid_realname() {
     skip_output=$(printf "%s\n" "$skip_out" | sed '/^$/d' | $sort_ips)
 
     if [ -z "$final_output" ]; then
-        log "  No MAC data processed for realname.cfg"
+        log "No MAC data processed for realname.cfg"
     else
         echo "$final_output" > "${realname}.tmp" && mv -f "${realname}.tmp" "$realname"
     fi
 
     if [ -z "$skip_output" ]; then
-        log "  No excluded data for skipuser.cfg"
+        log "No excluded data for skipuser.cfg"
     else
         echo "$skip_output" > "${skipuser}.tmp" && mv -f "${skipuser}.tmp" "$skipuser"
     fi

@@ -19,23 +19,15 @@
   </tr>
 </table>
 
-## HOW TO INSTALL
+## Requirements
 
 ---
 
-```bash
-git clone --depth=1 https://github.com/maravento/proxymon.git
-cd proxymon
-sudo bash pminstall.sh
-```
+**⚠️ WARNING:** Only tested on Ubuntu 24.04 LTS. Other versions or distros not tested, use at your own risk.
 
-### Minimum Requirements
-
-|   OS   |   CPU   |   RAM   |   Storage   |   Dependencies   |
-| :----: | :-----: | :-----: | :---------: | :--------------: |
-| Ubuntu 24.04.x | Intel Core i5/Xeon/AMD Ryzen 5 (≥ 3.0 GHz) | 16 GB | 2 GB SSD | Squid Cache v6.13, Apache v2.4.58, PHP 8.3.6 |
-
-### Installing Dependencies
+|   CPU   |   RAM   |   Storage   |   Dependencies   |
+| :-----: | :-----: | :---------: | :--------------: |
+| Intel Core i5/Xeon/AMD Ryzen 5 (≥ 3.0 GHz) | 16 GB | 2 GB SSD | Squid Cache v6.13, Apache v2.4.58, PHP 8.3.6 |
 
 `pminstall.sh` checks that Squid, Apache, PHP, and a set of supporting packages
 are installed before proceeding, but it does not install them for you —
@@ -117,6 +109,16 @@ sed -i \
 a2dismod -q mpm_event || true
 a2enmod -q mpm_prefork || true
 a2enmod -q php || true
+```
+
+## HOW TO INSTALL
+
+---
+
+```bash
+git clone --depth=1 https://github.com/maravento/proxymon.git
+cd proxymon
+sudo bash pminstall.sh
 ```
 
 ### Important Before Using
@@ -1331,7 +1333,7 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 </table>
 
 **Optional tunnel:**
-- [Cloudflare Tunnel (start|stop|status) - Zero Trust Activation Recommended](https://raw.githubusercontent.com/maravento/vault/master/scripts/bash/cftunnel.sh)
+- [Cloudflare Tunnel with Zero Trust Recommended](https://raw.githubusercontent.com/maravento/vault/master/scripts/bash/cftunnel.sh)
 
 ## NOTICE
 
