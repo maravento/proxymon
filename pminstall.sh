@@ -182,7 +182,7 @@ check_dependencies() {
         fi
     done
 
-    missing=$(echo "$missing" | xargs)
+    read -r missing <<< "$missing"
     if [[ -n "$missing" ]]; then
         echo -e "${RED}Missing dependencies: $missing${NC}"
         echo -e "${YELLOW}Please install manually with:${NC}"
@@ -471,7 +471,8 @@ install_proxymon() {
     cp -rf modules/* /var/www/proxymon/
 
     if [ -n "$local_user" ] && [ -f "/var/www/proxymon/sqstat/config.inc.php" ]; then
-        sed -i "s/\$cachemgr_passwd\[0\]=\"\";/\$cachemgr_passwd[0]=\"$local_user\";/" /var/www/proxymon/sqstat/config.inc.php
+        local_user_esc=$(printf '%s' "$local_user" | sed -e 's/[\/&]/\\&/g')
+        sed -i "s/\$cachemgr_passwd\[0\]=\"\";/\$cachemgr_passwd[0]=\"$local_user_esc\";/" /var/www/proxymon/sqstat/config.inc.php
     fi
 
     echo -e "${YELLOW}Configuring Apache...${NC}"
@@ -543,15 +544,20 @@ install_proxymon() {
 
     echo -e "${YELLOW}Restricting Proxymon panel to LAN...${NC}"
     if [[ -f /etc/apache2/sites-available/proxymon.conf ]]; then
-        if [[ "$RANGE" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
-            # 127.0.0.1 allowed alongside the LAN so a local tunnel/trusted
-            # proxy connecting over loopback to port 18080 still works.
-            sed -i "s|@@LAN_CIDR@@|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
-            echo -e "${GREEN}Proxymon panel restricted to $RANGE and 127.0.0.1${NC}"
+        read -rp "Restrict Proxymon panel to $RANGE (plus 127.0.0.1)? Otherwise it keeps the default 192.168.0.0/24 (y/n, default: y): " _lan_opt
+        _lan_opt=${_lan_opt:-y}
+        if [[ "$_lan_opt" =~ ^[Yy]$ ]]; then
+            if [[ "$RANGE" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+                # 127.0.0.1 allowed alongside the LAN so a local tunnel/trusted
+                # proxy connecting over loopback to port 18080 still works.
+                sed -i "s|192.168.0.0/24 127.0.0.1|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
+                echo -e "${GREEN}Proxymon panel restricted to $RANGE and 127.0.0.1${NC}"
+            else
+                echo -e "${RED}RANGE='$RANGE' in $_env_file is not a valid CIDR (e.g. 192.168.10.0/24).${NC}"
+                echo -e "${YELLOW}Keeping default 192.168.0.0/24 and 127.0.0.1. Fix RANGE and re-run install to apply it.${NC}"
+            fi
         else
-            echo -e "${RED}RANGE='$RANGE' in $_env_file is not a valid CIDR (e.g. 192.168.10.0/24).${NC}"
-            echo -e "${RED}Fix RANGE in $_env_file, then re-run install. Aborting before enabling any site.${NC}"
-            exit 1
+            echo -e "${YELLOW}Keeping default 192.168.0.0/24 and 127.0.0.1. Edit /etc/apache2/sites-available/proxymon.conf manually if needed.${NC}"
         fi
     fi
 
@@ -635,7 +641,7 @@ install_proxymon() {
             | grep -v "squid-analyzer"
         echo "*/10 * * * * /var/www/proxymon/lightsquid/lightparser.pl today"
         echo "@daily /usr/bin/sarg -f /etc/sarg/sarg.conf -l /var/log/squid/access.log"
-        echo '@weekly find /var/www/proxymon/sarg/squid-reports -name "2*" -mtime +30 -type d -exec rm -rf "{}" \;'
+        echo '@weekly find /var/www/proxymon/sarg/squid-reports -name "2*" -mtime +30 -type d -exec rm -rf {} +'
         echo '0 2 * * * cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -c etc/squidanalyzer.conf'
     } | sudo -u www-data crontab -
     echo -e "${GREEN}www-data crontab entries updated (LightSquid, SARG, SquidAnalyzer)${NC}"
