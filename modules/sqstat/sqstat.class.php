@@ -121,8 +121,9 @@ private $fp;
 		if($pass!="") $out.="Authorization: Basic ".base64_encode("cachemgr:$pass")."\r\n";
 		$out.="\r\n";
 		fwrite($this->fp, $out);
-		
-		while (!feof($this->fp)) {
+
+		$max_lines = 20000; // safety cap, same approach as logview's api.php
+		while (!feof($this->fp) && count($raw) < $max_lines) {
 			$raw[]=trim(fgets($this->fp, 2048));
 		}
 		fclose($this->fp);
