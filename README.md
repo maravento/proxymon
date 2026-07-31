@@ -259,18 +259,18 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      To change the path and lists, modify this section of <b>Config</b>, as shown in the image above, and also change the path in the script <code>bandata.sh</code>.
+      To change the path and lists, modify this section of <b>Config</b>, as shown in the image above, and also change the path in <code>/etc/proxymon/proxymon.env</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Para cambiar el path y las listas, modifíquese en esta sección de <b>Config</b>, como se muestra en la imagen superior y cambie también el path en el script <code>bandata.sh</code>.
+      Para cambiar el path y las listas, modifíquese en esta sección de <b>Config</b>, como se muestra en la imagen superior y cambie también el path en <code>/etc/proxymon/proxymon.env</code>.
     </td>
   </tr>
 </table>
 
 ```bash
-sudo nano /var/www/proxymon/tools/bandata.sh
+sudo nano /etc/proxymon/proxymon.env
 # path to ACLs folder
-acl_pacth=/etc/acl
+ACL_PATH=/etc/acl
 ```
 
 <table width="100%">
@@ -548,11 +548,11 @@ sudo -u www-data crontab -e
   <tr>
     <td style="width: 50%; vertical-align: top;">
      To add users manually to realname (audit) and skipuser (exclude) lists:<br><br>
-     <em>Note: <a href="#bandata">Bandata</a> does this automatically. To enable this feature, declare your ACLs in the <code>exclude_acls</code> variable and uncomment the <code>update_lightsquid_realname</code> line at the end of the script.</em>
+     <em>Note: <a href="#bandata">Bandata</a> updates these lists automatically on every run, if enabled: declare your ACLs in the <code>exclude_acls</code> variable and answer "y" to "Automatically update hostnames in Lightsquid?" during <code>pminstall.sh install</code> (default: n). This sets <code>UPDATE_REALNAME=true</code> in <code>/etc/proxymon/proxymon.env</code>.</em>
     </td>
     <td style="width: 50%; vertical-align: top;">
      Para agregar usuarios manualmente a las listas realname (auditar) y skipuser (excluir):<br><br>
-     <em>Nota: <a href="#bandata">Bandata</a> lo hace automáticamente. Para activar esta función, declare sus ACLs en la variable <code>exclude_acls</code> y descomente la línea <code>update_lightsquid_realname</code> al final del script.</em>
+     <em>Nota: <a href="#bandata">Bandata</a> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pminstall.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
      </td>
   </table>
 </table>
@@ -1025,7 +1025,7 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The installation script adds a task to the crontab to run every 10 minutes. You can change it according to your preferences.
+     The installation script adds a task to the crontab to run daily at 2:00 AM. You can change it according to your preferences.
     </td>
     <td style="width: 50%; vertical-align: top;">
      El script de instalación agrega una tarea al crontab para que se ejecute todos los días a las 2:00 AM. Puedes cambiarla según tus preferencias.
@@ -1035,7 +1035,7 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 
 ```bash
 sudo -u www-data crontab -e
-0 2 * * * cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -d > /dev/null 2>&1
+0 2 * * * cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -c etc/squidanalyzer.conf
 ```
 
 ### LOGVIEW

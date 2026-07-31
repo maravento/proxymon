@@ -156,44 +156,21 @@ retry_cmd() {
 }
 
 check_dependencies() {
-    declare -A pkgs_alts
-    pkgs_alts=(
-        [squid]="squid squid-openssl"
-        [apache2]="apache2 apache2-bin apache2-data apache2-doc apache2-utils"
-    )
-
-    pkgs='wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl sudo fonts-lato fonts-liberation fonts-dejavu'
-    for p in "${!pkgs_alts[@]}"; do
-        pkgs+=" $p"
-    done
-
-    missing=""
-    for p in $pkgs; do
-        if [[ -n "${pkgs_alts[$p]}" ]]; then
-            found=false
-            for alt in ${pkgs_alts[$p]}; do
-                dpkg -s "$alt" &>/dev/null && { found=true; break; }
-            done
-            if ! $found; then
-                missing+=" $p"
-            fi
-        else
-            dpkg -s "$p" &>/dev/null || missing+=" $p"
+    for dep in wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils; do
+        if ! dpkg -s "$dep" &>/dev/null; then
+            echo -e "${RED}ERROR: Required dependency '$dep' is not installed.${NC}"
+            exit 1
         fi
     done
 
-    read -r missing <<< "$missing"
-    if [[ -n "$missing" ]]; then
-        echo -e "${RED}Missing dependencies: $missing${NC}"
-        echo -e "${YELLOW}Please install manually with:${NC}"
-        echo -e "apt-get install $missing"
-        echo -e "${YELLOW}After installation, if apache2-doc has issues, run:${NC}"
-        echo -e "apt -qq install -y --reinstall apache2-doc"
+    # DEPENDENCIES (squid or squid-openssl)
+    if ! dpkg -s squid &>/dev/null && ! dpkg -s squid-openssl &>/dev/null; then
+        echo -e "${RED}ERROR: 'squid' or 'squid-openssl' is not installed.${NC}"
         exit 1
-    else
-        echo -e "${GREEN}All dependencies are installed${NC}"
     fi
 }
+
+check_dependencies
 
 check_apache_config() {
     if command -v php >/dev/null 2>&1; then
@@ -267,7 +244,6 @@ check_squid_traffic() {
 
 run_initial_checks() {
     echo -e "${BLUE}Running initial checks...${NC}\n"
-    check_dependencies
     check_apache_config
     check_squid_traffic
     echo -e "${GREEN}All checks passed!${NC}\n"
