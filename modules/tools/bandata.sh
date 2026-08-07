@@ -13,6 +13,15 @@
 # Limits can use M, G or B suffix (e.g. 500M, 1G, 1.5G)
 # bandata excludes weekends
 #
+# NOTE on skipuser.cfg:
+# - Rebuilt on every run from mac-transparent.txt/mac-unlimited.txt plus every
+# IPv4 entry found in /etc/hosts, so the proxy host's own traffic (loopback
+# and the server itself) is never listed as a LightSquid user.
+# - The server IP MUST have an entry in /etc/hosts with its hostname. Without
+# it, the server's own proxy traffic is reported and counted against the
+# bandwidth limits like any LAN client.
+# - Manual edits to skipuser.cfg do not survive: the file is regenerated here.
+#
 # NOTE on logging:
 # - Writes to /var/log/bandata.log (log + screen via tee). Rotation is
 # handled by this script itself: it self-installs /etc/logrotate.d/bandata
@@ -95,6 +104,14 @@ fi
 # shellcheck source=/etc/proxymon/proxymon.env
 source "$PROXYMON_ENV"
 
+# VALIDATION -- one variable per thing validated; use directly with =~
+_UH_OCT='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+_UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+_UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
+_UH_NETMASK='^(0\.0\.0\.0|128\.0\.0\.0|192\.0\.0\.0|224\.0\.0\.0|240\.0\.0\.0|248\.0\.0\.0|252\.0\.0\.0|254\.0\.0\.0|255\.0\.0\.0|255\.128\.0\.0|255\.192\.0\.0|255\.224\.0\.0|255\.240\.0\.0|255\.248\.0\.0|255\.252\.0\.0|255\.254\.0\.0|255\.255\.0\.0|255\.255\.128\.0|255\.255\.192\.0|255\.255\.224\.0|255\.255\.240\.0|255\.255\.248\.0|255\.255\.252\.0|255\.255\.254\.0|255\.255\.255\.0|255\.255\.255\.128|255\.255\.255\.192|255\.255\.255\.224|255\.255\.255\.240|255\.255\.255\.248|255\.255\.255\.252|255\.255\.255\.254|255\.255\.255\.255)$'
+_UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
+_UH_UINT='^(0|[1-9][0-9]*)$'
+
 ### DERIVED VARIABLES
 # local aliases for readability
 lan="$LAN"
@@ -122,17 +139,6 @@ fi
 today=$(date +"%u")
 # reorganize IP
 reorganize="sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
-# Create folders if they don't exist
-[ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"
-[ -d "$ACL_MAC_PATH" ] || mkdir -p "$ACL_MAC_PATH"
-[ -d "$ACL_BANDATA_PATH" ] || mkdir -p "$ACL_BANDATA_PATH"
-# Create ACL files if they don't exist
-touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
-
-if [ "$UNIFI_HOTSPOT_ENABLED" = true ]; then
-    [ -d "$HOTSPOT_PATH" ] || mkdir -p "$HOTSPOT_PATH"
-fi
-
 ### BANDWIDTH LIMITS VALIDATION
 # Convert and validate MAX_BANDWIDTH_* before any comparison is made.
 # If numfmt fails (empty/invalid value), abort instead of silently
@@ -155,6 +161,19 @@ max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}" 2>/dev/nu
 if [ -z "$max_bw_month" ]; then
     log "ERROR: invalid MAX_BANDWIDTH_MONTH value in $PROXYMON_ENV: '${MAX_BANDWIDTH_MONTH}'"
     log "Expected format: number with optional M or G suffix (e.g. 500M, 1G, 1.5G)"
+    exit 1
+fi
+
+# Create folders if they don't exist
+[ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"
+[ -d "$ACL_MAC_PATH" ] || mkdir -p "$ACL_MAC_PATH"
+[ -d "$ACL_BANDATA_PATH" ] || mkdir -p "$ACL_BANDATA_PATH"
+# Create ACL files if they don't exist
+touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
+
+if [ "$BANDATA_HOTSPOT" = true ] && [ ! -d "$HOTSPOT_PATH" ]; then
+    log "WARNING: BANDATA_HOTSPOT=true but $HOTSPOT_PATH does not exist"
+    log "Install uhm or set BANDATA_HOTSPOT=false in $PROXYMON_ENV"
     exit 1
 fi
 
@@ -388,8 +407,23 @@ update_lightsquid_realname() {
     }
 
     process_hotspot() {
-        [ -f "$HOTSPOT_PATH/mac-hotspot.txt" ] || return
-        awk -F';' '$3 != "0.0.0.0" && NF >= 4 {print $3, $4}' "$HOTSPOT_PATH/mac-hotspot.txt"
+        local f="$HOTSPOT_PATH/acl/uhm-auth.txt"
+        if [ ! -f "$f" ]; then
+            log "WARNING: BANDATA_HOTSPOT=true but $f not found -- skipping hotspot MACs"
+            return
+        fi
+        awk -F';' '$1 == "a" && NF >= 4 {print $3, $4}' "$f"
+    }
+
+    # /etc/hosts entries (loopback and the server's own IP) generate proxy
+    # traffic and would otherwise be reported as LightSquid users.
+    process_hosts() {
+        local ip name _rest
+        while read -r ip name _rest; do
+            case "$ip" in ""|\#*) continue ;; esac
+            [[ "$ip" =~ $_UH_IPV4 ]] || continue
+            [ -n "$name" ] && printf '%s %s\n' "$ip" "$name"
+        done < /etc/hosts
     }
 
     process_acls() {
@@ -410,7 +444,7 @@ update_lightsquid_realname() {
     local sort_ips="sort -u -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
     local hotspot_out="" acl_out skip_out
 
-    if [ "$UNIFI_HOTSPOT_ENABLED" = true ]; then
+    if [ "$BANDATA_HOTSPOT" = true ]; then
         hotspot_out=$(process_hotspot)
     fi
     acl_out=$(process_acls include)
@@ -418,7 +452,7 @@ update_lightsquid_realname() {
 
     local final_output skip_output
     final_output=$(printf "%s\n%s\n" "$hotspot_out" "$acl_out" | sed '/^$/d' | $sort_ips)
-    skip_output=$(printf "%s\n" "$skip_out" | sed '/^$/d' | $sort_ips)
+    skip_output=$(printf "%s\n%s\n" "$skip_out" "$(process_hosts)" | sed '/^$/d' | $sort_ips)
 
     if [ -z "$final_output" ]; then
         log "No MAC data processed for realname.cfg"
