@@ -367,11 +367,11 @@ create_proxymon_env() {
     _bw_week=$(read_bandwidth "Max bandwidth per week (default: 5G): " "5G")
     _bw_month=$(read_bandwidth "Max bandwidth per month (default: 20G): " "20G")
 
-    # Unifi Hotspot -- only ask if /etc/uhotspot exists
+    # Unifi Hotspot Manager -- only ask if /etc/uhm exists
     _hotspot_enabled=false
-    _hotspot_path="/etc/uhotspot"
-    if [ -d "/etc/uhotspot" ]; then
-        read -rp "Unifi Hotspot detected. Enable it in Bandata? (y/n, default: n): " _hs
+    _hotspot_path="/etc/uhm"
+    if [ -d "/etc/uhm" ]; then
+        read -rp "Unifi Hotspot Manager detected. Enable it in Bandata? (y/n, default: n): " _hs
         if [[ "$_hs" =~ ^[Yy]$ ]]; then
             _hotspot_enabled=true
         fi
