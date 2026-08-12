@@ -263,7 +263,7 @@ private $fp;
 			}
 			$servers.='</select>';
 		}
-		$text.='<div class="header"><form method="get" action="'.htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8').'">'.
+		$text.='<div class="header"><form method="post" action="'.htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8').'">'.
 		'Squid RealTime stat for the '.$servers.' proxy server ('.htmlspecialchars($data["server_version"], ENT_QUOTES, 'UTF-8').').<br/>'.
 		'Auto refresh: <input name="refresh" type="text" size="4" value="'.$refresh.'"/> sec. <input type="submit" value="Update"/> <input name="stop" type="submit" value="Stop"/> Created at: <tt>'.date("h:i:s d/m/Y").'</tt><br/>'.
 		'</div>'.

@@ -30,13 +30,13 @@ if (file_exists($refresh_config_file)) {
 }
 
 // Handle refresh parameter from form
-if (isset($_GET["refresh"]) && is_numeric($_GET["refresh"])) {
-    $current_refresh = clamp_refresh_sqstat($_GET["refresh"]);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["refresh"]) && is_numeric($_POST["refresh"])) {
+    $current_refresh = clamp_refresh_sqstat($_POST["refresh"]);
     file_put_contents($refresh_config_file, $current_refresh);
 }
 
 // Handle stop button
-if (isset($_GET["stop"])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["stop"])) {
     $current_refresh = 0;
     file_put_contents($refresh_config_file, $current_refresh);
 }
@@ -52,8 +52,9 @@ if(is_file("config.inc.php")) {
 	include_once "config.inc.php";
 	// checking configuration. We need to have at least one 
 	// squidhost/squid pair
-	if(!isset($_GET["config"])) $config=0;
-	else $config=(int)$_GET["config"];
+	if(isset($_POST["config"])) $config=(int)$_POST["config"];
+	elseif(isset($_GET["config"])) $config=(int)$_GET["config"];
+	else $config=0;
 	
 	if(!isset($squidhost[$config]) || !isset($squidport[$config])) {
 		$squidclass->errno=4;

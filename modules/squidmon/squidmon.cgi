@@ -292,6 +292,7 @@ foreach my $acl (@monitored_acls) {
 
 # Parse last N lines of log
 my $lines_to_read = int($max_lines);
+$lines_to_read = 200000 if $lines_to_read > 200000 || $lines_to_read <= 0;
 my @log_lines = ();
 
 if (open(my $fh, '<', $log_file)) {

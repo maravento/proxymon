@@ -3,7 +3,6 @@
 [![status-maintained](https://img.shields.io/badge/status-maintained-purple.svg)](https://github.com/maravento/proxymon)
 [![last commit](https://img.shields.io/github/last-commit/maravento/proxymon)](https://github.com/maravento/proxymon)
 [![Stargazers](https://img.shields.io/github/stars/maravento/proxymon?label=Stargazers)](https://github.com/maravento/proxymon/stargazers)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/maravento/proxymon)
 [![Twitter Follow](https://img.shields.io/twitter/follow/maraventostudio.svg)](https://twitter.com/maraventostudio)
 
 <!-- markdownlint-disable MD033 -->
@@ -923,6 +922,23 @@ sudo systemctl restart cron
   </tr>
 </table>
 
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+     <b>Important:</b> SqStat connects to Squid from the same server where the panel runs, using <code>$squidhost[0]</code>/<code>$squidport[0]</code> from <code>sqstat/config.inc.php</code> (default: <code>127.0.0.1</code>). If your <code>squid.conf</code> binds <code>http_port</code> to a specific IP (e.g. <code>http_port 192.168.1.2:3128</code>) instead of just the port, Squid will not be listening on loopback and SqStat will fail with <code>Error (111): Connection refused</code>. Add a loopback listener alongside your existing one:
+     <pre>http_port 127.0.0.1:3128
+http_port 192.168.1.2:3128</pre>
+     Multiple <code>http_port</code> lines are valid as long as each IP:PORT pair is unique (a wildcard <code>http_port 3128</code> cannot coexist with an explicit IP on the same port). Then restart Squid — <code>reload</code>/<code>reconfigure</code> does not bind new ports: <code>sudo systemctl restart squid</code>. Verify with <code>ss -tlnp | grep 3128</code> (both listeners must appear). Pointing <code>$squidhost[0]</code> at the LAN IP instead is not recommended: if your firewall filters traffic to that IP, the connection is dropped and SqStat fails with <code>Error (110): Connection timed out</code>. Loopback also satisfies Squid's usual <code>http_access allow localhost manager</code> rule.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+     <b>Importante:</b> SqStat se conecta a Squid desde el mismo servidor donde corre el panel, usando <code>$squidhost[0]</code>/<code>$squidport[0]</code> de <code>sqstat/config.inc.php</code> (por defecto: <code>127.0.0.1</code>). Si tu <code>squid.conf</code> ata <code>http_port</code> a una IP específica (ej. <code>http_port 192.168.1.2:3128</code>) en vez de solo el puerto, Squid no estará escuchando en loopback y SqStat fallará con <code>Error (111): Connection refused</code>. Agrega un listener en loopback junto al que ya tienes:
+     <pre>http_port 127.0.0.1:3128
+http_port 192.168.1.2:3128</pre>
+     Varias líneas <code>http_port</code> son válidas siempre que cada par IP:PUERTO sea único (un <code>http_port 3128</code> comodín no puede coexistir con una IP explícita en el mismo puerto). Luego reinicia Squid — <code>reload</code>/<code>reconfigure</code> no abre puertos nuevos: <code>sudo systemctl restart squid</code>. Verifica con <code>ss -tlnp | grep 3128</code> (deben aparecer ambos listeners). No se recomienda apuntar <code>$squidhost[0]</code> a la IP de la LAN: si tu firewall filtra el tráfico hacia esa IP, la conexión se descarta y SqStat falla con <code>Error (110): Connection timed out</code>. Loopback además satisface la regla habitual <code>http_access allow localhost manager</code> de Squid.
+    </td>
+  </tr>
+</table>
+
 #### Sqstat Themes
 
 [![sqstat theme](https://raw.githubusercontent.com/maravento/proxymon/master/img/sqstat-dark.png)](https://www.maravento.com/)
@@ -1381,8 +1397,8 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 
 | Content | Licensed Under |
 |---|---|
-|Scripts, Binaries, Infrastructure|[![GPL-3.0](https://img.shields.io/badge/Open_Core-GPLv3-blue.svg?style=for-the-badge&labelWidth=120&logoWidth=20)](https://www.gnu.org/licenses/gpl.txt)|
-|RAG, Workers, Specialized Modules, Docs|[![CC](https://img.shields.io/badge/Core_Engine-CC_BY--NC--ND_4.0-lightgrey.svg?style=for-the-badge&labelWidth=120&logoWidth=20)](https://creativecommons.org/licenses/by-nc-nd/4.0/)|
+|Scripts, Binaries, Infrastructure|[![GPL-3.0](https://img.shields.io/badge/Open_Core-GPLv3-blue.svg?style=for-the-badge&labelWidth=120&logoWidth=20)](LICENSE)|
+|RAG, Workers, Specialized Modules, Docs|[![CC](https://img.shields.io/badge/Core_Engine-CC_BY--NC--ND_4.0-lightgrey.svg?style=for-the-badge&labelWidth=120&logoWidth=20)](docs/LICENSE-CC-BY-NC-ND-4.0.md)|
 
 ## DISCLAIMER
 

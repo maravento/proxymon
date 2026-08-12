@@ -201,8 +201,10 @@ if (isset($_GET['since'])) {
     if ($fh === false) {
         err('Log file became unreadable.', 500);
     }
+    $max_read = 5 * 1024 * 1024;
+    $read_len = min($file_size - $since, $max_read);
     fseek($fh, $since);
-    $new_data = fread($fh, $file_size - $since);
+    $new_data = fread($fh, $read_len);
     fclose($fh);
 
     // Keep only complete lines — an in-progress write can leave a partial

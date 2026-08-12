@@ -30,6 +30,14 @@ my $message_type = '';
 
 # Handle form submission - FIX: Check if action is defined
 if (defined $in{'action'} && $in{'action'} eq 'save') {
+    my $origin = $ENV{'HTTP_ORIGIN'} || $ENV{'HTTP_REFERER'} || '';
+    my $host   = $ENV{'HTTP_HOST'} || '';
+    if ($host eq '' || $origin !~ m{^https?://\Q$host\E(/|$)}) {
+        print "Content-Type: text/html; charset=utf-8\n\n";
+        print "Forbidden: origin mismatch.\n";
+        exit;
+    }
+
     my $acl_list_value = $in{'acl_list'} || '';
     $acl_list_value =~ s/\r\n/\n/g;
 
@@ -61,7 +69,7 @@ if (defined $in{'action'} && $in{'action'} eq 'save') {
     } else {
     %config = (
         'squid_log' => $squid_log_value,
-        'max_lines' => int($in{'max_lines'}) || 50000,
+        'max_lines' => (int($in{'max_lines'}) > 0 && int($in{'max_lines'}) <= 200000) ? int($in{'max_lines'}) : 50000,
         'time_range' => int($in{'time_range'}) || 24,
         'acl_list' => $acl_list_value,
         'auto_refresh' => $in{'auto_refresh'} ? 1 : 0,

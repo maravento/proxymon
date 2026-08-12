@@ -31,7 +31,12 @@ sub ReadParse {
     my $query_string = '';
     
     if (($ENV{'REQUEST_METHOD'} // '') eq 'POST') {
-        read(STDIN, $query_string, $ENV{'CONTENT_LENGTH'}) if $ENV{'CONTENT_LENGTH'};
+        my $cl = $ENV{'CONTENT_LENGTH'} || 0;
+        if ($cl > 1_048_576) {
+            print "Status: 413 Payload Too Large\n\n";
+            exit;
+        }
+        read(STDIN, $query_string, $cl) if $cl;
     } else {
         $query_string = $ENV{'QUERY_STRING'} || '';
     }

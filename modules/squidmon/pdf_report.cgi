@@ -29,6 +29,7 @@ eval {
 
     # Validate as plain integers — these come straight from request params
     $max_lines  = 50000 unless $max_lines  =~ /^\d+$/;
+    $max_lines  = 200000 if $max_lines > 200000;
     $time_range = 24    unless $time_range =~ /^\d+$/;
     $specific_client = '' unless $specific_client =~ /^[0-9a-fA-F.:]*$/; # IPv4/IPv6 only
 
