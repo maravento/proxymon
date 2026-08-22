@@ -127,6 +127,15 @@ block_list_month="$BLOCK_LIST_MONTH"
 realname="$REALNAME_CFG"
 skipuser="$SKIPUSERS_CFG"
 
+# Self-heal: remove orphaned .tmp files left by a previous run that failed
+# between the write and the mv (no -e/trap in this script to catch that).
+for _stale in "$block_list_day.tmp" "$block_list_week.tmp" "$block_list_month.tmp" "$realname.tmp" "$skipuser.tmp"; do
+    if [ -f "$_stale" ]; then
+        log "WARNING: removing orphaned $_stale from a previous failed run -- alert"
+        rm -f "$_stale"
+    fi
+done
+
 # Validate LAN interface -- required for all iptables rules below
 if [ -z "$lan" ]; then
     log "ERROR: LAN is empty in $PROXYMON_ENV"
@@ -210,8 +219,13 @@ else
         ) > "$_tmp_day" && _subshell_ok=1
 
         if [ "$_subshell_ok" -eq 1 ]; then
-            grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") "$_tmp_day" | $reorganize | uniq > "${block_list_day}.tmp" \
-                && mv -f "${block_list_day}.tmp" "$block_list_day"
+            grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") "$_tmp_day" | $reorganize | uniq > "${block_list_day}.tmp"
+            if [ "${PIPESTATUS[0]}" -le 1 ]; then
+                mv -f "${block_list_day}.tmp" "$block_list_day"
+            else
+                log "ERROR: cannot build daily block list -- keeping existing"
+                rm -f "${block_list_day}.tmp"
+            fi
         else
             log "ERROR: subshell failed for $day_logs -- keeping existing block list"
         fi
@@ -247,8 +261,13 @@ if [ "$today" -eq 1 ]; then
         folders=$(find "${week_dirs[@]}" -maxdepth 1 -type f -name "$range")
         totals=$(echo "$folders" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
         ips=$(echo "$totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
-        echo "$ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") | $reorganize | uniq > "${block_list_week}.tmp" \
-            && mv -f "${block_list_week}.tmp" "$block_list_week"
+        echo "$ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") | $reorganize | uniq > "${block_list_week}.tmp"
+        if [ "${PIPESTATUS[2]}" -le 1 ]; then
+            mv -f "${block_list_week}.tmp" "$block_list_week"
+        else
+            log "ERROR: cannot build weekly block list -- keeping existing"
+            rm -f "${block_list_week}.tmp"
+        fi
     fi
 
     week_count=$(wc -l < "$block_list_week" 2>/dev/null || echo 0)
@@ -284,8 +303,13 @@ else
     folders=$(find "${month_dirs[@]}" -maxdepth 1 -type f -name "$range")
     totals=$(echo "$folders" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
     ips=$(echo "$totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
-    echo "$ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") | $reorganize | uniq > "${block_list_month}.tmp" \
-        && mv -f "${block_list_month}.tmp" "$block_list_month"
+    echo "$ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$allow_list") | $reorganize | uniq > "${block_list_month}.tmp"
+    if [ "${PIPESTATUS[2]}" -le 1 ]; then
+        mv -f "${block_list_month}.tmp" "$block_list_month"
+    else
+        log "ERROR: cannot build monthly block list -- keeping existing"
+        rm -f "${block_list_month}.tmp"
+    fi
 fi
 
 month_count=$(wc -l < "$block_list_month" 2>/dev/null || echo 0)
