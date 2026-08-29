@@ -254,8 +254,8 @@ sudo bash pminstall.sh
 </table>
 
 ```bash
-/etc/acl/acl_squid/blocktlds.txt=Blocked TLD
-/etc/acl/acl_squid/blockdomains.txt=Blocked Domains
+/etc/acl/squid/blocktlds.txt=Blocked TLD
+/etc/acl/squid/blockdomains.txt=Blocked Domains
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 ```
 
@@ -295,10 +295,10 @@ sudo nano /etc/squid/squid.conf
 include /etc/squid/conf.d/*.conf
 # Block: TLDs
 # For more information visit: https://github.com/maravento/proxymon
-acl blocktlds dstdomain "/etc/acl/acl_squid/blocktlds.txt"
+acl blocktlds dstdomain "/etc/acl/squid/blocktlds.txt"
 http_access deny workdays blocktlds
 # Block: domains
-acl blocksites dstdomain "/etc/acl/acl_squid/blockdomains.txt"
+acl blocksites dstdomain "/etc/acl/squid/blockdomains.txt"
 http_access deny workdays blockdomains
 ```
 
@@ -724,7 +724,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
 ```bash
 # Bandata - Monitor bandwidth usage and enforce data limits (every 5 minutes)
 sudo crontab -e
-*/5 * * * * /var/www/proxymon/tools/bandata.sh
+*/5 * * * * /var/www/proxymon/bandata/bandata.sh
 ```
 
 [![bandata terminal](https://raw.githubusercontent.com/maravento/proxymon/master/img/bandata-terminal.png)](https://www.maravento.com/)
@@ -762,7 +762,7 @@ http://192.168.X.X:18081
 </table>
 
 ```bash
-cat /etc/acl/acl_squid/{banmonth,banweek,banday}.txt | uniq
+cat /var/www/proxymon/bandata/acl/{banmonth,banweek,banday}.txt | uniq
 ```
 
 ##### Data Limit
@@ -783,10 +783,10 @@ cat /etc/acl/acl_squid/{banmonth,banweek,banday}.txt | uniq
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The script checks the current day's Squid Report and blocks any users on the local network who exceed the set consumption limit. The block will be lifted the following day. To change the daily data limit in <code>/var/www/proxymon/tools/bandata.sh</code>:
+     The script checks the current day's Squid Report and blocks any users on the local network who exceed the set consumption limit. The block will be lifted the following day. To change the daily data limit in <code>/var/www/proxymon/bandata/bandata.sh</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     El script verifica el informe del día actual de Squid Report y bloquea a cualquier usuario de la red local que supere el consumo establecido. El bloqueo se levantará al día siguiente. Para cambiar el límite de datos diario en <code>/var/www/proxymon/tools/bandata.sh</code>:
+     El script verifica el informe del día actual de Squid Report y bloquea a cualquier usuario de la red local que supere el consumo establecido. El bloqueo se levantará al día siguiente. Para cambiar el límite de datos diario en <code>/var/www/proxymon/bandata/bandata.sh</code>:
     </td>
   </tr>
 </table>
@@ -800,10 +800,10 @@ max_bandwidth_day="1G"
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Every Monday, the script analyzes the bandwidth usage from the weekdays (Monday to Friday) of the previous week. If any local network user exceeds the weekly limit (default: 5G), they will be blocked. To change the weekly data limit in <code>/var/www/proxymon/tools/bandata.sh</code>:
+     Every Monday, the script analyzes the bandwidth usage from the weekdays (Monday to Friday) of the previous week. If any local network user exceeds the weekly limit (default: 5G), they will be blocked. To change the weekly data limit in <code>/var/www/proxymon/bandata/bandata.sh</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Cada lunes, el script analiza el consumo de los días hábiles (lunes a viernes) de la semana anterior. Si un usuario de la red local supera el límite semanal (por defecto 5G), será bloqueado. Para cambiar el límite de datos semanal en <code>/var/www/proxymon/tools/bandata.sh</code>:
+     Cada lunes, el script analiza el consumo de los días hábiles (lunes a viernes) de la semana anterior. Si un usuario de la red local supera el límite semanal (por defecto 5G), será bloqueado. Para cambiar el límite de datos semanal en <code>/var/www/proxymon/bandata/bandata.sh</code>:
     </td>
   </tr>
 </table>
@@ -817,10 +817,10 @@ max_bandwidth_week="5G"
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     At any time, the script can analyze the accumulated traffic during the weekdays of the current month (excluding weekends). If any user exceeds the monthly limit (default: 20G), they will be blocked immediately. To change the monthly data limit in <code>/var/www/proxymon/tools/bandata.sh</code>:
+     At any time, the script can analyze the accumulated traffic during the weekdays of the current month (excluding weekends). If any user exceeds the monthly limit (default: 20G), they will be blocked immediately. To change the monthly data limit in <code>/var/www/proxymon/bandata/bandata.sh</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     En cualquier momento, el script puede analizar el tráfico acumulado durante los días hábiles del mes actual (excluyendo fines de semana). Si detecta que un usuario ha superado el límite mensual (por defecto 20G), lo bloqueará de inmediato. Para cambiar el límite de datos mensual en <code>/var/www/proxymon/tools/bandata.sh</code>:
+     En cualquier momento, el script puede analizar el tráfico acumulado durante los días hábiles del mes actual (excluyendo fines de semana). Si detecta que un usuario ha superado el límite mensual (por defecto 20G), lo bloqueará de inmediato. Para cambiar el límite de datos mensual en <code>/var/www/proxymon/bandata/bandata.sh</code>:
     </td>
   </tr>
 </table>
@@ -1224,10 +1224,10 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b>⚠️ Important:</b> For security incident detection, SquidAI uses <code>/etc/acl/acl_squid/blockpatterns.txt</code> and direct IPv4 detection. The severity classification (CRITICAL, HIGH, MEDIUM) is calculated based on hit frequency.
+      <b>⚠️ Important:</b> For security incident detection, SquidAI uses <code>/etc/acl/squid/blockpatterns.txt</code> and direct IPv4 detection. The severity classification (CRITICAL, HIGH, MEDIUM) is calculated based on hit frequency.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b>⚠️ Importante:</b> Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/acl/acl_squid/blockpatterns.txt</code> y detección de IPv4 directa. La clasificación de severidad (CRITICAL, HIGH, MEDIUM) se calcula en base a la frecuencia de hits.
+      <b>⚠️ Importante:</b> Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/acl/squid/blockpatterns.txt</code> y detección de IPv4 directa. La clasificación de severidad (CRITICAL, HIGH, MEDIUM) se calcula en base a la frecuencia de hits.
     </td>
   </tr>
 </table>

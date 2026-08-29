@@ -114,7 +114,7 @@ function readEnvFile(string $path): array {
 // pulling the same paths from here keeps worker.php in sync if an install
 // ever uses non-default paths.
 $proxymonEnv  = readEnvFile('/etc/proxymon/proxymon.env');
-$aclSquidPath = $proxymonEnv['ACL_SQUID_PATH'] ?? '/etc/acl/acl_squid';
+$aclSquidPath = $proxymonEnv['ACL_SQUID_PATH'] ?? '/etc/acl/squid';
 
 define('REALNAME_CFG',    $proxymonEnv['REALNAME_CFG']  ?? '/var/www/proxymon/lightsquid/realname.cfg');
 define('SKIPUSERS_CFG',   $proxymonEnv['SKIPUSERS_CFG'] ?? '/var/www/proxymon/lightsquid/skipuser.cfg');

@@ -47,7 +47,7 @@ config_time_range=Rango de tiempo (horas)
 config_time_range_help=Solo mostrar peticiones de las últimas X horas
 config_acl_list=Archivos ACL a Monitorear
 config_acl_list_help=Uno por línea. Formato archivo: /ruta/a/acl.txt=Nombre Etiqueta. Formato regex: regex:patrón=Nombre Etiqueta
-config_acl_example=Ejemplo: /etc/acl/acl_squid/redes_sociales.txt=Redes Sociales
+config_acl_example=Ejemplo: /etc/acl/squid/redes_sociales.txt=Redes Sociales
 config_acl_regex_example=Ejemplo regex: regex:^(http|https)://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+=Bloquear IPv4
 config_auto_refresh=Activar auto-actualización
 config_refresh_interval=Intervalo de actualización (segundos)

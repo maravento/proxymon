@@ -23,8 +23,10 @@
 # ./pminstall.sh uninstall Remove Proxymon: Apache sites, cron entries,
 # iptables/ipset rules, restore .bak configs.
 # Prompts before deleting /etc/proxymon and
-# /etc/acl (ACLs, MAC registrations, LLM
-# credentials).
+# /etc/acl (allowlists, MAC registrations, LLM
+# credentials). Bandata's own ACLs live under
+# /var/www/proxymon/bandata/acl and are removed
+# with the rest of /var/www/proxymon.
 # ./pminstall.sh Interactive menu with the same 3 options.
 # ./pminstall.sh -h|--help Show usage.
 #
@@ -402,9 +404,9 @@ REPORT_PATH=\$LIGHTSQUID_DIR/report
 REALNAME_CFG=\$LIGHTSQUID_DIR/realname.cfg
 SKIPUSERS_CFG=\$LIGHTSQUID_DIR/skipuser.cfg
 ACL_PATH=/etc/acl
-ACL_MAC_PATH=\$ACL_PATH/acl_mac
-ACL_SQUID_PATH=\$ACL_PATH/acl_squid
-ACL_BANDATA_PATH=\$ACL_PATH/acl_bandata
+ACL_MAC_PATH=\$ACL_PATH/mac
+ACL_SQUID_PATH=\$ACL_PATH/squid
+ACL_BANDATA_PATH=/var/www/proxymon/bandata/acl
 ALLOW_LIST=\$ACL_BANDATA_PATH/allowdata.txt
 BLOCK_LIST_DAY=\$ACL_BANDATA_PATH/banday.txt
 BLOCK_LIST_WEEK=\$ACL_BANDATA_PATH/banweek.txt
@@ -453,8 +455,8 @@ install_proxymon() {
 
     echo "Configuring Apache..."
 
-    if [[ -f "/var/www/proxymon/tools/proxymon.conf" ]]; then
-        cp -f /var/www/proxymon/tools/proxymon.conf /etc/apache2/sites-available/proxymon.conf
+    if [[ -f "/var/www/proxymon/proxymon.conf" ]]; then
+        cp -f /var/www/proxymon/proxymon.conf /etc/apache2/sites-available/proxymon.conf
         echo "Proxymon virtualhost configured"
     fi
 
@@ -538,16 +540,14 @@ install_proxymon() {
     fi
 
     # Create ACL directories
-    mkdir -p "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH" "$ACL_BANDATA_PATH"
-    chmod 755 "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH" "$ACL_BANDATA_PATH"
-    chown root:root "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH" "$ACL_BANDATA_PATH"
+    # ACL_BANDATA_PATH is not created here: it ships inside modules/bandata/acl/
+    # with its 4 files already present, copied by cp -rf modules/* above and
+    # given the same permissions/ownership as the rest of /var/www/proxymon
+    # by the "Setting Permissions" step below.
+    mkdir -p "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
+    chmod 755 "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
+    chown root:root "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
     echo "ACL directories created"
-
-    # Create ACL files
-    touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
-    chmod 644 "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
-    chown root:root "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
-    echo "ACL files created"
 
     # Create LightSquid report directory if it does not exist
     mkdir -p "$REPORT_PATH"
@@ -567,8 +567,8 @@ install_proxymon() {
     echo "blockdomains.txt downloaded"
 
     (crontab -l 2>/dev/null || true) | {
-        grep -v "/var/www/proxymon/tools/bandata.sh"
-        echo "*/5 * * * * /var/www/proxymon/tools/bandata.sh >> /var/log/bandata.log 2>&1"
+        grep -v "/var/www/proxymon/bandata/bandata.sh"
+        echo "*/5 * * * * /var/www/proxymon/bandata/bandata.sh >> /var/log/bandata.log 2>&1"
     } | crontab -
     echo "Squid Monitor crontab added"
 
@@ -767,9 +767,15 @@ EOF
     find /var/www/proxymon -type d -exec chmod 755 {} +
     find /var/www/proxymon -type f -exec chmod 644 {} +
     find /var/www/proxymon -type f -name "*.cgi" -exec chmod +x {} +
-    chmod +x /var/www/proxymon/tools/bandata.sh
+    chmod +x /var/www/proxymon/bandata/bandata.sh
     chmod +x /var/www/proxymon/lightsquid/lightparser.pl
     chown -R www-data:www-data /var/www/proxymon
+    # bandata.sh runs entirely as root (its own root check, invoked from
+    # root's crontab) and is the only thing that ever touches these 4 files
+    # -- no PHP/CGI under /var/www/proxymon reads or writes them. Same
+    # reasoning as realname.cfg/skipuser.cfg, which bandata.sh also owns
+    # exclusively and are root:root for the same reason.
+    chown root:root "$ACL_BANDATA_PATH"/*.txt
     if getent group proxy >/dev/null; then
         usermod -aG proxy www-data
     else
@@ -912,9 +918,14 @@ update_proxymon() {
     find /var/www/proxymon -type d -exec chmod 755 {} +
     find /var/www/proxymon -type f -exec chmod 644 {} +
     find /var/www/proxymon -type f -name "*.cgi" -exec chmod +x {} +
-    [ -f /var/www/proxymon/tools/bandata.sh ] && chmod +x /var/www/proxymon/tools/bandata.sh
+    [ -f /var/www/proxymon/bandata/bandata.sh ] && chmod +x /var/www/proxymon/bandata/bandata.sh
     [ -f /var/www/proxymon/lightsquid/lightparser.pl ] && chmod +x /var/www/proxymon/lightsquid/lightparser.pl
     chown -R www-data:www-data /var/www/proxymon
+    # bandata.sh runs entirely as root and is the only thing that touches
+    # these 4 files -- see install_proxymon() for the full reasoning.
+    # Hardcoded (not $ACL_BANDATA_PATH): update_proxymon() does not source
+    # proxymon.env by design (see header: never touches proxymon.env).
+    [ -d /var/www/proxymon/bandata/acl ] && chown root:root /var/www/proxymon/bandata/acl/*.txt 2>/dev/null
     echo "Permissions set"
 
     echo "Starting Apache..."
@@ -937,7 +948,7 @@ uninstall_proxymon() {
     echo " Uninstalling Proxy Monitor..."
 
     if [[ ! -d "/var/www/proxymon" ]]; then
-        if ! ((sudo crontab -l 2>/dev/null || true) | grep -q "/var/www/proxymon/tools/bandata.sh") && \
+        if ! ((sudo crontab -l 2>/dev/null || true) | grep -q "/var/www/proxymon/bandata/bandata.sh") && \
            ! ((sudo -u www-data crontab -l 2>/dev/null || true) | grep -q "lightparser.pl\|sarg\|squid-analyzer") && \
            [[ ! -d "/etc/proxymon" ]]; then
             echo " Proxy Monitor is not installed"
@@ -957,7 +968,7 @@ uninstall_proxymon() {
         echo "WARNING: failed to update www-data crontab -- entries may remain"
     fi
 
-    if (crontab -l 2>/dev/null || true) | grep -v "/var/www/proxymon/tools/bandata.sh" | crontab - 2>/dev/null; then
+    if (crontab -l 2>/dev/null || true) | grep -v "/var/www/proxymon/bandata/bandata.sh" | crontab - 2>/dev/null; then
         echo "Squid Monitor crontab removed"
     else
         echo "WARNING: failed to update root crontab -- bandata.sh entry may remain"
@@ -1061,7 +1072,7 @@ uninstall_proxymon() {
     fi
 
     if [[ -d "/etc/acl" ]]; then
-        read -p "Remove /etc/acl/ (contains Bandata ACLs, allowlists and MAC registrations)? (y/n): " -r
+        read -p "Remove /etc/acl/ (contains allowlists and MAC registrations, shared with other projects)? (y/n): " -r
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             rm -rf /etc/acl
             echo "/etc/acl removed"

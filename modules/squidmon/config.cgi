@@ -21,7 +21,7 @@ $config{'acl_list'} =~ s/\\n/\n/g if $config{'acl_list'};
 $config{'squid_log'} ||= '/var/log/squid/access.log';
 $config{'max_lines'} ||= 50000;
 $config{'time_range'} ||= 24;
-$config{'acl_list'} ||= "/etc/acl/acl_squid/blocktlds.txt=Blocked TLD\n/etc/acl/acl_squid/blockdomains.txt=Blocked Domains\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4";
+$config{'acl_list'} ||= "/etc/acl/squid/blocktlds.txt=Blocked TLD\n/etc/acl/squid/blockdomains.txt=Blocked Domains\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4";
 $config{'auto_refresh'} ||= 0;
 $config{'refresh_interval'} ||= 60;
 
@@ -147,7 +147,7 @@ print <<'HTML_START';
             document.getElementById('squid_log').value = '/var/log/squid/access.log';
             document.getElementById('max_lines').value = '50000';
             document.getElementById('time_range').value = '24';
-            document.getElementById('acl_list').value = '/etc/acl/acl_squid/blocktlds.txt=Blocked TLD\n/etc/acl/acl_squid/blockdomains.txt=Blocked Domains\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4';
+            document.getElementById('acl_list').value = '/etc/acl/squid/blocktlds.txt=Blocked TLD\n/etc/acl/squid/blockdomains.txt=Blocked Domains\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4';
             document.getElementById('auto_refresh').checked = false;
             document.getElementById('refresh_interval').value = '60';
         }
@@ -196,7 +196,7 @@ print "</div>\n";
 
 print "<div class='form-group'>\n";
 print "<label for='acl_list'>ACL Files to Monitor</label>\n";
-print "<textarea id='acl_list' name='acl_list' placeholder='/etc/acl/acl_squid/file.txt=Label Name&#10;regex:pattern=Label Name'>" . escape_html($config{'acl_list'}) . "</textarea>\n";
+print "<textarea id='acl_list' name='acl_list' placeholder='/etc/acl/squid/file.txt=Label Name&#10;regex:pattern=Label Name'>" . escape_html($config{'acl_list'}) . "</textarea>\n";
 print "<small>Format: One per line. File-based: /path/to/acl.txt=Label | Regex: regex:pattern=Label</small>\n";
 print "</div>\n";
 
