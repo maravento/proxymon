@@ -162,7 +162,7 @@ $action = $_GET['action'] ?? 'ping';
 define('WORKER_CACHE_TTL', 60);
 
 function cachedJson(string $key, int $ttl, callable $producer): void {
-    $dir = sys_get_temp_dir() . '/proxymon_worker_cache';
+    $dir = '/var/cache/proxymon';
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
     $file = $dir . '/' . md5($key) . '.json';
 
@@ -464,7 +464,8 @@ try {
     }
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    error_log('SquidAI worker error: ' . $e->getMessage());
+    echo json_encode(['error' => 'Internal error']);
 }
 
 // ── FUNCTIONS ──────────────────────────────────────────────────────
@@ -815,7 +816,7 @@ function parseAccessLog(string $ip, string $date): array {
             if ($clientIp !== $ip) continue;
             if ($ts < $startTs || $ts >= $endTs) {
                 // Optimization: if we're already past the date, exit
-                if ($ts >= $endTs && count($domains) > 0) break 2;
+                if ($ts >= $endTs && count($domains) > 0) { fclose($fh); break 2; }
                 continue;
             }
 

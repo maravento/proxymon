@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 use Time::HiRes qw(gettimeofday);
+use File::Find ();
 
 # Escape special HTML characters to prevent XSS.
 sub h {
@@ -15,6 +16,22 @@ sub h {
     $str =~ s/'/&#39;/g;
     return $str;
 }
+# Resolve an ACL list by file name inside /etc/acl. The config stores only
+# the name; the subdirectory is not part of it, so a list may live in
+# /etc/acl or in any subdirectory below it.
+sub find_acl_file {
+    my ($name) = @_;
+    return undef unless defined $name;
+    $name =~ s{^.*/}{};
+    return undef if $name eq '' || $name !~ /^[A-Za-z0-9._-]+$/;
+    return undef unless -d '/etc/acl';
+    my @found;
+    File::Find::find(sub {
+        push @found, $File::Find::name if -f $_ && $_ eq $name;
+    }, '/etc/acl');
+    return (sort @found)[0];
+}
+
 our ($module_name, %text, %config, %in);
 
 # Match $text against a user-supplied regex pattern with a hard time limit,
@@ -80,9 +97,9 @@ if ($acl_list) {
         }
         # File-based ACL
         elsif ($acl_entry =~ /^([^=]+)=(.+)$/) {
-            my $path = $1;
+            my $path = find_acl_file($1);
             my $label = $2;
-            $path =~ s/^\s+|\s+$//g;
+            next unless defined $path;
             $label =~ s/^\s+|\s+$//g;
             push @monitored_acls, { 
                 type => 'file', 
@@ -243,25 +260,6 @@ my %client_logs = ();
 my %domain_to_acl = (); # domain => ACL label (instant lookup)
 my @regex_acls = ();    # Only store regex ACLs separately
 
-# DEBUG: Show monitored ACLs
-#print "<!-- DEBUG: Show monitored ACLs -->\n";
-#foreach my $acl (@monitored_acls) {
-#    print "<!-- ACL: type=$acl->{type}, label=$acl->{label}, value=$acl->{value} -->\n";
-#    if ($acl->{type} eq 'file') {
-#        if (-f $acl->{value}) {
-#            my $line_count = 0;
-#            if (open(my $fh, '<', $acl->{value})) {
-#                while (<$fh>) { $line_count++; }
-#                close($fh);
-#            }
-#            print "<!-- FILE EXISTS: $line_count lines -->\n";
-#        } else {
-#            print "<!-- FILE NOT FOUND: $acl->{value} -->\n";
-#        }
-#    }
-#}
-#print "<!-- END DEBUG -->\n";
-
 foreach my $acl (@monitored_acls) {
     $acl_hits{$acl->{label}} = 0;
 
@@ -281,14 +279,6 @@ foreach my $acl (@monitored_acls) {
         push @regex_acls, $acl;
     }
 }
-
-# DEBUG: Show how many entries were loaded into domain_to_acl
-#my $total_domains = scalar(keys %domain_to_acl);
-#print "<!-- DEBUG: Total dominios cargados en domain_to_acl: $total_domains -->\n";
-#if ($total_domains > 0) {
-#    my @sample_domains = (keys %domain_to_acl)[0..4];
-#    print "<!-- Sample domains: " . join(", ", @sample_domains) . " -->\n";
-#}
 
 # Parse last N lines of log
 my $lines_to_read = int($max_lines);

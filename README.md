@@ -40,7 +40,9 @@ been done first.
 ```bash
 # other required packages (checked by pminstall.sh, no extra setup needed)
 apt install -y wget git rsync ipset nbtscan libcgi-session-perl libgd-perl \
-                coreutils sarg fonts-lato fonts-liberation fonts-dejavu
+                coreutils sarg fonts-lato fonts-liberation fonts-dejavu \
+                perl cron sudo util-linux iproute2 passwd findutils sed \
+                grep hostname ncurses-bin systemd libc-bin iptables
 
 # squid
 apt install -y squid-openssl squid-langpack squid-common squidclient squid-purge
@@ -254,18 +256,18 @@ sudo bash pminstall.sh
 </table>
 
 ```bash
-/etc/acl/squid/blocktlds.txt=Blocked TLD
-/etc/acl/squid/blockdomains.txt=Blocked Domains
+blocktlds.txt=Blocked TLD
+blockdomains.txt=Blocked Sites
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 ```
 
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      To change the path and lists, modify this section of <b>Config</b>, as shown in the image above, and also change the path in <code>/etc/proxymon/proxymon.env</code>.
+      To change the lists, modify this section of <b>Config</b>, as shown in the image above, entering only the file name of each list — Squid Monitor looks it up under <code>/etc/acl</code>, in any subdirectory. If you move the lists elsewhere, change the path in <code>/etc/proxymon/proxymon.env</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Para cambiar el path y las listas, modifíquese en esta sección de <b>Config</b>, como se muestra en la imagen superior y cambie también el path en <code>/etc/proxymon/proxymon.env</code>.
+      Para cambiar las listas, modifíquese en esta sección de <b>Config</b>, como se muestra en la imagen superior, indicando únicamente el nombre del archivo de cada lista — Squid Monitor lo busca dentro de <code>/etc/acl</code>, en cualquier subdirectorio. Si mueve las listas a otra ubicación, cambie el path en <code>/etc/proxymon/proxymon.env</code>.
     </td>
   </tr>
 </table>

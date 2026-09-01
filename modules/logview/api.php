@@ -157,7 +157,7 @@ if (isset($_GET['grep']) && $_GET['grep'] !== '') {
     $escaped = escapeshellarg($term);
     $log     = escapeshellarg(LOG_FILE);
     $max_matches = 5000;
-    $output  = shell_exec("timeout 20 grep -Fa $escaped $log 2>/dev/null | tail -n $max_matches");
+    $output  = shell_exec("timeout 20 grep -Fa -e $escaped $log 2>/dev/null | tail -n $max_matches");
 
     if ($output === null || $output === '') {
         echo json_encode([

@@ -26,7 +26,9 @@
 # /etc/acl (allowlists, MAC registrations, LLM
 # credentials). Bandata's own ACLs live under
 # /var/www/proxymon/bandata/acl and are removed
-# with the rest of /var/www/proxymon.
+# with the rest of /var/www/proxymon. The SquidAI
+# response cache in /var/cache/proxymon is also
+# removed.
 # ./pminstall.sh Interactive menu with the same 3 options.
 # ./pminstall.sh -h|--help Show usage.
 #
@@ -45,7 +47,8 @@
 # Listen directives, /etc/proxymon/proxymon.env (interactive prompts),
 # ACL directories/lists (with a fresh download), SARG config and
 # usertab, SquidAnalyzer, PHP/Apache hardening (php.ini, security.conf,
-# apache2.conf, mpm_prefork.conf), cron entries, and enables the sites.
+# apache2.conf, mpm_prefork.conf), cron entries, the SquidAI response
+# cache directory /var/cache/proxymon, and enables the sites.
 # Because it prompts for configuration and can overwrite an existing
 # setup, it refuses to run if /var/www/proxymon already exists.
 #
@@ -87,6 +90,8 @@ _UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9
 _UH_NETMASK='^(0\.0\.0\.0|128\.0\.0\.0|192\.0\.0\.0|224\.0\.0\.0|240\.0\.0\.0|248\.0\.0\.0|252\.0\.0\.0|254\.0\.0\.0|255\.0\.0\.0|255\.128\.0\.0|255\.192\.0\.0|255\.224\.0\.0|255\.240\.0\.0|255\.248\.0\.0|255\.252\.0\.0|255\.254\.0\.0|255\.255\.0\.0|255\.255\.128\.0|255\.255\.192\.0|255\.255\.224\.0|255\.255\.240\.0|255\.255\.248\.0|255\.255\.252\.0|255\.255\.254\.0|255\.255\.255\.0|255\.255\.255\.128|255\.255\.255\.192|255\.255\.255\.224|255\.255\.255\.240|255\.255\.255\.248|255\.255\.255\.252|255\.255\.255\.254|255\.255\.255\.255)$'
 _UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
 _UH_UINT='^(0|[1-9][0-9]*)$'
+_UH_FQDN='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+_UH_MAC='^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
 _UH_PREFIX='0.0.0.0:0 128.0.0.0:1 192.0.0.0:2 224.0.0.0:3 240.0.0.0:4 248.0.0.0:5 252.0.0.0:6 254.0.0.0:7 255.0.0.0:8 255.128.0.0:9 255.192.0.0:10 255.224.0.0:11 255.240.0.0:12 255.248.0.0:13 255.252.0.0:14 255.254.0.0:15 255.255.0.0:16 255.255.128.0:17 255.255.192.0:18 255.255.224.0:19 255.255.240.0:20 255.255.248.0:21 255.255.252.0:22 255.255.254.0:23 255.255.255.0:24 255.255.255.128:25 255.255.255.192:26 255.255.255.224:27 255.255.255.240:28 255.255.255.248:29 255.255.255.252:30 255.255.255.254:31 255.255.255.255:32'
 
 # ----------------------------------------------------------------
@@ -95,7 +100,7 @@ _UH_PREFIX='0.0.0.0:0 128.0.0.0:1 192.0.0.0:2 224.0.0.0:3 240.0.0.0:4 248.0.0.0:
 
 ## root check
 if [ "$(id -u)" != "0" ]; then
-    echo "ERROR: This script must be run as root"
+    echo "ERROR: This script must be run as root -- abort"
     exit 1
 fi
 
@@ -103,8 +108,9 @@ fi
 SCRIPT_LOCK="/var/lock/$(basename "$0" .sh).lock"
 (umask 077; : >> "$SCRIPT_LOCK")
 exec 200>"$SCRIPT_LOCK"
+
 if ! flock -n 200; then
-    echo "Script $(basename "$0") is already running"
+    echo "ERROR: script $(basename "$0") is already running -- abort"
     exit 1
 fi
 
@@ -162,16 +168,16 @@ retry_cmd() {
 
 # DEPENDENCIES
 check_dependencies() {
-    for dep in wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils; do
+    for dep in wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
         if ! dpkg -s "$dep" &>/dev/null; then
-            echo "ERROR: Required dependency '$dep' is not installed."
+            echo "ERROR: dependency '$dep' is not installed -- abort"
             exit 1
         fi
     done
 
     # DEPENDENCIES (squid or squid-openssl)
     if ! dpkg -s squid &>/dev/null && ! dpkg -s squid-openssl &>/dev/null; then
-        echo "ERROR: 'squid' or 'squid-openssl' is not installed."
+        echo "ERROR: 'squid' or 'squid-openssl' is not installed -- abort"
         exit 1
     fi
 }
@@ -760,6 +766,9 @@ EOF
     chown root:www-data /etc/proxymon/.env
     chmod 750 /etc/proxymon
     chown root:www-data /etc/proxymon
+    mkdir -p /var/cache/proxymon
+    chmod 750 /var/cache/proxymon
+    chown www-data:www-data /var/cache/proxymon
     echo "SquidAI config directory created: /etc/proxymon/"
     echo "Edit /etc/proxymon/.env and set your LLM credentials"
 
@@ -1059,6 +1068,11 @@ uninstall_proxymon() {
     if [[ -d "/var/www/proxymon" ]]; then
         rm -rf /var/www/proxymon
         echo "Installation directory removed"
+    fi
+
+    if [[ -d "/var/cache/proxymon" ]]; then
+        rm -rf /var/cache/proxymon
+        echo "Cache directory removed"
     fi
 
     if [[ -d "/etc/proxymon" ]]; then
