@@ -22,6 +22,10 @@
   </tr>
 </table>
 
+### Architecture
+
+📐 [Runtime Architecture Diagram](https://htmlpreview.github.io/?https://raw.githubusercontent.com/maravento/proxymon/master/docs/proxymon-architecture.html) — visual walkthrough of the monitoring/reporting pipeline.
+
 ## Requirements
 
 ---
@@ -1337,7 +1341,7 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 | [Sqstat - Alex Samorukov](https://samm.kiev.ua/sqstat/) | [v1.20 (2006)](https://sourceforge.net/projects/sqstat/files/) | N/A | N/A |
 | [SquidAnalyzer](https://squidanalyzer.darold.net/download.html) [github](https://github.com/darold/squidanalyzer) | [v6.6 (2017)](https://sourceforge.net/projects/squid-report/files/squid-report/6.6/) | N/A | N/A |
 
-## ⚠️ WARNING: Network Access
+## ⚠️ WARNING: NETWORK ACCESS
 
 ---
 
@@ -1356,6 +1360,13 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 
 **Optional tunnel:**
 - [Cloudflare Tunnel with Zero Trust Recommended](https://raw.githubusercontent.com/maravento/vault/master/scripts/bash/cftunnel.sh)
+
+## WORKTOOLS
+
+---
+
+- [Archify](https://github.com/tt-a1i/archify)
+- [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) (default suggested provider for SquidAI, opt-in via `LLM_URL`)
 
 ## NOTICE
 

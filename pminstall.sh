@@ -83,38 +83,27 @@
 set -Euo pipefail
 trap 'echo "Error on line $LINENO"; exit 1' ERR
 
-# VALIDATION -- one variable per thing validated; use directly with =~
-_UH_OCT='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
-_UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
-_UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
-_UH_NETMASK='^(0\.0\.0\.0|128\.0\.0\.0|192\.0\.0\.0|224\.0\.0\.0|240\.0\.0\.0|248\.0\.0\.0|252\.0\.0\.0|254\.0\.0\.0|255\.0\.0\.0|255\.128\.0\.0|255\.192\.0\.0|255\.224\.0\.0|255\.240\.0\.0|255\.248\.0\.0|255\.252\.0\.0|255\.254\.0\.0|255\.255\.0\.0|255\.255\.128\.0|255\.255\.192\.0|255\.255\.224\.0|255\.255\.240\.0|255\.255\.248\.0|255\.255\.252\.0|255\.255\.254\.0|255\.255\.255\.0|255\.255\.255\.128|255\.255\.255\.192|255\.255\.255\.224|255\.255\.255\.240|255\.255\.255\.248|255\.255\.255\.252|255\.255\.255\.254|255\.255\.255\.255)$'
-_UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
-_UH_UINT='^(0|[1-9][0-9]*)$'
-_UH_FQDN='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
-_UH_MAC='^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
-_UH_PREFIX='0.0.0.0:0 128.0.0.0:1 192.0.0.0:2 224.0.0.0:3 240.0.0.0:4 248.0.0.0:5 252.0.0.0:6 254.0.0.0:7 255.0.0.0:8 255.128.0.0:9 255.192.0.0:10 255.224.0.0:11 255.240.0.0:12 255.248.0.0:13 255.252.0.0:14 255.254.0.0:15 255.255.0.0:16 255.255.128.0:17 255.255.192.0:18 255.255.224.0:19 255.255.240.0:20 255.255.248.0:21 255.255.252.0:22 255.255.254.0:23 255.255.255.0:24 255.255.255.128:25 255.255.255.192:26 255.255.255.224:27 255.255.255.240:28 255.255.255.248:29 255.255.255.252:30 255.255.255.254:31 255.255.255.255:32'
+# ------------------------------------------------------------------------------
+# REQUIREMENTS
+# ------------------------------------------------------------------------------
 
-# ----------------------------------------------------------------
-# INITIAL CHECKS
-# ----------------------------------------------------------------
-
-## root check
+# root check
 if [ "$(id -u)" != "0" ]; then
     echo "ERROR: This script must be run as root -- abort"
     exit 1
 fi
 
 # prevent overlapping runs
-SCRIPT_LOCK="/var/lock/$(basename "$0" .sh).lock"
-(umask 077; : >> "$SCRIPT_LOCK")
-exec 200>"$SCRIPT_LOCK"
+script_lock="/var/lock/$(basename "$0" .sh).lock"
+(umask 077; : >> "$script_lock")
+exec 200>"$script_lock"
 
 if ! flock -n 200; then
     echo "ERROR: script $(basename "$0") is already running -- abort"
     exit 1
 fi
 
-# LOCAL USER detection
+# local_user detection
 detect_local_user() {
     local uid_min uid_max
     local user uid best_user="" best_uid=999999
@@ -152,48 +141,51 @@ if ! local_user=$(detect_local_user); then
 fi
 echo "Using local user: $local_user"
 
-retry_cmd() {
-    local max_attempts=10
-    local attempt=1
-    until "$@"; do
-        if [ "$attempt" -ge "$max_attempts" ]; then
-            echo "ERROR: command failed after $max_attempts attempts: $*"
-            exit 1
-        fi
-        echo "WARNING: command failed (attempt $attempt/$max_attempts), retrying in 10s: $*"
-        attempt=$((attempt + 1))
-        sleep 10
-    done
-}
-
-# DEPENDENCIES
+# dependencies
 check_dependencies() {
-    for dep in wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
-        if ! dpkg -s "$dep" &>/dev/null; then
-            echo "ERROR: dependency '$dep' is not installed -- abort"
+    for dep_pkg in wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
+        if ! dpkg -s "$dep_pkg" &>/dev/null; then
+            echo "ERROR: dependency '$dep_pkg' is not installed -- abort"
             exit 1
         fi
     done
 
-    # DEPENDENCIES (squid or squid-openssl)
+    # dependencies (squid or squid-openssl)
     if ! dpkg -s squid &>/dev/null && ! dpkg -s squid-openssl &>/dev/null; then
         echo "ERROR: 'squid' or 'squid-openssl' is not installed -- abort"
         exit 1
     fi
 }
-
 check_dependencies
+
+# ------------------------------------------------------------------------------
+# FUNCTIONS
+# ------------------------------------------------------------------------------
+
+retry_cmd() {
+    local max_retries=10
+    local retry_attempt=1
+    until "$@"; do
+        if [ "$retry_attempt" -ge "$max_retries" ]; then
+            echo "ERROR: command failed after $max_retries attempts: $*"
+            exit 1
+        fi
+        echo "WARNING: command failed (attempt $retry_attempt/$max_retries), retrying in 10s: $*"
+        retry_attempt=$((retry_attempt + 1))
+        sleep 10
+    done
+}
 
 check_apache_config() {
     if command -v php >/dev/null 2>&1; then
-        PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null)
+        php_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null)
     else
         echo "PHP is not installed"
         exit 1
     fi
 
-    if [[ ! "$PHP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
-        echo "Could not determine PHP version (got '$PHP_VERSION'). Is PHP working correctly?"
+    if [[ ! "$php_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        echo "Could not determine PHP version (got '$php_version'). Is PHP working correctly?"
         exit 1
     fi
 
@@ -203,11 +195,11 @@ check_apache_config() {
         config_errors+="/etc/apache2/mods-available/mpm_prefork.conf not found\n"
     fi
 
-    if [ ! -f /etc/php/$PHP_VERSION/apache2/php.ini ]; then
-        if [ -f /etc/php/$PHP_VERSION/cli/php.ini ]; then
-            mkdir -p /etc/php/$PHP_VERSION/apache2
-            cp /etc/php/$PHP_VERSION/cli/php.ini /etc/php/$PHP_VERSION/apache2/php.ini
-            echo "php.ini copied to /etc/php/$PHP_VERSION/apache2/"
+    if [ ! -f /etc/php/$php_version/apache2/php.ini ]; then
+        if [ -f /etc/php/$php_version/cli/php.ini ]; then
+            mkdir -p /etc/php/$php_version/apache2
+            cp /etc/php/$php_version/cli/php.ini /etc/php/$php_version/apache2/php.ini
+            echo "php.ini copied to /etc/php/$php_version/apache2/"
         else
             config_errors+="php.ini not found\n"
         fi
@@ -238,7 +230,7 @@ check_squid_traffic() {
     log_lines=$(wc -l < /var/log/squid/access.log 2>/dev/null || echo 0)
 
     if [ "$log_lines" -eq 0 ]; then
-        echo "WARNING: access.log is empty (0 lines) -- Squid may not have served any traffic yet."
+        echo "WARNING: access.log is empty -- Squid served no traffic yet"
         echo "Continuing anyway; reports will be empty until traffic starts flowing."
         return 0
     fi
@@ -261,16 +253,12 @@ run_initial_checks() {
     echo -e "All checks passed!\n"
 }
 
-# ----------------------------------------------------------------
-# REPOSITORY STRUCTURE CHECK
-# ----------------------------------------------------------------
-
 check_repo() {
-    local missing=0
+    local missing_flag=0
     if [ ! -d "modules" ] || [ -z "$(ls -A "modules" 2>/dev/null)" ]; then
-        missing=1
+        missing_flag=1
     fi
-    if [ "$missing" -eq 1 ]; then
+    if [ "$missing_flag" -eq 1 ]; then
         echo ""
         echo "ERROR: Repository files not found. Run:"
         echo ""
@@ -280,9 +268,25 @@ check_repo() {
     fi
 }
 
-# ----------------------------------------------------------------
-# PROXYMON ENV CONFIGURATION
-# ----------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# VARIABLES
+# ------------------------------------------------------------------------------
+
+# validation -- one variable per thing validated; use directly with =~
+UH_OCT='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
+UH_NETMASK='^(0\.0\.0\.0|128\.0\.0\.0|192\.0\.0\.0|224\.0\.0\.0|240\.0\.0\.0|248\.0\.0\.0|252\.0\.0\.0|254\.0\.0\.0|255\.0\.0\.0|255\.128\.0\.0|255\.192\.0\.0|255\.224\.0\.0|255\.240\.0\.0|255\.248\.0\.0|255\.252\.0\.0|255\.254\.0\.0|255\.255\.0\.0|255\.255\.128\.0|255\.255\.192\.0|255\.255\.224\.0|255\.255\.240\.0|255\.255\.248\.0|255\.255\.252\.0|255\.255\.254\.0|255\.255\.255\.0|255\.255\.255\.128|255\.255\.255\.192|255\.255\.255\.224|255\.255\.255\.240|255\.255\.255\.248|255\.255\.255\.252|255\.255\.255\.254|255\.255\.255\.255)$'
+UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
+UH_UINT='^(0|[1-9][0-9]*)$'
+UH_FQDN='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+UH_MAC_RE='([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}'
+UH_MAC="^${UH_MAC_RE}$"
+UH_PREFIX='0.0.0.0:0 128.0.0.0:1 192.0.0.0:2 224.0.0.0:3 240.0.0.0:4 248.0.0.0:5 252.0.0.0:6 254.0.0.0:7 255.0.0.0:8 255.128.0.0:9 255.192.0.0:10 255.224.0.0:11 255.240.0.0:12 255.248.0.0:13 255.252.0.0:14 255.254.0.0:15 255.255.0.0:16 255.255.128.0:17 255.255.192.0:18 255.255.224.0:19 255.255.240.0:20 255.255.248.0:21 255.255.252.0:22 255.255.254.0:23 255.255.255.0:24 255.255.255.128:25 255.255.255.192:26 255.255.255.224:27 255.255.255.240:28 255.255.255.248:29 255.255.255.252:30 255.255.255.254:31 255.255.255.255:32'
+
+# ------------------------------------------------------------------------------
+# ENV
+# ------------------------------------------------------------------------------
 
 create_proxymon_env() {
     local env_file="/etc/proxymon/proxymon.env"
@@ -292,27 +296,27 @@ create_proxymon_env() {
         echo "$env_file already exists -- skipping configuration"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
-        local required_vars="LAN SERVER_IP RANGE REPORT_IP_GLOB REPORT_PATH ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME"
-        local missing=""
-        for var in $required_vars; do
-            grep -q "^${var}=" "$env_file" || missing="$missing $var"
+        local required_keys="LAN SERVER_IP RANGE REPORT_IP_GLOB LIGHTSQUID_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME"
+        local missing_flag=""
+        for env_key in $required_keys; do
+            grep -q "^${env_key}=" "$env_file" || missing_flag="$missing_flag $env_key"
         done
-        if [ -n "$missing" ]; then
+        if [ -n "$missing_flag" ]; then
             echo "WARNING: $env_file is missing variables expected by this version:"
-            echo " $missing"
+            echo " $missing_flag"
             echo " Add them manually, or remove $env_file and re-run install to regenerate."
         fi
 
-        # RANGE used to hold a filename-matching glob (e.g. "192.168.10*"),
+        # RANGE used to hold a filename-matching glob (e.g. "192.168.0*"),
         # not a network CIDR. An env file from before this change will fail
         # this check and needs RANGE corrected manually (and REPORT_IP_GLOB
         # added, per the check above) before Require ip will work correctly.
-        local _range_val
-        _range_val=$(grep "^RANGE=" "$env_file" | head -n1 | cut -d'=' -f2-)
-        if [ -n "$_range_val" ] && ! [[ "$_range_val" =~ $_UH_CIDR ]]; then
-            echo "WARNING: RANGE='$_range_val' in $env_file is not a network CIDR (e.g. 192.168.10.0/24)."
-            echo " This looks like the old filename-glob value. Add REPORT_IP_GLOB=$_range_val,"
-            echo " then set RANGE to your actual LAN subnet (e.g. RANGE=192.168.10.0/24)."
+        local range_value
+        range_value=$(grep "^RANGE=" "$env_file" | head -n1 | cut -d'=' -f2-)
+        if [ -n "$range_value" ] && ! [[ "$range_value" =~ $UH_CIDR ]]; then
+            echo "WARNING: RANGE='$range_value' in $env_file is not a network CIDR (e.g. 192.168.0.0/24)."
+            echo " This looks like the old filename-glob value. Add REPORT_IP_GLOB=$range_value,"
+            echo " then set RANGE to your actual LAN subnet (e.g. RANGE=192.168.0.0/24)."
         fi
         return 0
     fi
@@ -325,72 +329,72 @@ create_proxymon_env() {
     # LAN interface
     echo "Available network interfaces:"
     ip -o link | awk '$2 != "lo:" {print " " $2, $(NF-2)}' | sed 's_: _ _'
-    _lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}')
-    _lan_default=${_lan_default:-eth0}
+    lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}')
+    lan_default=${lan_default:-eth0}
     while true; do
-        read -rp "LAN interface (default: $_lan_default): " _lan
-        _lan=${_lan:-$_lan_default}
-        if [ -e "/sys/class/net/$_lan" ]; then
+        read -rp "LAN interface (default: $lan_default): " lan_answer
+        lan_answer=${lan_answer:-$lan_default}
+        if [ -e "/sys/class/net/$lan_answer" ]; then
             break
         fi
-        echo "Interface '$_lan' not found on this system. Try again."
+        echo "Interface '$lan_answer' not found on this system. Try again."
     done
 
     # Server IP
     while true; do
-        read -rp "Server IP for LAN (default: 192.168.0.10): " _serverip
-        _serverip=${_serverip:-192.168.0.10}
-        if [[ "$_serverip" =~ $_UH_IPV4 ]]; then
+        read -rp "Server IP for LAN (default: 192.168.0.10): " server_ip_answer
+        server_ip_answer=${server_ip_answer:-192.168.0.10}
+        if [[ "$server_ip_answer" =~ $UH_IPV4 ]]; then
             break
         fi
-        echo "'$_serverip' is not a valid IPv4 address. Try again."
+        echo "'$server_ip_answer' is not a valid IPv4 address. Try again."
     done
 
     # Glob pattern used to match per-IP report filenames under REPORT_PATH
     # (e.g. bandata.sh's "for file in $REPORT_IP_GLOB"). This is NOT a
     # network range -- it's a filename-matching pattern derived from the
     # server's own /24, since report files are named after client IPs.
-    _report_ip_glob="$(echo "$_serverip" | cut -d'.' -f1-3)*"
+    report_glob="$(echo "$server_ip_answer" | cut -d'.' -f1-3)*"
 
     # Real network range (CIDR) for the LAN this server serves -- used to
     # restrict the web panel to LAN clients. Derived from the same /24
     # assumption as above. For a non-standard subnet, edit RANGE manually
     # in /etc/proxymon/proxymon.env after installation.
-    _range="$(echo "$_serverip" | cut -d'.' -f1-3).0/24"
+    lan_range="$(echo "$server_ip_answer" | cut -d'.' -f1-3).0/24"
 
     # Bandwidth limits -- validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
     read_bandwidth() {
-        local prompt="$1" default="$2" result
+        local prompt_text="$1" default_value="$2" user_answer
         while true; do
-            read -rp "$prompt" result
-            result=${result:-$default}
-            if LC_ALL=C numfmt --from=iec "${result/,/.}" >/dev/null 2>&1; then
-                echo "$result"
+            read -rp "$prompt_text" user_answer
+            user_answer=${user_answer:-$default_value}
+            if LC_ALL=C numfmt --from=iec "${user_answer/,/.}" >/dev/null 2>&1; then
+                echo "$user_answer"
                 return
             fi
-            echo "'$result' is not a valid size (e.g. 500M, 1G, 1.5G). Try again." >&2
+            echo "'$user_answer' is not a valid size (e.g. 500M, 1G, 1.5G). Try again." >&2
         done
     }
-    _bw_day=$(read_bandwidth "Max bandwidth per day (default: 1G): " "1G")
-    _bw_week=$(read_bandwidth "Max bandwidth per week (default: 5G): " "5G")
-    _bw_month=$(read_bandwidth "Max bandwidth per month (default: 20G): " "20G")
+    bw_day=$(read_bandwidth "Max bandwidth per day (default: 1G): " "1G")
+    bw_week=$(read_bandwidth "Max bandwidth per week (default: 5G): " "5G")
+    bw_month=$(read_bandwidth "Max bandwidth per month (default: 20G): " "20G")
 
     # Unifi Hotspot Manager -- only ask if /etc/uhm exists
-    _hotspot_enabled=false
-    _hotspot_path="/etc/uhm"
+    hotspot_enabled=false
+    hotspot_dir="/etc/uhm"
     if [ -d "/etc/uhm" ]; then
-        read -rp "Unifi Hotspot Manager detected. Enable it in Bandata? (y/n, default: n): " _hs
-        if [[ "$_hs" =~ ^[Yy]$ ]]; then
-            _hotspot_enabled=true
+        read -rp "Unifi Hotspot Manager detected. Enable it in Bandata? (y/n, default: n): " hotspot_answer
+        if [[ "$hotspot_answer" =~ ^[Yy]$ ]]; then
+            hotspot_enabled=true
         fi
     fi
 
     # Auto-update Lightsquid realname
-    read -rp "Automatically update hostnames in Lightsquid? (y/n, default: n): " _realname
-    if [[ "$_realname" =~ ^[Yy]$ ]]; then
-        _update_realname=true
+    read -rp "Automatically update hostnames in Lightsquid? (y/n, default: n): " realname_answer
+    if [[ "$realname_answer" =~ ^[Yy]$ ]]; then
+        update_realname_flag=true
     else
-        _update_realname=false
+        update_realname_flag=false
     fi
 
     cat > "$env_file" << ENVEOF
@@ -399,10 +403,10 @@ create_proxymon_env() {
 # Edit manually if needed. Re-run pminstall.sh install to regenerate.
 
 # Network
-LAN=${_lan}
-SERVER_IP=${_serverip}
-RANGE=${_range}
-REPORT_IP_GLOB=${_report_ip_glob}
+LAN=${lan_answer}
+SERVER_IP=${server_ip_answer}
+RANGE=${lan_range}
+REPORT_IP_GLOB=${report_glob}
 
 # Paths (defaults -- edit only if your setup differs)
 LIGHTSQUID_DIR=/var/www/proxymon/lightsquid
@@ -421,16 +425,16 @@ SQUID_LOG_DIR=/var/log/squid
 SQUID_LOG_FILE=\$SQUID_LOG_DIR/access.log
 
 # Bandwidth limits
-MAX_BANDWIDTH_DAY=${_bw_day}
-MAX_BANDWIDTH_WEEK=${_bw_week}
-MAX_BANDWIDTH_MONTH=${_bw_month}
+MAX_BANDWIDTH_DAY=${bw_day}
+MAX_BANDWIDTH_WEEK=${bw_week}
+MAX_BANDWIDTH_MONTH=${bw_month}
 
 # Unifi Hotspot
-BANDATA_HOTSPOT=${_hotspot_enabled}
-HOTSPOT_PATH=${_hotspot_path}
+BANDATA_HOTSPOT=${hotspot_enabled}
+HOTSPOT_PATH=${hotspot_dir}
 
 # Lightsquid realname auto-update
-UPDATE_REALNAME=${_update_realname}
+UPDATE_REALNAME=${update_realname_flag}
 ENVEOF
 
     chmod 640 "$env_file"
@@ -439,9 +443,9 @@ ENVEOF
     printf "\n"
 }
 
-# ----------------------------------------------------------------
-# INSTALL FUNCTION
-# ----------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# INSTALL
+# ------------------------------------------------------------------------------
 
 install_proxymon() {
     if [[ -d "/var/www/proxymon" ]]; then
@@ -484,64 +488,64 @@ install_proxymon() {
     # Load env to get ACL paths defined by create_proxymon_env()
     # Verify ownership/permissions before sourcing -- this file is executed
     # as root, so it must not be writable by anyone other than root.
-    _env_file="/etc/proxymon/proxymon.env"
-    _env_owner=$(stat -c '%U' "$_env_file" 2>/dev/null)
-    _env_perms=$(stat -c '%a' "$_env_file" 2>/dev/null)
-    _env_group_digit="${_env_perms: -2:1}"
-    _env_other_digit="${_env_perms: -1}"
-    if [ "$_env_owner" != "root" ] || [[ "$_env_group_digit" =~ [2367] ]] || [[ "$_env_other_digit" =~ [2367] ]]; then
-        echo "ERROR: $_env_file has unsafe owner/permissions (owner=$_env_owner perms=$_env_perms)."
+    env_file_path="/etc/proxymon/proxymon.env"
+    env_owner=$(stat -c '%U' "$env_file_path" 2>/dev/null)
+    env_perms=$(stat -c '%a' "$env_file_path" 2>/dev/null)
+    env_group_digit="${env_perms: -2:1}"
+    env_other_digit="${env_perms: -1}"
+    if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
+        echo "ERROR: $env_file_path has unsafe owner/permissions (owner=$env_owner perms=$env_perms)."
         echo "Expected owner root with no group/other write access. Refusing to source it."
         exit 1
     fi
-    source "$_env_file"
+    source "$env_file_path"
 
     echo "Configuring Apache Listen directives..."
     if [ -n "$SERVER_IP" ]; then
         # Drop any prior Listen line for these ports (0.0.0.0, a stale IP,
         # or a bare "Listen <port>") before adding the current ones.
-        for port in 18080 18081; do
-            sed -i -E "/^Listen [^[:space:]]*:${port}\$/d; /^Listen ${port}\$/d" /etc/apache2/ports.conf
+        for probe_port in 18080 18081; do
+            sed -i -E "/^Listen [^[:space:]]*:${probe_port}\$/d; /^Listen ${probe_port}\$/d" /etc/apache2/ports.conf
         done
-        _detected_ip=$(ip -4 addr show "$LAN" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
-        if [ -n "$_detected_ip" ]; then
+        detected_ip=$(ip -4 addr show "$LAN" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
+        if [ -n "$detected_ip" ]; then
             # 18080 is the app -- reachable from the LAN and from loopback
             # (e.g. a local Cloudflare Tunnel connecting to the origin).
-            echo "Listen ${_detected_ip}:18080" >> /etc/apache2/ports.conf
+            echo "Listen ${detected_ip}:18080" >> /etc/apache2/ports.conf
             echo "Listen 127.0.0.1:18080" >> /etc/apache2/ports.conf
             # 18081 is Bandata's warning page -- LAN-only, no loopback needed.
-            echo "Listen ${_detected_ip}:18081" >> /etc/apache2/ports.conf
-            echo "Port 18080 bound to ${_detected_ip} and 127.0.0.1"
-            echo "Port 18081 bound to ${_detected_ip}"
-            if [ "$_detected_ip" != "$SERVER_IP" ]; then
-                echo "NOTE: interface $LAN currently has ${_detected_ip}, not the"
+            echo "Listen ${detected_ip}:18081" >> /etc/apache2/ports.conf
+            echo "Port 18080 bound to ${detected_ip} and 127.0.0.1"
+            echo "Port 18081 bound to ${detected_ip}"
+            if [ "$detected_ip" != "$SERVER_IP" ]; then
+                echo "NOTE: interface $LAN currently has ${detected_ip}, not the"
                 echo "configured SERVER_IP (${SERVER_IP}). Bound to the live IP instead."
             fi
         else
-            echo "ERROR: interface $LAN has no IPv4 address. Configure networking first, then re-run install."
+            echo "ERROR: no IPv4 address on $LAN -- configure networking first"
             exit 1
         fi
     else
-        echo "SERVER_IP not set in proxymon.env -- cannot configure Listen. Set it and re-run install."
+        echo "WARNING: SERVER_IP not set -- cannot configure Listen"
         exit 1
     fi
 
     echo "Restricting Proxymon panel to LAN..."
     if [[ -f /etc/apache2/sites-available/proxymon.conf ]]; then
-        read -rp "Restrict Proxymon panel to $RANGE (plus 127.0.0.1)? Otherwise it keeps the default 192.168.0.0/24 (y/n, default: y): " _lan_opt
-        _lan_opt=${_lan_opt:-y}
-        if [[ "$_lan_opt" =~ ^[Yy]$ ]]; then
-            if [[ "$RANGE" =~ $_UH_CIDR ]]; then
+        read -rp "Restrict Proxymon panel to $RANGE (plus 127.0.0.1)? Otherwise it keeps the default 192.168.0.0/24 (y/n, default: y): " lan_restrict_answer
+        lan_restrict_answer=${lan_restrict_answer:-y}
+        if [[ "$lan_restrict_answer" =~ ^[Yy]$ ]]; then
+            if [[ "$RANGE" =~ $UH_CIDR ]]; then
                 # 127.0.0.1 allowed alongside the LAN so a local tunnel/trusted
                 # proxy connecting over loopback to port 18080 still works.
                 sed -i "s|192.168.0.0/24 127.0.0.1|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
                 echo "Proxymon panel restricted to $RANGE and 127.0.0.1"
             else
-                echo "RANGE='$RANGE' in $_env_file is not a valid CIDR (e.g. 192.168.10.0/24)."
-                echo "Keeping default 192.168.0.0/24 and 127.0.0.1. Fix RANGE and re-run install to apply it."
+                echo "RANGE='$RANGE' in $env_file_path is not a valid CIDR (e.g. 192.168.0.0/24)."
+                echo "INFO: keeping default range -- fix RANGE and re-run"
             fi
         else
-            echo "Keeping default 192.168.0.0/24 and 127.0.0.1. Edit /etc/apache2/sites-available/proxymon.conf manually if needed."
+            echo "INFO: keeping default range -- edit proxymon.conf by hand if needed"
         fi
     fi
 
@@ -586,13 +590,13 @@ install_proxymon() {
     sed -i 's|^resolve_ip .*|resolve_ip no|g' /etc/sarg/sarg.conf
     sed -i 's|lastlog 0|lastlog 7|g' /etc/sarg/sarg.conf
 
-    HOSTNAME=$(hostname)
+    server_hostname=$(hostname)
     [ -f /etc/sarg/usertab.bak ] || cp -f /etc/sarg/usertab{,.bak} &>/dev/null || true
 
     if [ -n "$SERVER_IP" ]; then
         if ! grep -q "^${SERVER_IP//./\\.}[[:space:]]" /etc/sarg/usertab; then
-            echo "$SERVER_IP $HOSTNAME" >> /etc/sarg/usertab
-            echo "Added $SERVER_IP $HOSTNAME to usertab"
+            echo "$SERVER_IP $server_hostname" >> /etc/sarg/usertab
+            echo "Added $SERVER_IP $server_hostname to usertab"
         fi
     else
         echo "SERVER_IP not set in proxymon.env -- skipping usertab entry"
@@ -639,7 +643,7 @@ install_proxymon() {
     /etc/apache2/mods-available/mpm_prefork.conf
 
     echo " Updating PHP..."
-    [ -f /etc/php/$PHP_VERSION/apache2/php.ini.bak ] || cp -f /etc/php/$PHP_VERSION/apache2/php.ini{,.bak} &>/dev/null || true
+    [ -f /etc/php/$php_version/apache2/php.ini.bak ] || cp -f /etc/php/$php_version/apache2/php.ini{,.bak} &>/dev/null || true
     sed -i \
       -e 's/^\s*;*\s*max_execution_time\s*=.*/max_execution_time = 120/' \
       -e 's/^\s*max_input_time\s*=.*/max_input_time = 120/' \
@@ -650,7 +654,7 @@ install_proxymon() {
       -e 's/^\s*;*\s*opcache.memory_consumption\s*=.*/opcache.memory_consumption = 256/' \
       -e 's/^\s*;*\s*realpath_cache_size\s*=.*/realpath_cache_size = 16M/' \
       -e 's/^\s*;*\s*allow_url_fopen\s*=.*/allow_url_fopen = On/' \
-     /etc/php/$PHP_VERSION/apache2/php.ini
+     /etc/php/$php_version/apache2/php.ini
 
     # Hardening
     echo " Updating Apache2 Security..."
@@ -661,18 +665,18 @@ install_proxymon() {
     fi
     sed -i "s/^#*\s*ServerSignature.*/ServerSignature Off/" /etc/apache2/conf-available/security.conf
     sed -i "s/^#*\s*ServerTokens.*/ServerTokens Prod/" /etc/apache2/conf-available/security.conf
-    declare -A headers=(
+    declare -A apache_headers=(
         ["X-Content-Type-Options"]="nosniff"
         ["X-Frame-Options"]="sameorigin"
         ["X-XSS-Protection"]="1; mode=block"
         ["Referrer-Policy"]="strict-origin-when-cross-origin"
     )
-    for name in "${!headers[@]}"; do
-        value="${headers[$name]}"
-        if grep -q "Header set $name" /etc/apache2/conf-available/security.conf; then
-            sed -i "s|^#*\s*Header set $name.*|Header set $name \"$value\"|" /etc/apache2/conf-available/security.conf
+    for header_name in "${!apache_headers[@]}"; do
+        header_value="${apache_headers[$header_name]}"
+        if grep -q "Header set $header_name" /etc/apache2/conf-available/security.conf; then
+            sed -i "s|^#*\s*Header set $header_name.*|Header set $header_name \"$header_value\"|" /etc/apache2/conf-available/security.conf
         else
-            echo "Header set $name \"$value\"" >> /etc/apache2/conf-available/security.conf
+            echo "Header set $header_name \"$header_value\"" >> /etc/apache2/conf-available/security.conf
         fi
     done
     grep -q "^FileETag None" /etc/apache2/conf-available/security.conf || \
@@ -693,7 +697,6 @@ install_proxymon() {
     if [ ! -f /etc/proxymon/.env ]; then
         cat > /etc/proxymon/.env << 'EOF'
 # SquidAI -- LLM Provider Configuration
-# -----------------------------------------------------------------
 # Uncomment ONE provider block and fill in your credentials.
 # Leave LLM_MODEL empty if the model is already part of the URL.
 # LLM_API_KEY can be left empty for local providers (Ollama, LM Studio).
@@ -702,17 +705,14 @@ install_proxymon() {
 # openai -> choices[0].message.content (most cloud providers)
 # ollama -> message.content (Ollama)
 # gemini -> passthrough, no transform (Google Gemini)
-# -----------------------------------------------------------------
 
-# -- Active provider (uncomment one block below) ------------------
+# Active provider (uncomment one block below)
 LLM_URL=
 LLM_API_KEY=
 LLM_MODEL=
 LLM_RESPONSE_FORMAT=openai
 
-# -----------------------------------------------------------------
 # PROVIDER EXAMPLES -- copy the values above and replace
-# -----------------------------------------------------------------
 
 # Cloudflare Workers AI (model goes in the URL, no LLM_MODEL needed)
 # LLM_URL=https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/run/@cf/meta/llama-3.1-8b-instruct-fast
@@ -816,15 +816,15 @@ EOF
     # with mpm_prefork enabled below. Use mod_cgi instead.
     a2dismod cgid 2>/dev/null || true
 
-    for mod in mpm_prefork "php$PHP_VERSION" cgi rewrite; do
-        if a2enmod "$mod" 2>/dev/null; then
+    for apache_mod in mpm_prefork "php$php_version" cgi rewrite; do
+        if a2enmod "$apache_mod" 2>/dev/null; then
             continue
         fi
         # Fallback for systems where the module is registered as plain "php"
-        if [[ "$mod" == "php$PHP_VERSION" ]] && a2enmod php 2>/dev/null; then
+        if [[ "$apache_mod" == "php$php_version" ]] && a2enmod php 2>/dev/null; then
             continue
         fi
-        echo "ERROR: failed to enable Apache module '$mod'. Is it installed?"
+        echo "ERROR: failed to enable Apache module '$apache_mod'. Is it installed?"
         exit 1
     done
 
@@ -839,7 +839,7 @@ EOF
     systemctl daemon-reload
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
         echo "Apache configuration test failed. Disabling the sites just enabled so a future"
-        echo "unrelated Apache restart (reboot, unattended-upgrades, etc.) doesn't break on it."
+        echo "an unrelated Apache restart does not undo it."
         a2dissite proxymon.conf 2>/dev/null || true
         a2dissite warning.conf 2>/dev/null || true
         echo "Run 'apachectl -t' to see the error, fix the configuration, then re-run install."
@@ -856,9 +856,10 @@ EOF
     echo "Access Warning Portal: http://${SERVER_IP}:18081"
 }
 
-# ----------------------------------------------------------------
-# UPDATE FUNCTION
-# ----------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# UPDATE
+# ------------------------------------------------------------------------------
+
 # Refreshes code under /var/www/proxymon only. Does NOT touch anything
 # outside that path: no Apache/PHP/SARG/cron config, no ACL lists, no
 # proxymon.env, no service restarts. Preserves live data that lives
@@ -876,18 +877,18 @@ update_proxymon() {
         exit 1
     fi
 
-    _user_home=$(getent passwd "$local_user" | cut -d: -f6)
-    if [ -z "$_user_home" ] || [ ! -d "$_user_home" ]; then
-        echo "Could not resolve home directory for user '$local_user'"
-        exit 1
-    fi
+    backup_dir="/etc/bak/proxymon/$(date '+%Y%m%d_%H%M%S')"
+    mkdir -p "$backup_dir"
 
-    _backup_dir="$_user_home/proxymonbak/$(date '+%Y%m%d_%H%M%S')"
-    mkdir -p "$_backup_dir"
+    # keep only the last 3
+    old_backups=(/etc/bak/proxymon/*)
+    if (( ${#old_backups[@]} > 3 )); then
+        printf '%s\n' "${old_backups[@]}" | sort | head -n -3 | xargs -r rm -rf
+    fi
 
     # Live data that isn't part of the modules/ repo tree -- backed up before
     # the file swap and restored after. Never modified in place.
-    _protected_rel=(
+    protected_paths=(
         "lightsquid/report"
         "lightsquid/realname.cfg"
         "lightsquid/skipuser.cfg"
@@ -902,16 +903,16 @@ update_proxymon() {
     echo "Stopping Apache..."
     systemctl stop apache2
 
-    echo "Backing up live data to $_backup_dir ..."
-    _backup_sources=()
-    for _r in "${_protected_rel[@]}"; do
-        if [ -e "/var/www/proxymon/$_r" ]; then
-            _backup_sources+=("/var/www/proxymon/./$_r")
+    echo "Backing up live data to $backup_dir ..."
+    backup_sources=()
+    for rel_path in "${protected_paths[@]}"; do
+        if [ -e "/var/www/proxymon/$rel_path" ]; then
+            backup_sources+=("/var/www/proxymon/./$rel_path")
         fi
     done
-    if [ ${#_backup_sources[@]} -gt 0 ]; then
-        rsync -a --relative "${_backup_sources[@]}" "$_backup_dir/"
-        echo "Backed up: ${_protected_rel[*]}"
+    if [ ${#backup_sources[@]} -gt 0 ]; then
+        rsync -a --relative "${backup_sources[@]}" "$backup_dir/"
+        echo "Backed up: ${protected_paths[*]}"
     else
         echo "Nothing to back up yet (first update on this install)"
     fi
@@ -920,7 +921,7 @@ update_proxymon() {
     cp -rf modules/* /var/www/proxymon/
 
     echo "Restoring live data from backup..."
-    rsync -a "$_backup_dir/" /var/www/proxymon/
+    rsync -a "$backup_dir/" /var/www/proxymon/
     echo "Live data restored"
 
     echo "Setting permissions..."
@@ -945,13 +946,13 @@ update_proxymon() {
         exit 1
     fi
 
-    echo "Backup kept at $_backup_dir (not deleted automatically)."
+    echo "Backup kept at $backup_dir (last 3 kept)."
     echo "Proxy Monitor updated successfully"
 }
 
-# ----------------------------------------------------------------
-# UNINSTALL FUNCTION
-# ----------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# UNINSTALL
+# ------------------------------------------------------------------------------
 
 uninstall_proxymon() {
     echo " Uninstalling Proxy Monitor..."
@@ -987,28 +988,28 @@ uninstall_proxymon() {
         # Remove FORWARD/INPUT jumps into the Bandata chains by rule number
         # (matched by target name, so this works regardless of which LAN
         # interface bandata.sh was configured with).
-        for entry in "FORWARD:BANDATA_FWD" "INPUT:BANDATA_IN"; do
-            base_chain="${entry%%:*}"
-            target_chain="${entry##*:}"
+        for chain_pair in "FORWARD:BANDATA_FWD" "INPUT:BANDATA_IN"; do
+            base_chain="${chain_pair%%:*}"
+            target_chain="${chain_pair##*:}"
             while true; do
-                rulenum=$(iptables -L "$base_chain" --line-numbers -n 2>/dev/null | awk -v t="$target_chain" '$2==t{print $1; exit}')
-                [ -n "$rulenum" ] || break
-                iptables -D "$base_chain" "$rulenum" 2>/dev/null || break
+                rule_num=$(iptables -L "$base_chain" --line-numbers -n 2>/dev/null | awk -v t="$target_chain" '$2==t{print $1; exit}')
+                [ -n "$rule_num" ] || break
+                iptables -D "$base_chain" "$rule_num" 2>/dev/null || break
             done
         done
 
         # Remove the NAT redirect to the warning portal
         while true; do
-            rulenum=$(iptables -t nat -L PREROUTING --line-numbers -n 2>/dev/null | awk '/match-set bandata/{print $1; exit}')
-            [ -n "$rulenum" ] || break
-            iptables -t nat -D PREROUTING "$rulenum" 2>/dev/null || break
+            rule_num=$(iptables -t nat -L PREROUTING --line-numbers -n 2>/dev/null | awk '/match-set bandata/{print $1; exit}')
+            [ -n "$rule_num" ] || break
+            iptables -t nat -D PREROUTING "$rule_num" 2>/dev/null || break
         done
 
         # Flush and remove the now-unreferenced Bandata chains
-        for chain in BANDATA_FWD BANDATA_IN; do
-            if iptables -L "$chain" -n &>/dev/null; then
-                iptables -F "$chain" 2>/dev/null || true
-                iptables -X "$chain" 2>/dev/null || true
+        for bandata_chain in BANDATA_FWD BANDATA_IN; do
+            if iptables -L "$bandata_chain" -n &>/dev/null; then
+                iptables -F "$bandata_chain" 2>/dev/null || true
+                iptables -X "$bandata_chain" 2>/dev/null || true
             fi
         done
         echo "Bandata iptables rules removed"
@@ -1034,12 +1035,12 @@ uninstall_proxymon() {
         echo "mpm_prefork configuration restored"
     fi
 
-    PHP_VERSION=""
+    php_version=""
     if command -v php >/dev/null 2>&1; then
-        PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null || true)
+        php_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null || true)
     fi
-    if [[ -n "$PHP_VERSION" && -f "/etc/php/$PHP_VERSION/apache2/php.ini.bak" ]]; then
-        mv -f "/etc/php/$PHP_VERSION/apache2/php.ini.bak" "/etc/php/$PHP_VERSION/apache2/php.ini"
+    if [[ -n "$php_version" && -f "/etc/php/$php_version/apache2/php.ini.bak" ]]; then
+        mv -f "/etc/php/$php_version/apache2/php.ini.bak" "/etc/php/$php_version/apache2/php.ini"
         echo "php.ini restored"
     fi
 
@@ -1117,9 +1118,9 @@ uninstall_proxymon() {
     echo "Proxy Monitor uninstalled successfully"
 }
 
-# ----------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # MAIN
-# ----------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 case "${1:-}" in
     install)
@@ -1171,9 +1172,9 @@ case "${1:-}" in
 
         while true; do
             show_menu
-            read -r option
+            read -r menu_option
 
-            case "$option" in
+            case "$menu_option" in
                 1)
                     echo ""
                     run_initial_checks
