@@ -61,7 +61,7 @@ if ! flock -n 200; then
 fi
 
 # dependencies
-for dep_pkg in ipset findutils coreutils iptables util-linux; do
+for dep_pkg in ipset findutils coreutils iptables util-linux mawk sed grep procps logrotate; do
     if ! dpkg -s "$dep_pkg" &>/dev/null; then
         log "ERROR: dependency '$dep_pkg' is not installed -- abort"
         exit 1
@@ -419,16 +419,15 @@ iptables -t nat -I PREROUTING 1 -i "$LAN" -m set --match-set bandata src -p tcp 
 # ------------------------------------------------------------------------------
 # WARNING PAGE UPDATE
 # ------------------------------------------------------------------------------
- 
+
 # Sync quota values from proxymon.env into warning.html
 # Values are delimited by HTML comments: <!-- bw-day --> ... <!-- /bw-day -->
-warning_html="/var/www/proxymon/warning/warning.html"
-if [ -f "$warning_html" ]; then
+if [ -f "$WARNING_HTML" ]; then
     sed -i \
         -e "s#<!-- bw-day -->[^<]*<!-- /bw-day -->#<!-- bw-day -->${MAX_BANDWIDTH_DAY}<!-- /bw-day -->#" \
         -e "s#<!-- bw-week -->[^<]*<!-- /bw-week -->#<!-- bw-week -->${MAX_BANDWIDTH_WEEK}<!-- /bw-week -->#" \
         -e "s#<!-- bw-month -->[^<]*<!-- /bw-month -->#<!-- bw-month -->${MAX_BANDWIDTH_MONTH}<!-- /bw-month -->#" \
-        "$warning_html"
+        "$WARNING_HTML"
 fi
 
 # Generates realname.cfg and skipuser.cfg for Lightsquid reports.
@@ -437,7 +436,7 @@ fi
 update_lightsquid_realname() {
     # Files to exclude from realname.cfg (sent to skipuser.cfg instead).
     # Use filenames only, space-separated. Empty string disables exclusion.
-    local excluded_acls="mac-transparent.txt mac-unlimited.txt"
+    local excluded_acls="mac-unlimited.txt"
 
     # Extract "IP HOSTNAME" from ACL line "a;MAC;IP;HOSTNAME;"
     extract_ip_hostname() {

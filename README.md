@@ -26,11 +26,11 @@
 
 📐 [Runtime Architecture Diagram](https://htmlpreview.github.io/?https://raw.githubusercontent.com/maravento/proxymon/master/docs/proxymon-architecture.html) — visual walkthrough of the monitoring/reporting pipeline.
 
-## Requirements
+## REQUIREMENTS
 
 ---
 
-**⚠️ WARNING:** Only tested on Ubuntu 24.04 LTS. Other versions or distros not tested, use at your own risk.
+**⚠️ WARNING:** Only tested on Ubuntu 24.04 LTS. Other versions or distributions are not tested and are used at your own risk.
 
 |   CPU   |   RAM   |   Storage   |   Dependencies   |
 | :-----: | :-----: | :---------: | :--------------: |
@@ -43,7 +43,7 @@ been done first.
 
 ```bash
 # other required packages (checked by pminstall.sh, no extra setup needed)
-apt install -y wget git rsync ipset nbtscan libcgi-session-perl libgd-perl \
+apt install -y wget git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl \
                 coreutils sarg fonts-lato fonts-liberation fonts-dejavu \
                 perl cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables
@@ -143,53 +143,35 @@ sudo bash pminstall.sh
   </tr>
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     - The results shown in <a href="#squidmon_search">Squidmon Search</a> and <a href="#traffic_search">Traffic Search</a> are examples and may vary depending on your environment, dataset size, historical data volume, and computational resources available for ACL processing.
+     - The results shown in the <b>Squidmon Search</b> and <b>Traffic Search</b> sections are examples and may vary depending on your environment, dataset size, historical data volume, and computational resources available for ACL processing.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     - Los resultados mostrados en <a href="#squidmon_search">Squidmon Search</a> y <a href="#traffic_search">Traffic Search</a> son ejemplos y pueden variar según tu entorno, tamaño del conjunto de datos, volumen de datos históricos y recursos computacionales disponibles para el procesamiento de ACLs.
+     - Los resultados mostrados en las secciones <b>Squidmon Search</b> y <b>Traffic Search</b> son ejemplos y pueden variar según tu entorno, tamaño del conjunto de datos, volumen de datos históricos y recursos computacionales disponibles para el procesamiento de ACLs.
     </td>
   </tr>
 </table>
 
 ### Features & Options
 
+- LightSquid traffic reporting module (fast reports, per-user statistics, and daily/monthly traffic)
+- SQStat for real-time monitoring
+- SARG report generator (detailed and customizable reports)
+- SquidAnalyzer log analysis module (graphical traffic statistics and usage trends)
+- Bandata script for bandwidth control, usage limits, and quota management (integrated with LightSquid), configured in `/etc/proxymon/proxymon.env` and syncing quota values to the warning portal on every run
+- Squidmon statistics module (advanced statistics, report printing, and ACL-driven operations)
+- Logview module (live tail of Squid access.log with search and filters)
+- SquidAI module (LLM-powered assistant for traffic reports and security incidents)
+- Warning portal for quota limit notifications
+- Automatic dependency checking
+- Crontab task management
+- Apache virtual host configuration
+
 ```bash
-# Proxy Monitor module installation/update/uninstallation script
-#
-# Description:
-#   This script installs, updates, or uninstalls the Proxy Monitor application.
-#   Proxy Monitor provides traffic monitoring and reporting for Squid proxy servers
-#   with Squidmon, LightSquid, SARG, Sqstat, Squid Analyzer, Logview and SquidAI modules.
-#
-# Features:
-# - LightSquid traffic reporting module (fast reports, per-user statistics, and daily/monthly traffic)
-# - SQStat for real-time monitoring
-# - SARG report generator (detailed and customizable reports)
-# - SquidAnalyzer log analysis module (graphical traffic statistics and usage trends)
-# - Bandata script for bandwidth control, usage limits, and quota management (integrated with LightSquid)
-#   Configuration: /etc/proxymon/proxymon.env — automatically syncs quota values to the warning portal
-# - Squidmon statistics module (advanced statistics, report printing, and ACL-driven operations)
-# - Logview module (live tail of Squid access.log with search and filters)
-# - SquidAI module (LLM-powered assistant for traffic reports and security incidents)
-# - Warning portal for quota limit notifications
-# - Automatic dependency checking
-# - Crontab task management
-# - Apache virtual host configuration
-#
-# Usage:
-#   sudo ./pminstall.sh [OPTIONS]
-#
-# Options:
-#   install      Install Proxy Monitor
-#   update       Update Proxy Monitor code (/var/www/proxymon only)
-#   uninstall    Uninstall Proxy Monitor
-#   -h, --help   Show help message
-#
-# Examples:
-#   sudo ./pminstall.sh              # Interactive menu
-#   sudo ./pminstall.sh install      # Direct installation
-#   sudo ./pminstall.sh update       # Direct update
-#   sudo ./pminstall.sh uninstall    # Direct uninstallation
+sudo ./pminstall.sh              # Interactive menu
+sudo ./pminstall.sh install      # Install Proxy Monitor
+sudo ./pminstall.sh update       # Update Proxy Monitor code (/var/www/proxymon only)
+sudo ./pminstall.sh uninstall    # Uninstall Proxy Monitor
+sudo ./pminstall.sh -h           # Show help message
 ```
 
 <table width="100%">
@@ -197,12 +179,12 @@ sudo bash pminstall.sh
     <td style="width: 50%; vertical-align: top;">
       <b>install</b> writes everything from scratch (Apache vhosts, <code>proxymon.env</code>, ACL lists, SARG/PHP/Apache hardening, cron). To avoid overwriting a working setup or prompting over one, it refuses to run if <code>/var/www/proxymon</code> already exists — use <b>update</b> or <b>uninstall</b> first.
       <br><br>
-      <b>update</b> only refreshes code and permissions under <code>/var/www/proxymon</code>. It never touches Apache/PHP/SARG system config, cron, ACL lists, or <code>proxymon.env</code>, and it never prompts. Sequence: stop Apache → back up live data to <code>~&lt;local_user&gt;/proxymonbak/&lt;timestamp&gt;/</code> (a real folder, never <code>/tmp</code>) → replace code → restore live data from that backup → reset permissions → restart Apache. Each run's backup is timestamped and kept (never auto-deleted), so past backups accumulate as a safety net. Live data preserved this way:
+      <b>update</b> only refreshes code and permissions under <code>/var/www/proxymon</code>. It never touches Apache/PHP/SARG system config, cron, ACL lists, or <code>proxymon.env</code>, and it never prompts. Sequence: stop Apache → archive live data to <code>/etc/bak/proxymon/proxymonbak_&lt;YYYYMMDD_HHMM&gt;.zip</code> → replace code → unzip that archive back over the fresh copy → reset permissions → restart Apache. A maximum of 3 archives is kept. Live data preserved this way:
     </td>
     <td style="width: 50%; vertical-align: top;">
       <b>install</b> escribe todo desde cero (vhosts de Apache, <code>proxymon.env</code>, listas ACL, hardening de SARG/PHP/Apache, cron). Para no sobrescribir una instalación en funcionamiento ni pedir datos sobre ella, se detiene si <code>/var/www/proxymon</code> ya existe — use <b>update</b> o <b>uninstall</b> primero.
       <br><br>
-      <b>update</b> solo refresca el código y los permisos dentro de <code>/var/www/proxymon</code>. Nunca toca la configuración de Apache/PHP/SARG, el cron, las listas ACL, ni <code>proxymon.env</code>, y nunca pide datos. Secuencia: detiene Apache → respalda los datos vivos en <code>~&lt;local_user&gt;/proxymonbak/&lt;fecha&gt;/</code> (una carpeta real, nunca <code>/tmp</code>) → reemplaza el código → restaura los datos vivos desde ese respaldo → reestablece permisos → reinicia Apache. Cada corrida queda con su propio respaldo con fecha (nunca se borra solo), acumulando historial como red de seguridad. Datos vivos preservados de esta forma:
+      <b>update</b> solo refresca el código y los permisos dentro de <code>/var/www/proxymon</code>. Nunca toca la configuración de Apache/PHP/SARG, el cron, las listas ACL, ni <code>proxymon.env</code>, y nunca pide datos. Secuencia: detiene Apache → archiva los datos vivos en <code>/etc/bak/proxymon/proxymonbak_&lt;YYYYMMDD_HHMM&gt;.zip</code> → reemplaza el código → desempaqueta ese archivo sobre la copia recién puesta → reestablece permisos → reinicia Apache. Se conservan como máximo 3 archivos. Datos vivos preservados de esta forma:
     </td>
   </tr>
 </table>
@@ -244,7 +226,7 @@ sudo bash pminstall.sh
   </tr>
 </table>
 
-<h4 id="config">Config</h4>
+#### Config
 
 [![squidmon conf](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-config.png)](https://www.maravento.com/)
 
@@ -263,6 +245,7 @@ sudo bash pminstall.sh
 blocktlds.txt=Blocked TLD
 blockdomains.txt=Blocked Sites
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
+regex:(announce\.php\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\.utorrent|XBT|mtc1)=Blocked Patterns
 ```
 
 <table width="100%">
@@ -311,10 +294,10 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b style="color: #d9534f;">⚠️ Warning:</b> Default values are <b>24 hours</b> and <b>50,000 lines</b> from <i>access.log</i>. Increasing these values may slow down the module and raise system resource usage. Refer to the <a href="#squidmon_search"><b>Squidmon Search</b></a> section. To reset the filters to their default values, press the <b>Reset to Default</b> button.
+      <b style="color: #d9534f;">⚠️ Warning:</b> Default values are <b>24 hours</b> and <b>50,000 lines</b> from <i>access.log</i>. Increasing these values may slow down the module and raise system resource usage. Refer to the <b>Squidmon Search</b> section. To reset the filters to their default values, press the <b>Reset to Default</b> button.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b style="color: #d9534f;">⚠️ Advertencia:</b> Los valores por defecto son de <b>24 horas</b> y <b>50&nbsp;000 líneas</b> del archivo <i>access.log</i>. Aumentar estos valores puede ralentizar el módulo y elevar el uso de recursos del sistema. Consulte la sección <a href="#squidmon_search"><b>Squidmon Search</b></a>. Para resetear los filtros a sus valores por default, presione el botón <b>Reset to Default</b>.
+      <b style="color: #d9534f;">⚠️ Advertencia:</b> Los valores por defecto son de <b>24 horas</b> y <b>50&nbsp;000 líneas</b> del archivo <i>access.log</i>. Aumentar estos valores puede ralentizar el módulo y elevar el uso de recursos del sistema. Consulte la sección <b>Squidmon Search</b>. Para resetear los filtros a sus valores por default, presione el botón <b>Reset to Default</b>.
     </td>
   </tr>
 </table>
@@ -409,20 +392,20 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     If you have an ACL in Squid-Cache that uses <code>url_regex</code>, you cannot declare its file path in the Squid Monitor configuration module; You must declare your content directly in the <a href="#config">module settings</a>. Example:
+     If you have an ACL in Squid-Cache that uses <code>url_regex</code>, you cannot declare its file path in the Squid Monitor configuration module; You must declare your content directly in the <b>Config</b> section of the module settings. Example:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Si tiene una ACL en Squid-Cache que utiliza <code>url_regex</code>, no puede declarar su ruta de archivo en el módulo de configuración de Squid Monitor; debe declarar directamente su contenido en la <a href="#config">configuración del módulo</a>. Ejemplo:
+     Si tiene una ACL en Squid-Cache que utiliza <code>url_regex</code>, no puede declarar su ruta de archivo en el módulo de configuración de Squid Monitor; debe declarar directamente su contenido en la sección <b>Config</b> de la configuración del módulo. Ejemplo:
     </td>
   </tr>
 </table>
 
 ```bash
-regex:(announce\.php\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\.utorrent|XBT)=Blocked Patterns
+regex:(announce\.php\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\.utorrent|XBT|mtc1)=Blocked Patterns
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 ```
 
-<h4 id="squidmon_search">Squidmon Search</h4>
+#### Squidmon Search
 
 ![squidmon search](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-search.png)
 
@@ -510,7 +493,7 @@ sudo /var/www/proxymon/lightsquid/lightparser.pl today
 
 [![lightsquid bar output](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-searchbar-output.png)](https://www.maravento.com/)
 
-<h4 id="traffic_search">Traffic Search</h4>
+#### Traffic Search
 
 ![lightsquid search](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-search.png)
 
@@ -557,11 +540,11 @@ sudo -u www-data crontab -e
   <tr>
     <td style="width: 50%; vertical-align: top;">
      To add users manually to realname (audit) and skipuser (exclude) lists:<br><br>
-     <em>Note: <a href="#bandata">Bandata</a> updates these lists automatically on every run, if enabled: declare your ACLs in the <code>exclude_acls</code> variable and answer "y" to "Automatically update hostnames in Lightsquid?" during <code>pminstall.sh install</code> (default: n). This sets <code>UPDATE_REALNAME=true</code> in <code>/etc/proxymon/proxymon.env</code>.</em>
+     <em>Note: <b>BanData</b> updates these lists automatically on every run, if enabled: declare your ACLs in the <code>exclude_acls</code> variable and answer "y" to "Automatically update hostnames in Lightsquid?" during <code>pminstall.sh install</code> (default: n). This sets <code>UPDATE_REALNAME=true</code> in <code>/etc/proxymon/proxymon.env</code>.</em>
     </td>
     <td style="width: 50%; vertical-align: top;">
      Para agregar usuarios manualmente a las listas realname (auditar) y skipuser (excluir):<br><br>
-     <em>Nota: <a href="#bandata">Bandata</a> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pminstall.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
+     <em>Nota: <b>BanData</b> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pminstall.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
      </td>
   </table>
 </table>
@@ -698,7 +681,7 @@ $perusertrafficlimit = 1000*1024*1024;
 find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-9]*' -exec grep -oE '[[:alnum:]_.-]+\.([[:alnum:]_.-]+)+' {} \; | sed 's/^\.//' | sed -r 's/^(www|ftp|ftps|ftpes|sftp|pop|pop3|smtp|imap|http|https)\.//g' | sed -r '/^[0-9]{1,3}(\.[0-9]{1,3}){3}$/d' | tr -d ' ' | awk '{print "." $1}' | sort -u > domains.txt
 ```
 
-<h4 id="bandata">BanData</h4>
+#### BanData
 
 [![bandata](https://raw.githubusercontent.com/maravento/proxymon/master/img/bandata.png)](https://www.maravento.com/)
 

@@ -124,7 +124,9 @@ define('BLOCKTLDS',       $aclSquidPath . '/blocktlds.txt');
 define('BLOCKPATTERNS',   $aclSquidPath . '/blockpatterns.txt');
 define('SQUID_LOG_DIR',   $proxymonEnv['SQUID_LOG_DIR']  ?? '/var/log/squid');
 define('SQUID_LOG_FILE',  $proxymonEnv['SQUID_LOG_FILE'] ?? '/var/log/squid/access.log');
+define('CACHE_PATH',      $proxymonEnv['CACHE_PATH']     ?? '/var/cache/proxymon');
 define('MAX_LOG_LINES_SCAN',    2000000);
+define('MAX_REQUEST_BYTES',     1048576);
 // ───────────────────────────────────────────────────────────────────
 
 // ── CORS ──────────────────────────────────────────────────────────
@@ -161,9 +163,20 @@ $action = $_GET['action'] ?? 'ping';
 // key returns the same result instead of re-scanning the logs each time.
 define('WORKER_CACHE_TTL', 60);
 
+function prune_cache(string $dir, int $ttl): void {
+    $now = time();
+    foreach (glob($dir . '/*.json') ?: [] as $cached_file) {
+        if ($now - (int)@filemtime($cached_file) >= $ttl) @unlink($cached_file);
+    }
+    foreach (glob($dir . '/*.json.lock') ?: [] as $lock_file) {
+        if (!is_file(substr($lock_file, 0, -5))) @unlink($lock_file);
+    }
+}
+
 function cachedJson(string $key, int $ttl, callable $producer): void {
-    $dir = '/var/cache/proxymon';
+    $dir = CACHE_PATH;
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
+    prune_cache($dir, $ttl);
     $file = $dir . '/' . md5($key) . '.json';
 
     if (is_file($file) && (time() - filemtime($file)) < $ttl) {
@@ -317,14 +330,14 @@ try {
             // ─────────────────────────────────────────────────────────────────
 
             $declaredLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
-            if ($declaredLength > 32768) {
+            if ($declaredLength > MAX_REQUEST_BYTES) {
                 http_response_code(413);
                 echo json_encode(['error' => 'Request body too large']);
                 break;
             }
 
             $inputStream = fopen('php://input', 'r');
-            $rawInput = $inputStream ? stream_get_contents($inputStream, 32768) : false;
+            $rawInput = $inputStream ? stream_get_contents($inputStream, MAX_REQUEST_BYTES) : false;
             if ($inputStream) fclose($inputStream);
             $decoded  = $rawInput !== false ? json_decode($rawInput, true) : null;
             if (!$decoded || !is_array($decoded['contents'] ?? null) || empty($decoded['contents'])) {

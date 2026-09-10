@@ -33,14 +33,13 @@
 # ./pminstall.sh -h|--help Show usage.
 #
 # REQUIREMENTS
-# - Run as root (via sudo, from a regular user's session -- update needs
-# a resolvable local user to place its backup folder; see below).
+# - Run as root.
 # - Must be run from a directory containing a populated modules/
 # folder -- obtained by cloning the full repository (see check_repo()).
 # install and update both read from this local modules/ tree; the
 # script itself does not fetch or pull anything from git.
 # - System packages from check_dependencies() (squid, apache2, sarg,
-# php, rsync, etc.) must already be installed.
+# php, zip, etc.) must already be installed.
 #
 # INSTALL vs UPDATE -- WHAT EACH TOUCHES
 # install_proxymon() writes everything from scratch: Apache vhosts and
@@ -56,20 +55,16 @@
 # /var/www/proxymon. It never touches Apache/PHP/SARG system config,
 # cron, ACL lists, or proxymon.env, and it never prompts. Sequence:
 # 1. Stop Apache (avoid serving a half-swapped tree).
-# 2. rsync live data that isn't part of the modules/ repo tree into
-# ~<local_user>/proxymonbak/ (a real, persistent folder -- never
-# /tmp, which may be a small tmpfs and fail mid-copy on a large
-# report set). The local user is auto-detected (graphical
-# session, logname, SUDO_USER, active session, or first /home
-# entry) so the backup lands in a real home directory, not root's.
+# 2. Archive the live data that isn't part of the modules/ repo tree
+# into /etc/bak/proxymon/proxymonbak_<YYYYMMDD_HHMM>.zip.
 # 3. cp -rf modules/* into /var/www/proxymon (same method install
 # uses).
-# 4. rsync proxymonbak/ back into /var/www/proxymon, restoring the
-# live data over the freshly-copied placeholders.
+# 4. Unzip the archive over / , restoring the live data over the
+# freshly-copied placeholders.
 # 5. Reset permissions/ownership on /var/www/proxymon.
 # 6. Restart Apache.
-# The backup at ~<local_user>/proxymonbak/ is kept after a successful
-# update (not auto-deleted) as a safety net. Live data preserved:
+# A maximum of 3 archives is kept in /etc/bak/proxymon. Live data
+# preserved:
 # - lightsquid/report (daily LightSquid reports)
 # - lightsquid/realname.cfg (hostname mappings)
 # - lightsquid/skipuser.cfg (excluded users)
@@ -143,7 +138,7 @@ echo "Using local user: $local_user"
 
 # dependencies
 check_dependencies() {
-    for dep_pkg in wget git rsync ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
+    for dep_pkg in wget git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
         if ! dpkg -s "$dep_pkg" &>/dev/null; then
             echo "ERROR: dependency '$dep_pkg' is not installed -- abort"
             exit 1
@@ -296,7 +291,7 @@ create_proxymon_env() {
         echo "$env_file already exists -- skipping configuration"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
-        local required_keys="LAN SERVER_IP RANGE REPORT_IP_GLOB LIGHTSQUID_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME"
+        local required_keys="LAN SERVER_IP RANGE REPORT_IP_GLOB LIGHTSQUID_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME"
         local missing_flag=""
         for env_key in $required_keys; do
             grep -q "^${env_key}=" "$env_file" || missing_flag="$missing_flag $env_key"
@@ -328,7 +323,7 @@ create_proxymon_env() {
 
     # LAN interface
     echo "Available network interfaces:"
-    ip -o link | awk '$2 != "lo:" {print " " $2, $(NF-2)}' | sed 's_: _ _'
+    ip -o -4 addr show scope global | awk '{printf "  %-12s %s\n", $2, $4}'
     lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}')
     lan_default=${lan_default:-eth0}
     while true; do
@@ -344,10 +339,15 @@ create_proxymon_env() {
     while true; do
         read -rp "Server IP for LAN (default: 192.168.0.10): " server_ip_answer
         server_ip_answer=${server_ip_answer:-192.168.0.10}
-        if [[ "$server_ip_answer" =~ $UH_IPV4 ]]; then
-            break
+        if ! [[ "$server_ip_answer" =~ $UH_IPV4 ]]; then
+            echo "'$server_ip_answer' is not a valid IPv4 address. Try again."
+            continue
         fi
-        echo "'$server_ip_answer' is not a valid IPv4 address. Try again."
+        if ! ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -qxF "$server_ip_answer"; then
+            echo "'$server_ip_answer' is not configured on this system. Try again."
+            continue
+        fi
+        break
     done
 
     # Glob pattern used to match per-IP report filenames under REPORT_PATH
@@ -423,6 +423,8 @@ BLOCK_LIST_WEEK=\$ACL_BANDATA_PATH/banweek.txt
 BLOCK_LIST_MONTH=\$ACL_BANDATA_PATH/banmonth.txt
 SQUID_LOG_DIR=/var/log/squid
 SQUID_LOG_FILE=\$SQUID_LOG_DIR/access.log
+WARNING_HTML=/var/www/proxymon/warning/warning.html
+CACHE_PATH=/var/cache/proxymon
 
 # Bandwidth limits
 MAX_BANDWIDTH_DAY=${bw_day}
@@ -507,24 +509,14 @@ install_proxymon() {
         for probe_port in 18080 18081; do
             sed -i -E "/^Listen [^[:space:]]*:${probe_port}\$/d; /^Listen ${probe_port}\$/d" /etc/apache2/ports.conf
         done
-        detected_ip=$(ip -4 addr show "$LAN" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
-        if [ -n "$detected_ip" ]; then
-            # 18080 is the app -- reachable from the LAN and from loopback
-            # (e.g. a local Cloudflare Tunnel connecting to the origin).
-            echo "Listen ${detected_ip}:18080" >> /etc/apache2/ports.conf
-            echo "Listen 127.0.0.1:18080" >> /etc/apache2/ports.conf
-            # 18081 is Bandata's warning page -- LAN-only, no loopback needed.
-            echo "Listen ${detected_ip}:18081" >> /etc/apache2/ports.conf
-            echo "Port 18080 bound to ${detected_ip} and 127.0.0.1"
-            echo "Port 18081 bound to ${detected_ip}"
-            if [ "$detected_ip" != "$SERVER_IP" ]; then
-                echo "NOTE: interface $LAN currently has ${detected_ip}, not the"
-                echo "configured SERVER_IP (${SERVER_IP}). Bound to the live IP instead."
-            fi
-        else
-            echo "ERROR: no IPv4 address on $LAN -- configure networking first"
-            exit 1
-        fi
+        # 18080 is the app -- reachable from the LAN and from loopback
+        # (e.g. a local Cloudflare Tunnel connecting to the origin).
+        echo "Listen ${SERVER_IP}:18080" >> /etc/apache2/ports.conf
+        echo "Listen 127.0.0.1:18080" >> /etc/apache2/ports.conf
+        # 18081 is Bandata's warning page -- LAN-only, no loopback needed.
+        echo "Listen ${SERVER_IP}:18081" >> /etc/apache2/ports.conf
+        echo "Port 18080 bound to ${SERVER_IP} and 127.0.0.1"
+        echo "Port 18081 bound to ${SERVER_IP}"
     else
         echo "WARNING: SERVER_IP not set -- cannot configure Listen"
         exit 1
@@ -575,6 +567,11 @@ install_proxymon() {
     chmod 644 "$ACL_SQUID_PATH/blockdomains.txt"
     chown root:root "$ACL_SQUID_PATH/blockdomains.txt"
     echo "blockdomains.txt downloaded"
+
+    retry_cmd wget -q --show-progress https://raw.githubusercontent.com/maravento/vault/refs/heads/master/gateproxy/acl/squid/blockpatterns.txt -O "$ACL_SQUID_PATH/blockpatterns.txt"
+    chmod 644 "$ACL_SQUID_PATH/blockpatterns.txt"
+    chown root:root "$ACL_SQUID_PATH/blockpatterns.txt"
+    echo "blockpatterns.txt downloaded"
 
     (crontab -l 2>/dev/null || true) | {
         grep -v "/var/www/proxymon/bandata/bandata.sh"
@@ -766,9 +763,9 @@ EOF
     chown root:www-data /etc/proxymon/.env
     chmod 750 /etc/proxymon
     chown root:www-data /etc/proxymon
-    mkdir -p /var/cache/proxymon
-    chmod 750 /var/cache/proxymon
-    chown www-data:www-data /var/cache/proxymon
+    mkdir -p "$CACHE_PATH"
+    chmod 750 "$CACHE_PATH"
+    chown www-data:www-data "$CACHE_PATH"
     echo "SquidAI config directory created: /etc/proxymon/"
     echo "Edit /etc/proxymon/.env and set your LLM credentials"
 
@@ -871,20 +868,8 @@ update_proxymon() {
         exit 1
     fi
 
-    if ! command -v rsync &>/dev/null; then
-        echo "rsync is required for 'update' but is not installed."
-        echo "Install it with: apt-get install rsync"
-        exit 1
-    fi
-
-    backup_dir="/etc/bak/proxymon/$(date '+%Y%m%d_%H%M%S')"
-    mkdir -p "$backup_dir"
-
-    # keep only the last 3
-    old_backups=(/etc/bak/proxymon/*)
-    if (( ${#old_backups[@]} > 3 )); then
-        printf '%s\n' "${old_backups[@]}" | sort | head -n -3 | xargs -r rm -rf
-    fi
+    backup_dir="/etc/bak/proxymon"
+    backup_zip="${backup_dir}/proxymonbak_$(date +%Y%m%d_%H%M).zip"
 
     # Live data that isn't part of the modules/ repo tree -- backed up before
     # the file swap and restored after. Never modified in place.
@@ -903,26 +888,47 @@ update_proxymon() {
     echo "Stopping Apache..."
     systemctl stop apache2
 
-    echo "Backing up live data to $backup_dir ..."
-    backup_sources=()
+    if ! mkdir -p "$backup_dir"; then
+        echo "ERROR: cannot create $backup_dir -- abort"
+        exit 1
+    fi
+
+    backup_list=()
     for rel_path in "${protected_paths[@]}"; do
         if [ -e "/var/www/proxymon/$rel_path" ]; then
-            backup_sources+=("/var/www/proxymon/./$rel_path")
+            backup_list+=("/var/www/proxymon/$rel_path")
+        else
+            echo "INFO: $rel_path not present -- skip"
         fi
     done
-    if [ ${#backup_sources[@]} -gt 0 ]; then
-        rsync -a --relative "${backup_sources[@]}" "$backup_dir/"
-        echo "Backed up: ${protected_paths[*]}"
-    else
+
+    if (( ${#backup_list[@]} == 0 )); then
         echo "Nothing to back up yet (first update on this install)"
+    elif zip -r -q "$backup_zip" "${backup_list[@]}"; then
+        chmod 600 "$backup_zip"
+        echo "Backup written to $backup_zip"
+
+        # keep only the last 3
+        old_backups=("$backup_dir"/proxymonbak_*.zip)
+        if (( ${#old_backups[@]} > 3 )); then
+            printf '%s\n' "${old_backups[@]}" | sort | head -n -3 | xargs -r rm -f
+        fi
+    else
+        rm -f "$backup_zip"
+        echo "ERROR: cannot write the archive"
+        echo "ERROR: $backup_zip"
+        echo "ERROR: check free space and permissions -- abort"
+        exit 1
     fi
 
     echo "Replacing Proxy Monitor code..."
     cp -rf modules/* /var/www/proxymon/
 
-    echo "Restoring live data from backup..."
-    rsync -a "$backup_dir/" /var/www/proxymon/
-    echo "Live data restored"
+    if [ -f "$backup_zip" ]; then
+        echo "Restoring live data from backup..."
+        unzip -o -q "$backup_zip" -d /
+        echo "Live data restored"
+    fi
 
     echo "Setting permissions..."
     find /var/www/proxymon -type d -exec chmod 755 {} +
@@ -946,7 +952,7 @@ update_proxymon() {
         exit 1
     fi
 
-    echo "Backup kept at $backup_dir (last 3 kept)."
+    echo "Backup kept in $backup_dir (last 3 kept)."
     echo "Proxy Monitor updated successfully"
 }
 
