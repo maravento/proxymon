@@ -423,7 +423,7 @@ BLOCK_LIST_WEEK=\$ACL_BANDATA_PATH/banweek.txt
 BLOCK_LIST_MONTH=\$ACL_BANDATA_PATH/banmonth.txt
 SQUID_LOG_DIR=/var/log/squid
 SQUID_LOG_FILE=\$SQUID_LOG_DIR/access.log
-WARNING_HTML=/var/www/proxymon/warning/warning.html
+WARNING_HTML=/var/www/proxymon/bandata/warning/warning.html
 CACHE_PATH=/var/cache/proxymon
 
 # Bandwidth limits
@@ -472,8 +472,8 @@ install_proxymon() {
         echo "Proxymon virtualhost configured"
     fi
 
-    if [[ -f "/var/www/proxymon/warning/warning.conf" ]]; then
-        cp -f /var/www/proxymon/warning/warning.conf /etc/apache2/sites-available/warning.conf
+    if [[ -f "/var/www/proxymon/bandata/warning/warning.conf" ]]; then
+        cp -f /var/www/proxymon/bandata/warning/warning.conf /etc/apache2/sites-available/warning.conf
         echo "Warning virtualhost configured"
     fi
 

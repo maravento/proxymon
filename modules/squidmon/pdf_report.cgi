@@ -136,6 +136,32 @@ HTMLHEAD
         my $c = scalar keys %{$domain_stats{$domain}{clients}||{}};
         print "<tr><td>".html_escape_pdf($domain)."</td><td>".format_number_pdf($t)."</td><td class='allowed'>".format_number_pdf($a)."</td><td class='blocked'>".format_number_pdf($b)."</td><td>$c</td></tr>";
     }
+    print "</table>";
+
+    # Traffic by hour
+    print "<div class='section-title'>🕒 Traffic by Hour</div><table>";
+    print "<tr><th>Hour</th><th>Total</th><th>Allowed</th><th>Blocked</th><th>Block Rate</th></tr>";
+    for my $hour (sort { $a <=> $b } keys %hourly_stats) {
+        my $t = $hourly_stats{$hour}{total} || 0;
+        my $a = $hourly_stats{$hour}{Allowed} || 0;
+        my $b = $hourly_stats{$hour}{Blocked} || 0;
+        my $rate = $t > 0 ? sprintf("%.1f", ($b/$t)*100) : "0.0";
+        print "<tr><td>$hour:00 - $hour:59</td><td>".format_number_pdf($t)."</td><td class='allowed'>".format_number_pdf($a)."</td><td class='blocked'>".format_number_pdf($b)."</td><td>$rate%</td></tr>";
+    }
+    print "</table>";
+
+    # Top clients
+    print "<div class='section-title'>💻 Top 15 Clients by Traffic</div><table>";
+    print "<tr><th>Client IP</th><th>Total</th><th>Allowed</th><th>Blocked</th><th>Block Rate</th></tr>";
+    my $client_count = 0;
+    for my $client (sort { ($client_traffic{$b}{total}||0) <=> ($client_traffic{$a}{total}||0) } keys %client_traffic) {
+        last if $client_count++ >= 15;
+        my $t = $client_traffic{$client}{total} || 0;
+        my $a = $client_traffic{$client}{Allowed} || 0;
+        my $b = $client_traffic{$client}{Blocked} || 0;
+        my $rate = $t > 0 ? sprintf("%.1f", ($b/$t)*100) : "0.0";
+        print "<tr><td>".html_escape_pdf($client)."</td><td>".format_number_pdf($t)."</td><td class='allowed'>".format_number_pdf($a)."</td><td class='blocked'>".format_number_pdf($b)."</td><td>$rate%</td></tr>";
+    }
     print "</table></body></html>";
 
 }; # fin eval

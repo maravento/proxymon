@@ -1294,6 +1294,42 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 | <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/LLM-connected.png" width="150"> | LLM connected and ready | LLM conectado y listo |
 | <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/LLM-offline.png" width="150"> | LLM unreachable or offline | LLM inaccesible o fuera de línea |
 
+### TOOLS
+
+| Description | Descripción |
+| --- | --- |
+| Command-line utilities that complement the panel, installed in `/var/www/proxymon/tools` and run by the administrator over a shell. The panel serves the HTML reports they leave behind. | Utilidades de consola que complementan el panel, instaladas en `/var/www/proxymon/tools` y ejecutadas por el administrador desde una terminal. El panel sirve los informes HTML que ellas dejan. |
+
+#### Squidtool
+
+| Description | Descripción |
+| --- | --- |
+| Advanced command-line tool that extends the reach of the panel by working with the Squid logs through two functions: **Traffic Report** and **Log Search**. It is run with: | Herramienta avanzada de consola que amplía el alcance del panel al trabajar con los registros de Squid mediante dos funciones: **Informe de tráfico** y **Búsqueda en registros**. Se ejecuta con: |
+
+```bash
+sudo /var/www/proxymon/tools/squidtool.sh
+```
+
+> Each function generates its own HTML report and overwrites the previous file, so only the latest result of each kind is kept. Both reports are served by the panel and restricted to the LAN. The activity of the tool is recorded in `/var/www/proxymon/tools/squidtool.log`.
+>
+> Cada función genera su propio informe HTML y sobrescribe el archivo anterior, por lo que solo se conserva el último resultado de cada tipo. Ambos informes son servidos por el panel y están restringidos a la LAN. La actividad de la herramienta se registra en `/var/www/proxymon/tools/squidtool.log`.
+
+##### Traffic Report
+
+[![squidtool traffic](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidtool-traffic.png)](https://www.maravento.com/)
+
+| Description | Descripción |
+| --- | --- |
+| Analyzes the requests recorded by Squid, grouping them by **client IP and requested domain**. It allows selecting a single IP or analyzing every IP, and defining the period to review. The analysis covers the current `access.log` and its rotated or compressed files. Requests are counted and sorted from the most active to the least. When every IP is analyzed, entries below 20 requests are excluded. Entries reaching or exceeding 300 requests are shown as alerts. The result is written to `squid_traffic.html`. | Analiza las solicitudes registradas por Squid, agrupándolas por **IP de cliente y dominio solicitado**. Permite seleccionar una IP concreta o analizar todas las IP y definir el período que se desea revisar. El análisis incluye el `access.log` actual y sus archivos rotados o comprimidos. Las solicitudes se contabilizan y se ordenan de mayor a menor actividad. Cuando se analizan todas las IP, se excluyen las entradas con menos de 20 solicitudes. Las entradas que alcanzan o superan las 300 solicitudes se muestran como alertas. El resultado se genera en `squid_traffic.html`. |
+
+##### Log Search
+
+[![squidtool search](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidtool-search.png)](https://www.maravento.com/)
+
+| Description | Descripción |
+| --- | --- |
+| Searches for a **specific term** in the `access.log` and `cache.log` records, without distinguishing between uppercase and lowercase. The text is matched literally, not as a regular expression, so characters such as `?`, `&`, `=` or `*` are searched as typed. The search includes the current, rotated and compressed files. In `access.log` it allows filtering by **client IP** and setting the search period. In `cache.log` the IP filter does not apply, because that record does not contain the client IP. The results from `access.log` and `cache.log` are shown separately, along with the number of matches found in each record. The result is written to `squid_search.html`.<br><br>For `cache.log` to record the ACL decisions -- which rule allowed or blocked each request -- Squid must have `debug_options ALL,1 33,2 28,9` enabled in `squid.conf`. Without it the search still works, but that record only holds the usual service messages. Keep in mind that this directive makes `cache.log` grow considerably. | Busca un **término específico** en los registros `access.log` y `cache.log`, sin distinguir entre mayúsculas y minúsculas. El texto se busca de forma literal, no como expresión regular, de modo que caracteres como `?`, `&`, `=` o `*` se buscan tal cual se escriben. La búsqueda incluye los archivos actuales, rotados y comprimidos. En `access.log` permite filtrar por **IP de cliente** y establecer el período de búsqueda. En `cache.log` no se aplica el filtro por IP porque este registro no contiene la IP del cliente. Los resultados de `access.log` y `cache.log` se muestran por separado, junto con la cantidad de coincidencias encontradas en cada registro. El resultado se genera en `squid_search.html`.<br><br>Para que `cache.log` registre las decisiones de ACL -- qué regla permitió o bloqueó cada petición -- Squid debe tener activada la directiva `debug_options ALL,1 33,2 28,9` en `squid.conf`. Sin ella la búsqueda sigue funcionando, pero ese registro solo contendrá los mensajes habituales del servicio. Tenga en cuenta que esa directiva hace crecer `cache.log` de forma considerable. |
+
 ### PROXYMON LOGS
 
 ```bash
