@@ -317,21 +317,6 @@ if (open(my $fh, '<', $log_file)) {
 # Calculate time threshold for filtering
 my $time_threshold = time() - ($time_range * 3600);
 
-# Preload ACLs into memory for fast lookup (only for Blocked Requests by IP)
-my %acl_lookup = ();
-foreach my $acl (@monitored_acls) {
-    next unless $acl->{type} eq 'file' && -f $acl->{value};
-    if (open(my $fh, '<', $acl->{value})) {
-        while (my $line = <$fh>) {
-            chomp($line);
-            $line =~ s/^\s+|\s+$//g;
-            next if $line eq '' || $line =~ /^#/;
-            push @{ $acl_lookup{lc($line)} }, $acl->{label};
-        }
-        close($fh);
-    }
-}
-
 # Parse each log line
 foreach my $line (@log_lines) {
     # Squid log format: timestamp elapsed client action/code bytes method URL user hierarchy/peer type

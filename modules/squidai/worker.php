@@ -163,13 +163,17 @@ $action = $_GET['action'] ?? 'ping';
 // key returns the same result instead of re-scanning the logs each time.
 define('WORKER_CACHE_TTL', 60);
 
+// Age at which an abandoned lock file is discarded. Well above any run a
+// request can sustain, since PHP's own execution limit cuts it far sooner.
+define('WORKER_LOCK_TTL', 3600);
+
 function prune_cache(string $dir, int $ttl): void {
     $now = time();
     foreach (glob($dir . '/*.json') ?: [] as $cached_file) {
         if ($now - (int)@filemtime($cached_file) >= $ttl) @unlink($cached_file);
     }
     foreach (glob($dir . '/*.json.lock') ?: [] as $lock_file) {
-        if (!is_file(substr($lock_file, 0, -5))) @unlink($lock_file);
+        if ($now - (int)@filemtime($lock_file) >= WORKER_LOCK_TTL) @unlink($lock_file);
     }
 }
 

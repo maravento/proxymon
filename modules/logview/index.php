@@ -658,7 +658,7 @@ function poll() {
       if (ALL.length > MAX_ROWS) ALL = ALL.slice(0, MAX_ROWS);
       newRowCount += newRows.length;
 
-      applyFilters();
+      applyFilters(newRows.length);
 
       if (scrollPos > 60) {
         tableWrap.scrollTop = scrollPos;
@@ -704,7 +704,7 @@ function applyFilters(newCount) {
   document.getElementById('sTime').textContent = elapsed + ' ms';
 
   updateStats();
-  renderTable(grepMode ? q : q, newCount || 0);
+  renderTable(grepMode ? q : q, (q || fc || fh) ? 0 : (newCount || 0));
 }
 
 function updateStats() {

@@ -120,6 +120,26 @@ a2enmod -q mpm_prefork || true
 a2enmod -q php || true
 ```
 
+## REPOSITORY STRUCTURE
+
+---
+
+```
+proxymon/
+├── modules/                    # Web modules served from /var/www/proxymon
+│   ├── bandata/                # Data usage control (bandata.sh and its ACLs)
+│   ├── lightsquid/             # LightSquid reports
+│   ├── logview/                # Live tail of Squid access.log
+│   ├── sqstat/                 # SqStat active connections view
+│   ├── squidai/                # SquidAI conversational assistant
+│   ├── squidanalyzer/          # SquidAnalyzer reports
+│   ├── squidmon/               # Squid Monitor: real-time traffic and ACL analysis
+│   ├── tools/                  # Maintenance scripts
+│   ├── index.html              # Main page with the module tabs
+│   └── proxymon.conf           # Apache vhost
+└── pminstall.sh                # Installer: install, update, uninstall
+```
+
 ## HOW TO INSTALL
 
 ---
@@ -198,6 +218,7 @@ sudo ./pminstall.sh -h           # Show help message
 | `squidmon/etc/config` | SquidMon config file | Archivo de configuración de SquidMon |
 | `squidanalyzer/output` | SquidAnalyzer rendered reports | Reportes generados por SquidAnalyzer |
 | `sqstat/config.inc.php` | SQStat custom config (e.g. cachemgr credentials) | Config personalizada de SQStat (ej. credenciales de cachemgr) |
+| `bandata/acl/allowdata.txt` | Bandata quota-exempt IP list | Lista de IP exentas de cuota de Bandata |
 
 <b>Access Proxymon</b>: [http://localhost:18080](http://localhost:18080)
 

@@ -72,6 +72,7 @@
 # - squidmon/etc/config (SquidMon config file)
 # - squidanalyzer/output (SquidAnalyzer rendered reports)
 # - sqstat/config.inc.php (SQStat custom config, e.g. cachemgr credentials)
+# - bandata/acl/allowdata.txt (Bandata quota-exempt IP list)
 #
 ################################################################################
 
@@ -881,6 +882,7 @@ update_proxymon() {
         "squidmon/etc/config"
         "squidanalyzer/output"
         "sqstat/config.inc.php"
+        "bandata/acl/allowdata.txt"
     )
 
     check_repo
@@ -974,17 +976,17 @@ uninstall_proxymon() {
 
     # -- Consolidated www-data crontab cleanup (single atomic write) --
     if (sudo -u www-data crontab -l 2>/dev/null || true) \
-        | grep -v "lightparser.pl" \
-        | grep -v "sarg.*sarg.conf.*access.log" \
-        | grep -v "find.*sarg.*squid-reports" \
-        | grep -v "squid-analyzer" \
+        | { grep -v "lightparser.pl" || true; } \
+        | { grep -v "sarg.*sarg.conf.*access.log" || true; } \
+        | { grep -v "find.*sarg.*squid-reports" || true; } \
+        | { grep -v "squid-analyzer" || true; } \
         | sudo -u www-data crontab - 2>/dev/null; then
         echo "LightSquid, SARG and SquidAnalyzer crontab entries removed"
     else
         echo "WARNING: failed to update www-data crontab -- entries may remain"
     fi
 
-    if (crontab -l 2>/dev/null || true) | grep -v "/var/www/proxymon/bandata/bandata.sh" | crontab - 2>/dev/null; then
+    if (crontab -l 2>/dev/null || true) | { grep -v "/var/www/proxymon/bandata/bandata.sh" || true; } | crontab - 2>/dev/null; then
         echo "Squid Monitor crontab removed"
     else
         echo "WARNING: failed to update root crontab -- bandata.sh entry may remain"
