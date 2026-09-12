@@ -10,17 +10,17 @@
 # optional Unifi Hotspot integration.
 #
 # USAGE
-# ./pminstall.sh install Fresh install. Aborts if /var/www/proxymon
+# ./pmsetup.sh install Fresh install. Aborts if /var/www/proxymon
 # already exists (use update or uninstall
 # first -- see below).
-# ./pminstall.sh update Refresh code and permissions under
+# ./pmsetup.sh update Refresh code and permissions under
 # /var/www/proxymon. Stops Apache, backs up
 # live data, replaces code, restores live
 # data, resets permissions, restarts Apache.
 # Does not touch Apache/PHP/SARG system
 # config, cron, ACL lists, or
 # /etc/proxymon/proxymon.env.
-# ./pminstall.sh uninstall Remove Proxymon: Apache sites, cron entries,
+# ./pmsetup.sh uninstall Remove Proxymon: Apache sites, cron entries,
 # iptables/ipset rules, restore .bak configs.
 # Prompts before deleting /etc/proxymon and
 # /etc/acl (allowlists, MAC registrations, LLM
@@ -29,8 +29,8 @@
 # with the rest of /var/www/proxymon. The SquidAI
 # response cache in /var/cache/proxymon is also
 # removed.
-# ./pminstall.sh Interactive menu with the same 3 options.
-# ./pminstall.sh -h|--help Show usage.
+# ./pmsetup.sh Interactive menu with the same 3 options.
+# ./pmsetup.sh -h|--help Show usage.
 #
 # REQUIREMENTS
 # - Run as root.
@@ -99,6 +99,18 @@ if ! flock -n 200; then
     exit 1
 fi
 
+script_dir="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+log_file="${script_dir}/pmsetup.log"
+{ > "$log_file"; } 2>/dev/null || true
+log() {
+    local msg="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $msg" | tee -a "$log_file" 2>/dev/null || true
+}
+info() { printf ' \e[32m \e[0m %s\n' "$*"; log "INFO: $*"; }
+warn() { printf ' \e[33m!\e[0m %s\n' "$*"; log "WARNING: $*"; }
+err()  { printf ' \e[31m \e[0m %s\n' "$*" >&2; log "ERROR: $*"; }
+abort() { err "$*"; exit 1; }
+
 # local_user detection
 detect_local_user() {
     local uid_min uid_max
@@ -132,8 +144,7 @@ detect_local_user() {
 }
 
 if ! local_user=$(detect_local_user); then
-    echo "ERROR: No valid local user found. Create one with sudo access."
-    exit 1
+    abort "no valid local user found, create one with sudo access -- abort"
 fi
 echo "Using local user: $local_user"
 
@@ -141,15 +152,13 @@ echo "Using local user: $local_user"
 check_dependencies() {
     for dep_pkg in wget git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
         if ! dpkg -s "$dep_pkg" &>/dev/null; then
-            echo "ERROR: dependency '$dep_pkg' is not installed -- abort"
-            exit 1
+            abort "dependency '$dep_pkg' is not installed -- abort"
         fi
     done
 
     # dependencies (squid or squid-openssl)
     if ! dpkg -s squid &>/dev/null && ! dpkg -s squid-openssl &>/dev/null; then
-        echo "ERROR: 'squid' or 'squid-openssl' is not installed -- abort"
-        exit 1
+        abort "'squid' or 'squid-openssl' is not installed -- abort"
     fi
 }
 check_dependencies
@@ -163,10 +172,9 @@ retry_cmd() {
     local retry_attempt=1
     until "$@"; do
         if [ "$retry_attempt" -ge "$max_retries" ]; then
-            echo "ERROR: command failed after $max_retries attempts: $*"
-            exit 1
+            abort "command failed after $max_retries attempts: $* -- abort"
         fi
-        echo "WARNING: command failed (attempt $retry_attempt/$max_retries), retrying in 10s: $*"
+        warn "command failed (attempt $retry_attempt/$max_retries), retrying in 10s: $* -- retry"
         retry_attempt=$((retry_attempt + 1))
         sleep 10
     done
@@ -226,7 +234,7 @@ check_squid_traffic() {
     log_lines=$(wc -l < /var/log/squid/access.log 2>/dev/null || echo 0)
 
     if [ "$log_lines" -eq 0 ]; then
-        echo "WARNING: access.log is empty -- Squid served no traffic yet"
+        warn "access.log is empty, Squid served no traffic yet -- degraded"
         echo "Continuing anyway; reports will be empty until traffic starts flowing."
         return 0
     fi
@@ -235,8 +243,8 @@ check_squid_traffic() {
     log_entries=${log_entries:-0}
 
     if [ "$log_entries" -eq 0 ]; then
-        echo "WARNING: no valid traffic found ($log_lines lines, 0 valid) -- check Squid ACLs, port,"
-        echo "and that clients are actually pointing at this proxy. Continuing anyway."
+        warn "no valid traffic found ($log_lines lines, 0 valid) -- degraded"
+        echo "Check Squid ACLs, port, and that clients point at this proxy. Continuing anyway."
     else
         echo "Squid traffic: $log_lines lines, $log_entries valid entries"
     fi
@@ -256,9 +264,7 @@ check_repo() {
     fi
     if [ "$missing_flag" -eq 1 ]; then
         echo ""
-        echo "ERROR: Repository files not found. Run:"
-        echo ""
-        echo "git clone https://github.com/maravento/proxymon"
+        err "repository files not found, run: git clone https://github.com/maravento/proxymon -- abort"
         echo ""
         exit 1
     fi
@@ -298,8 +304,7 @@ create_proxymon_env() {
             grep -q "^${env_key}=" "$env_file" || missing_flag="$missing_flag $env_key"
         done
         if [ -n "$missing_flag" ]; then
-            echo "WARNING: $env_file is missing variables expected by this version:"
-            echo " $missing_flag"
+            warn "$env_file is missing variables expected by this version: $missing_flag -- alert"
             echo " Add them manually, or remove $env_file and re-run install to regenerate."
         fi
 
@@ -310,7 +315,7 @@ create_proxymon_env() {
         local range_value
         range_value=$(grep "^RANGE=" "$env_file" | head -n1 | cut -d'=' -f2-)
         if [ -n "$range_value" ] && ! [[ "$range_value" =~ $UH_CIDR ]]; then
-            echo "WARNING: RANGE='$range_value' in $env_file is not a network CIDR (e.g. 192.168.0.0/24)."
+            warn "RANGE='$range_value' in $env_file is not a network CIDR -- alert"
             echo " This looks like the old filename-glob value. Add REPORT_IP_GLOB=$range_value,"
             echo " then set RANGE to your actual LAN subnet (e.g. RANGE=192.168.0.0/24)."
         fi
@@ -400,8 +405,8 @@ create_proxymon_env() {
 
     cat > "$env_file" << ENVEOF
 # proxymon.env -- Bandata configuration
-# Generated by pminstall.sh on $(date '+%Y-%m-%d %H:%M:%S')
-# Edit manually if needed. Re-run pminstall.sh install to regenerate.
+# Generated by pmsetup.sh on $(date '+%Y-%m-%d %H:%M:%S')
+# Edit manually if needed. Re-run pmsetup.sh install to regenerate.
 
 # Network
 LAN=${lan_answer}
@@ -497,7 +502,7 @@ install_proxymon() {
     env_group_digit="${env_perms: -2:1}"
     env_other_digit="${env_perms: -1}"
     if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
-        echo "ERROR: $env_file_path has unsafe owner/permissions (owner=$env_owner perms=$env_perms)."
+        err "$env_file_path has unsafe owner/permissions (owner=$env_owner perms=$env_perms) -- abort"
         echo "Expected owner root with no group/other write access. Refusing to source it."
         exit 1
     fi
@@ -519,8 +524,7 @@ install_proxymon() {
         echo "Port 18080 bound to ${SERVER_IP} and 127.0.0.1"
         echo "Port 18081 bound to ${SERVER_IP}"
     else
-        echo "WARNING: SERVER_IP not set -- cannot configure Listen"
-        exit 1
+        abort "SERVER_IP not set, cannot configure Listen -- abort"
     fi
 
     echo "Restricting Proxymon panel to LAN..."
@@ -534,11 +538,10 @@ install_proxymon() {
                 sed -i "s|192.168.0.0/24 127.0.0.1|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
                 echo "Proxymon panel restricted to $RANGE and 127.0.0.1"
             else
-                echo "RANGE='$RANGE' in $env_file_path is not a valid CIDR (e.g. 192.168.0.0/24)."
-                echo "INFO: keeping default range -- fix RANGE and re-run"
+                warn "RANGE='$RANGE' in $env_file_path is not a valid CIDR, keeping the default range -- fallback"
             fi
         else
-            echo "INFO: keeping default range -- edit proxymon.conf by hand if needed"
+            info "keeping the default range, edit proxymon.conf by hand if needed -- skip"
         fi
     fi
 
@@ -786,7 +789,7 @@ EOF
     if getent group proxy >/dev/null; then
         usermod -aG proxy www-data
     else
-        echo "ERROR: group 'proxy' not found (expected to be created by the squid package)."
+        err "group 'proxy' not found, expected from the squid package -- abort"
         echo "Ensure squid is installed before running this step."
         exit 1
     fi
@@ -822,8 +825,7 @@ EOF
         if [[ "$apache_mod" == "php$php_version" ]] && a2enmod php 2>/dev/null; then
             continue
         fi
-        echo "ERROR: failed to enable Apache module '$apache_mod'. Is it installed?"
-        exit 1
+        abort "cannot enable Apache module '$apache_mod', check it is installed -- abort"
     done
 
     echo " Enabling Apache Sites..."
@@ -891,8 +893,7 @@ update_proxymon() {
     systemctl stop apache2
 
     if ! mkdir -p "$backup_dir"; then
-        echo "ERROR: cannot create $backup_dir -- abort"
-        exit 1
+        abort "cannot create $backup_dir -- abort"
     fi
 
     backup_list=()
@@ -900,7 +901,7 @@ update_proxymon() {
         if [ -e "/var/www/proxymon/$rel_path" ]; then
             backup_list+=("/var/www/proxymon/$rel_path")
         else
-            echo "INFO: $rel_path not present -- skip"
+            info "$rel_path not present -- skip"
         fi
     done
 
@@ -917,10 +918,7 @@ update_proxymon() {
         fi
     else
         rm -f "$backup_zip"
-        echo "ERROR: cannot write the archive"
-        echo "ERROR: $backup_zip"
-        echo "ERROR: check free space and permissions -- abort"
-        exit 1
+        abort "cannot write $backup_zip, check free space and permissions -- abort"
     fi
 
     echo "Replacing Proxy Monitor code..."
@@ -983,13 +981,13 @@ uninstall_proxymon() {
         | sudo -u www-data crontab - 2>/dev/null; then
         echo "LightSquid, SARG and SquidAnalyzer crontab entries removed"
     else
-        echo "WARNING: failed to update www-data crontab -- entries may remain"
+        warn "cannot update www-data crontab, entries may remain -- alert"
     fi
 
     if (crontab -l 2>/dev/null || true) | { grep -v "/var/www/proxymon/bandata/bandata.sh" || true; } | crontab - 2>/dev/null; then
         echo "Squid Monitor crontab removed"
     else
-        echo "WARNING: failed to update root crontab -- bandata.sh entry may remain"
+        warn "cannot update root crontab, bandata.sh entry may remain -- alert"
     fi
 
     if command -v iptables >/dev/null 2>&1; then
@@ -1025,7 +1023,7 @@ uninstall_proxymon() {
 
     if command -v ipset >/dev/null 2>&1 && ipset list bandata &>/dev/null; then
         ipset destroy bandata 2>/dev/null && echo "Bandata ipset destroyed" \
-            || echo "WARNING: could not destroy ipset 'bandata' -- remove manually if needed"
+            || warn "cannot destroy ipset 'bandata', remove it manually -- alert"
     fi
 
     if [[ -f "/etc/sarg/sarg.conf.bak" ]]; then
