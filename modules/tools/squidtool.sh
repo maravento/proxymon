@@ -82,7 +82,7 @@ alert_threshold=300
 # Squid log paths come from proxymon.env, never sourced: the file is read
 # key by key and SQUID_LOG_FILE may reference SQUID_LOG_DIR, which is
 # expanded here instead of by the shell.
-load_env_file() {
+load_conf() {
     local conf_file="$1" env_line env_key env_value
     [ -f "$conf_file" ] || return 1
     while IFS= read -r env_line || [ -n "$env_line" ]; do
@@ -90,9 +90,12 @@ load_env_file() {
         [[ "$env_line" =~ ^[[:space:]]*$ ]] && continue
         env_key="${env_line%%=*}"
         env_value="${env_line#*=}"
-        env_key="${env_key//[[:space:]]/}"
-        env_value="${env_value%\"}"
-        env_value="${env_value#\"}"
+        if [[ ! "$env_line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+           || [[ "$env_value" == [[:space:]\"\']* ]] \
+           || [[ "$env_value" == *[[:space:]\"\'] ]]; then
+            log "ERROR: malformed line in $conf_file: '$env_line' -- abort"
+            exit 1
+        fi
         case "$env_key" in
             SQUID_LOG_DIR)  squid_log_dir="$env_value" ;;
             SQUID_LOG_FILE) squid_log_file="$env_value" ;;
@@ -103,7 +106,7 @@ load_env_file() {
 
 squid_log_dir=""
 squid_log_file=""
-if ! load_env_file "$proxymon_env"; then
+if ! load_conf "$proxymon_env"; then
     log "WARNING: $(basename "$proxymon_env") not found -- fallback"
 fi
 squid_log_dir="${squid_log_dir:-/var/log/squid}"

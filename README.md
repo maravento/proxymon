@@ -36,14 +36,14 @@
 | :-----: | :-----: | :---------: | :--------------: |
 | Intel Core i5/Xeon/AMD Ryzen 5 (≥ 3.0 GHz) | 16 GB | 2 GB SSD | Squid Cache v6.13, Apache v2.4.58, PHP 8.3.6 |
 
-`pminstall.sh` checks that Squid, Apache, PHP, and a set of supporting packages
+`pmsetup.sh` checks that Squid, Apache, PHP, and a set of supporting packages
 are installed before proceeding, but it does not install them for you —
 installation aborts with a list of missing packages if any of this hasn't
 been done first.
 
 ```bash
-# other required packages (checked by pminstall.sh, no extra setup needed)
-apt install -y wget git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl \
+# other required packages (checked by pmsetup.sh, no extra setup needed)
+apt install -y wget curl git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl \
                 coreutils sarg fonts-lato fonts-liberation fonts-dejavu \
                 perl cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables
@@ -137,7 +137,7 @@ proxymon/
 │   ├── tools/                  # Maintenance scripts
 │   ├── index.html              # Main page with the module tabs
 │   └── proxymon.conf           # Apache vhost
-└── pminstall.sh                # Installer: install, update, uninstall
+└── pmsetup.sh                  # Installer: install, update, uninstall
 ```
 
 ## HOW TO INSTALL
@@ -147,7 +147,7 @@ proxymon/
 ```bash
 git clone --depth=1 https://github.com/maravento/proxymon.git
 cd proxymon
-sudo bash pminstall.sh
+sudo bash pmsetup.sh
 ```
 
 ### Important Before Using
@@ -187,11 +187,11 @@ sudo bash pminstall.sh
 - Apache virtual host configuration
 
 ```bash
-sudo ./pminstall.sh              # Interactive menu
-sudo ./pminstall.sh install      # Install Proxy Monitor
-sudo ./pminstall.sh update       # Update Proxy Monitor code (/var/www/proxymon only)
-sudo ./pminstall.sh uninstall    # Uninstall Proxy Monitor
-sudo ./pminstall.sh -h           # Show help message
+sudo ./pmsetup.sh              # Interactive menu
+sudo ./pmsetup.sh install      # Install Proxy Monitor
+sudo ./pmsetup.sh update       # Update Proxy Monitor code (/var/www/proxymon only)
+sudo ./pmsetup.sh uninstall    # Uninstall Proxy Monitor
+sudo ./pmsetup.sh -h           # Show help message
 ```
 
 <table width="100%">
@@ -561,11 +561,11 @@ sudo -u www-data crontab -e
   <tr>
     <td style="width: 50%; vertical-align: top;">
      To add users manually to realname (audit) and skipuser (exclude) lists:<br><br>
-     <em>Note: <b>BanData</b> updates these lists automatically on every run, if enabled: declare your ACLs in the <code>exclude_acls</code> variable and answer "y" to "Automatically update hostnames in Lightsquid?" during <code>pminstall.sh install</code> (default: n). This sets <code>UPDATE_REALNAME=true</code> in <code>/etc/proxymon/proxymon.env</code>.</em>
+     <em>Note: <b>BanData</b> updates these lists automatically on every run, if enabled: declare your ACLs in the <code>exclude_acls</code> variable and answer "y" to "Automatically update hostnames in Lightsquid?" during <code>pmsetup.sh install</code> (default: n). This sets <code>UPDATE_REALNAME=true</code> in <code>/etc/proxymon/proxymon.env</code>.</em>
     </td>
     <td style="width: 50%; vertical-align: top;">
      Para agregar usuarios manualmente a las listas realname (auditar) y skipuser (excluir):<br><br>
-     <em>Nota: <b>BanData</b> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pminstall.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
+     <em>Nota: <b>BanData</b> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pmsetup.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
      </td>
   </table>
 </table>
@@ -802,7 +802,7 @@ cat /var/www/proxymon/bandata/acl/{banmonth,banweek,banday}.txt | uniq
 </table>
 
 ```bash
-max_bandwidth_day="1G"
+MAX_BANDWIDTH_DAY=1G
 ```
 
 ##### By Week
@@ -819,7 +819,7 @@ max_bandwidth_day="1G"
 </table>
 
 ```bash
-max_bandwidth_week="5G"
+MAX_BANDWIDTH_WEEK=5G
 ```
 
 ##### By Month
@@ -836,7 +836,7 @@ max_bandwidth_week="5G"
 </table>
 
 ```bash
-max_bandwidth_month="20G"
+MAX_BANDWIDTH_MONTH=20G
 ```
 
 ### REPORTS (SARG)
