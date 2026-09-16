@@ -83,10 +83,10 @@ alert_threshold=300
 # key by key and SQUID_LOG_FILE may reference SQUID_LOG_DIR, which is
 # expanded here instead of by the shell.
 load_conf() {
-    local conf_file="$1" env_line env_key env_value
-    [ -f "$conf_file" ] || return 1
-    while IFS= read -r env_line || [ -n "$env_line" ]; do
-        [[ "$env_line" =~ ^[[:space:]]*# ]] && continue
+    local conf_file="$1" env_key env_value env_line
+    [[ ! -f "$conf_file" ]] && return 1
+    while IFS= read -r env_line || [[ -n "$env_line" ]]; do
+        [[ "$env_line" =~ ^[[:space:]]*[#] ]] && continue
         [[ "$env_line" =~ ^[[:space:]]*$ ]] && continue
         env_key="${env_line%%=*}"
         env_value="${env_line#*=}"
@@ -375,4 +375,4 @@ show_menu() {
 
 log "squidtool start..."
 show_menu
-log "squidtool done at: $(date)"
+log "squidtool done at: $(date '+%Y-%m-%d %H:%M:%S')"

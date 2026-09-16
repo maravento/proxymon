@@ -30,7 +30,7 @@
 
 ---
 
-**⚠️ WARNING:** Only tested on Ubuntu 24.04 LTS. Other versions or distributions are not tested and are used at your own risk.
+**⚠️ WARNING:** Tested on Ubuntu 24.04/26.04 LTS. Use on other versions or distributions is at your own risk.
 
 |   CPU   |   RAM   |   Storage   |   Dependencies   |
 | :-----: | :-----: | :---------: | :--------------: |
@@ -230,11 +230,11 @@ sudo ./pmsetup.sh -h           # Show help message
 
 ### MAIN MENU
 
-[![proxymon_main](https://raw.githubusercontent.com/maravento/proxymon/master/img/proxymon_tabs.png)](https://www.maravento.com/)
+[![proxymon_main](./img/proxymon_tabs.png)](https://www.maravento.com/)
 
 ### MONITOR (Squidmon)
 
-[![squidmon](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-tab.png)](https://www.maravento.com/)
+[![squidmon](./img/squidmon-tab.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -249,7 +249,7 @@ sudo ./pmsetup.sh -h           # Show help message
 
 #### Config
 
-[![squidmon conf](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-config.png)](https://www.maravento.com/)
+[![squidmon conf](./img/squidmon-config.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -325,7 +325,7 @@ http_access deny workdays blockdomains
 
 #### Top Blocked Domains & Clients
 
-[![squidmon top_blocked](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-top.png)](https://www.maravento.com/)
+[![squidmon top_blocked](./img/squidmon-top.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -348,7 +348,7 @@ http_access deny workdays blockdomains
 
 #### Traffic by Client IP
 
-[![squidmon traffic](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-traffic-clients.png)](https://www.maravento.com/)
+[![squidmon traffic](./img/squidmon-traffic-clients.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -363,7 +363,7 @@ http_access deny workdays blockdomains
 
 #### Filtering and Search
 
-[![squidmon acl](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-acls.png)](https://www.maravento.com/)
+[![squidmon acl](./img/squidmon-acls.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -378,7 +378,7 @@ http_access deny workdays blockdomains
 
 #### Report Generation
 
-[![squidmon pdf](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-pdf.png)](https://www.maravento.com/)
+[![squidmon pdf](./img/squidmon-pdf.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -393,7 +393,7 @@ http_access deny workdays blockdomains
 
 #### Blocked URLs Analysis
 
-[![squidmon filter](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-traffic-clients-filter.png)](https://www.maravento.com/)
+[![squidmon filter](./img/squidmon-traffic-clients-filter.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -408,7 +408,7 @@ http_access deny workdays blockdomains
 
 #### Patterns
 
-[![squidmon patterns](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-patterns.png)](https://www.maravento.com/)
+[![squidmon patterns](./img/squidmon-patterns.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -428,7 +428,7 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 
 #### Squidmon Search
 
-![squidmon search](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidmon-search.png)
+![squidmon search](./img/squidmon-search.png)
 
 <table width="100%">
   <tr>
@@ -476,11 +476,11 @@ sudo sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
 
 ### TRAFFIC (Lightsquid)
 
-[![lightsquid report](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-tab.png)](https://www.maravento.com/)
+[![lightsquid report](./img/lightsquid-tab.png)](https://www.maravento.com/)
 
 #### Error
 
-[![lightsquid error](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-report.png)](https://www.maravento.com/)
+[![lightsquid error](./img/lightsquid-report.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -499,7 +499,7 @@ sudo /var/www/proxymon/lightsquid/lightparser.pl today
 
 #### Search Bar
 
-[![lightsquid bar](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-searchbar.png)](https://www.maravento.com/)
+[![lightsquid bar](./img/lightsquid-searchbar.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -512,11 +512,11 @@ sudo /var/www/proxymon/lightsquid/lightparser.pl today
   </tr>
 </table>
 
-[![lightsquid bar output](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-searchbar-output.png)](https://www.maravento.com/)
+[![lightsquid bar output](./img/lightsquid-searchbar-output.png)](https://www.maravento.com/)
 
 #### Traffic Search
 
-![lightsquid search](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-search.png)
+![lightsquid search](./img/lightsquid-search.png)
 
 <table width="100%">
   <tr>
@@ -672,7 +672,7 @@ $perusertrafficlimit = 1000*1024*1024;
 
 #### Export Tools
 
-[![lightsquid menu](https://raw.githubusercontent.com/maravento/proxymon/master/img/lightsquid-menu.png)](https://www.maravento.com/)
+[![lightsquid menu](./img/lightsquid-menu.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -704,7 +704,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
 
 #### BanData
 
-[![bandata](https://raw.githubusercontent.com/maravento/proxymon/master/img/bandata.png)](https://www.maravento.com/)
+[![bandata](./img/bandata.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -737,11 +737,11 @@ sudo crontab -e
 */5 * * * * /var/www/proxymon/bandata/bandata.sh
 ```
 
-[![bandata terminal](https://raw.githubusercontent.com/maravento/proxymon/master/img/bandata-terminal.png)](https://www.maravento.com/)
+[![bandata terminal](./img/bandata-terminal.png)](https://www.maravento.com/)
 
 ##### Warning Portal
 
-[![warning](https://raw.githubusercontent.com/maravento/proxymon/master/img/warning.png)](https://www.maravento.com/)
+[![warning](./img/warning.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -841,7 +841,7 @@ MAX_BANDWIDTH_MONTH=20G
 
 ### REPORTS (SARG)
 
-[![sarg](https://raw.githubusercontent.com/maravento/proxymon/master/img/sarg-tab.png)](https://www.maravento.com/)
+[![sarg](./img/sarg-tab.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -856,7 +856,7 @@ MAX_BANDWIDTH_MONTH=20G
 
 #### Global Report
 
-[![sarg global](https://raw.githubusercontent.com/maravento/proxymon/master/img/sarg-global.png)](https://www.maravento.com/)
+[![sarg global](./img/sarg-global.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -871,7 +871,7 @@ MAX_BANDWIDTH_MONTH=20G
 
 #### Report by IP
 
-[![sarg ip](https://raw.githubusercontent.com/maravento/proxymon/master/img/sarg-ip.png)](https://www.maravento.com/)
+[![sarg ip](./img/sarg-ip.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -912,7 +912,7 @@ sudo systemctl restart cron
 
 ### REALTIME (SQSTAT)
 
-[![sqstat](https://raw.githubusercontent.com/maravento/proxymon/master/img/sqstat-tab.png)](https://www.maravento.com/)
+[![sqstat](./img/sqstat-tab.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -955,7 +955,7 @@ http_port 192.168.1.2:3128</pre>
 
 #### Sqstat Themes
 
-[![sqstat theme](https://raw.githubusercontent.com/maravento/proxymon/master/img/sqstat-dark.png)](https://www.maravento.com/)
+[![sqstat theme](./img/sqstat-dark.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -977,7 +977,7 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 
 #### Auto Refresh
 
-[![sqstat auto](https://raw.githubusercontent.com/maravento/proxymon/master/img/sqstat-auto.png)](https://www.maravento.com/)
+[![sqstat auto](./img/sqstat-auto.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -992,7 +992,7 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 
 #### Reload
 
-[![sqstat f5](https://raw.githubusercontent.com/maravento/proxymon/master/img/sqstat-f5.png)](https://www.maravento.com/)
+[![sqstat f5](./img/sqstat-f5.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -1007,7 +1007,7 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 
 ### ANALYZER (SquidAnalyzer)
 
-[![squidanalyzer](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidanalyzer-tab.png)](https://www.maravento.com/)
+[![squidanalyzer](./img/squidanalyzer-tab.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -1070,7 +1070,7 @@ sudo -u www-data crontab -e
 
 ### LOGVIEW
 
-[![logview](https://raw.githubusercontent.com/maravento/proxymon/master/img/logview.png)](https://www.maravento.com/)
+[![logview](./img/logview_light.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -1083,27 +1083,25 @@ sudo -u www-data crontab -e
   </tr>
 </table>
 
+[![logview_darkmode](./img/logview_dark.png)](https://www.maravento.com/)
+
 #### Controls
 
-[![logview_controls](https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_controls.png)](https://www.maravento.com/)
+[![logview_controls](./img/logview_controls.png)](https://www.maravento.com/)
 
 | Message | Description | Descripción |
 | ------- | ----------- | ----------- |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_codes.png" width="150"> | Filters by Squid cache code: TCP_HIT (cached), TCP_MISS (origin), TCP_MISS_ABORTED (aborted), TCP_DENIED (blocked), TCP_TUNNEL (HTTPS), TCP_MEM_HIT (memory cache), TCP_REFRESH_HIT/MISS (revalidated), TCP_REFRESH_UNMODIFIED/MODIFIED (revalidation result), NONE_NONE (invalid/error request). | Filtra por código de caché de Squid: TCP_HIT (caché), TCP_MISS (origen), TCP_MISS_ABORTED (abortado), TCP_DENIED (bloqueado), TCP_TUNNEL (HTTPS), TCP_MEM_HIT (memoria), TCP_REFRESH_HIT/MISS (revalidado), TCP_REFRESH_UNMODIFIED/MODIFIED (resultado de revalidación), NONE_NONE (solicitud inválida/error). |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_http.png" width="150"> | Filters by HTTP response code: 200, 206, 301, 302, 400, 403, 404, 500. Color-coded: green (2xx), yellow (3xx), red (4xx/5xx). | Filtra por código de respuesta HTTP: 200, 206, 301, 302, 400, 403, 404, 500. Codificado por color: verde (2xx), amarillo (3xx), rojo (4xx/5xx). |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_lines.png" width="150"> | Number of lines loaded from access.log on startup: 500, 1,000, 2,000, or 5,000. | Número de líneas cargadas desde access.log al inicio: 500, 1.000, 2.000 o 5.000. |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_refresh.png" width="150"> | Polling interval for new entries: 1s, 3s (default), 5s, 10s, or 30s. | Intervalo de sondeo para nuevas entradas: 1s, 3s (por defecto), 5s, 10s o 30s. |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_live.png" width="150"> | Live mode active. LogView polls access.log automatically and prepends new rows with a green animation. | Modo en vivo activo. LogView sondea el access.log automáticamente y agrega nuevas filas con animación verde. |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_pause.png" width="150"> | Polling suspended. Indicator turns red and shows PAUSED. Click again to resume. | Sondeo suspendido. El indicador cambia a rojo y muestra PAUSED. Haga clic nuevamente para reanudar. |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_darkmodebutton.png" width="150"> | Dark Mode button. | Boton para Modo Oscuro. |
-
-#### Dark Mode
-
-[![logview_darkmode](https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_darkmode.png)](https://www.maravento.com/)
+| <img src="./img/logview_codes.png" width="150"> | Filters by Squid cache code: TCP_HIT (cached), TCP_MISS (origin), TCP_MISS_ABORTED (aborted), TCP_DENIED (blocked), TCP_TUNNEL (HTTPS), TCP_MEM_HIT (memory cache), TCP_REFRESH_HIT/MISS (revalidated), TCP_REFRESH_UNMODIFIED/MODIFIED (revalidation result), NONE_NONE (invalid/error request). | Filtra por código de caché de Squid: TCP_HIT (caché), TCP_MISS (origen), TCP_MISS_ABORTED (abortado), TCP_DENIED (bloqueado), TCP_TUNNEL (HTTPS), TCP_MEM_HIT (memoria), TCP_REFRESH_HIT/MISS (revalidado), TCP_REFRESH_UNMODIFIED/MODIFIED (resultado de revalidación), NONE_NONE (solicitud inválida/error). |
+| <img src="./img/logview_http.png" width="150"> | Filters by HTTP response code: 200, 206, 301, 302, 400, 403, 404, 500. Color-coded: green (2xx), yellow (3xx), red (4xx/5xx). | Filtra por código de respuesta HTTP: 200, 206, 301, 302, 400, 403, 404, 500. Codificado por color: verde (2xx), amarillo (3xx), rojo (4xx/5xx). |
+| <img src="./img/logview_lines.png" width="150"> | Number of lines loaded from access.log on startup: 200, 500, 1,000, 2,000, or 5,000. | Número de líneas cargadas desde access.log al inicio: 200, 500, 1.000, 2.000 o 5.000. |
+| <img src="./img/logview_refresh.png" width="150"> | Polling interval for new entries: 1s (default), 3s, 5s, 10s, or 30s. | Intervalo de sondeo para nuevas entradas: 1s (por defecto), 3s, 5s, 10s o 30s. |
+| <img src="./img/logview_live.png" width="150"> | Live mode active. LogView polls access.log automatically and prepends new rows with a green animation. | Modo en vivo activo. LogView sondea el access.log automáticamente y agrega nuevas filas con animación verde. |
+| <img src="./img/logview_pause.png" width="150"> | Polling suspended. Indicator turns red and shows PAUSED. Click again to resume. | Sondeo suspendido. El indicador cambia a rojo y muestra PAUSED. Haga clic nuevamente para reanudar. |
+| <img src="./img/logview_darkmodebutton.png" width="150"> | Dark Mode button. | Boton para Modo Oscuro. |
 
 #### Search Bar
 
-[![logview_search](https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_search.png)](https://www.maravento.com/)
+[![logview_search](./img/logview_search.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -1118,12 +1116,12 @@ sudo -u www-data crontab -e
 
 | Message | Description | Descripción |
 | ------- | ----------- | ----------- |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_fulllog.png" width="150"> | Click to activate full log search mode. | Púlselo para activar el modo de búsqueda completa del log. |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/logview_livelog.png" width="150"> | Click to return to live view. | Púlselo para regresar a la vista en tiempo real. |
+| <img src="./img/logview_fulllog.png" width="150"> | Click to activate full log search mode. | Púlselo para activar el modo de búsqueda completa del log. |
+| <img src="./img/logview_livelog.png" width="150"> | Click to return to live view. | Púlselo para regresar a la vista en tiempo real. |
 
 ### AI
 
-[![squidai](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidai.png)](https://www.maravento.com/)
+[![squidai](./img/squidai.png)](https://www.maravento.com/)
 
 <table width="100%">
   <tr>
@@ -1293,8 +1291,8 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 
 | Message | Description | Descripción |
 | ------- | ----------- | ----------- |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/squidai-retry.png" width="400"> | Example of the automatic retry message. | Ejemplo del mensaje de reintento automático. |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/squidai-api.png" width="400"> | API Down Example. | Ejemplo de API caída. |
+| <img src="./img/squidai-retry.png" width="400"> | Example of the automatic retry message. | Ejemplo del mensaje de reintento automático. |
+| <img src="./img/squidai-api.png" width="400"> | API Down Example. | Ejemplo de API caída. |
 
 #### LLM status
 
@@ -1311,9 +1309,9 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 
 | Message | Description | Descripción |
 | ------- | ----------- | ----------- |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/LLM-checking.png" width="150"> | Checking LLM connection | Verificando conexión con el LLM |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/LLM-connected.png" width="150"> | LLM connected and ready | LLM conectado y listo |
-| <img src="https://raw.githubusercontent.com/maravento/proxymon/master/img/LLM-offline.png" width="150"> | LLM unreachable or offline | LLM inaccesible o fuera de línea |
+| <img src="./img/LLM-checking.png" width="150"> | Checking LLM connection | Verificando conexión con el LLM |
+| <img src="./img/LLM-connected.png" width="150"> | LLM connected and ready | LLM conectado y listo |
+| <img src="./img/LLM-offline.png" width="150"> | LLM unreachable or offline | LLM inaccesible o fuera de línea |
 
 ### TOOLS
 
@@ -1337,7 +1335,7 @@ sudo /var/www/proxymon/tools/squidtool.sh
 
 ##### Traffic Report
 
-[![squidtool traffic](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidtool-traffic.png)](https://www.maravento.com/)
+[![squidtool traffic](./img/squidtool-traffic.png)](https://www.maravento.com/)
 
 | Description | Descripción |
 | --- | --- |
@@ -1345,7 +1343,7 @@ sudo /var/www/proxymon/tools/squidtool.sh
 
 ##### Log Search
 
-[![squidtool search](https://raw.githubusercontent.com/maravento/proxymon/master/img/squidtool-search.png)](https://www.maravento.com/)
+[![squidtool search](./img/squidtool-search.png)](https://www.maravento.com/)
 
 | Description | Descripción |
 | --- | --- |

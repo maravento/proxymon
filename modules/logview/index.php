@@ -229,11 +229,6 @@ tbody tr{
   transition:background .1s;
 }
 tbody tr:hover{background:#f5f9ff}
-tbody tr.new-row{animation:slideIn .5s ease}
-@keyframes slideIn{
-  from{background:#e8f5e9;opacity:0;transform:translateX(-6px)}
-  to{background:transparent;opacity:1;transform:translateX(0)}
-}
 
 tbody td{
   padding:7px 12px;white-space:nowrap;
@@ -317,6 +312,7 @@ tbody td{
 </style>
 </head>
 <body>
+<script>try{if(localStorage.getItem('logview_theme')==='dark'){document.body.classList.add('dark');}}catch(e){}</script>
 
 <!-- ── Toolbar ──────────────────────────────────────────────────────── -->
 <div class="toolbar">
@@ -364,6 +360,7 @@ tbody td{
   </select>
 
   <select id="fLines" onchange="reload()">
+    <option value="200">Last 200 lines</option>
     <option value="500">Last 500 lines</option>
     <option value="1000">Last 1,000 lines</option>
     <option value="2000">Last 2,000 lines</option>
@@ -371,8 +368,8 @@ tbody td{
   </select>
 
   <select id="fInterval" onchange="changeInterval()">
-    <option value="1000">Refresh: 1s</option>
-    <option value="3000" selected>Refresh: 3s</option>
+    <option value="1000" selected>Refresh: 1s</option>
+    <option value="3000">Refresh: 3s</option>
     <option value="5000">Refresh: 5s</option>
     <option value="10000">Refresh: 10s</option>
     <option value="30000">Refresh: 30s</option>
@@ -453,7 +450,7 @@ var newRowCount = 0;
 var isLoading = false;
 var grepMode = false;
 
-var POLL_INTERVAL = 3000;
+var POLL_INTERVAL = 1000;
 var MAX_ROWS = 5000;
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -721,6 +718,20 @@ function updateStats() {
     ALL.filter(function(r){return r.cache_code==='TCP_DENIED';}).length.toLocaleString();
 }
 
+function rowHTML(r, q, rowClass) {
+  return '<tr class="' + rowClass + '">' +
+    '<td class="col-ts">'     + hl(r.ts, q) + '</td>' +
+    '<td class="col-client">' + hl(r.client, q)      + '</td>' +
+    '<td><span class="pill ' + pillClass(r.cache_code) + '">' + hl(r.cache_code, q) + '</span></td>' +
+    '<td class="' + httpClass(r.http_code) + '">'   + hl(r.http_code, q) + '</td>' +
+    '<td class="col-method">' + hl(r.method, q)      + '</td>' +
+    '<td class="col-url" title="' + esc(r.url) + '">' + hl(r.url, q) + '</td>' +
+    '<td class="col-bytes">'  + fmtBytes(r.bytes)    + '</td>' +
+    '<td class="col-elapsed">'+ hl(String(r.elapsed), q) + '</td>' +
+    '<td class="col-user">'   + hl(r.user, q)        + '</td>' +
+  '</tr>';
+}
+
 function renderTable(q, animateFirst) {
   var tbody = document.getElementById('tbody');
   var empty = document.getElementById('emptyMsg');
@@ -734,21 +745,18 @@ function renderTable(q, animateFirst) {
   }
   empty.style.display = 'none';
 
-  var slice = CUR.slice(0, 1000); // keep in sync with RENDER_CAP in updateStats()
+  var RENDER_CAP = 1000; // keep in sync with RENDER_CAP in updateStats()
 
-  tbody.innerHTML = slice.map(function(r, i) {
-    var rowClass = i < animateFirst ? 'new-row' : '';
-    return '<tr class="' + rowClass + '">' +
-      '<td class="col-ts">'     + hl(r.ts, q) + '</td>' +
-      '<td class="col-client">' + hl(r.client, q)      + '</td>' +
-      '<td><span class="pill ' + pillClass(r.cache_code) + '">' + hl(r.cache_code, q) + '</span></td>' +
-      '<td class="' + httpClass(r.http_code) + '">'   + hl(r.http_code, q) + '</td>' +
-      '<td class="col-method">' + hl(r.method, q)      + '</td>' +
-      '<td class="col-url" title="' + esc(r.url) + '">' + hl(r.url, q) + '</td>' +
-      '<td class="col-bytes">'  + fmtBytes(r.bytes)    + '</td>' +
-      '<td class="col-elapsed">'+ hl(String(r.elapsed), q) + '</td>' +
-      '<td class="col-user">'   + hl(r.user, q)        + '</td>' +
-    '</tr>';
+  if (animateFirst > 0 && tbody.children.length === Math.min(CUR.length - animateFirst, RENDER_CAP)) {
+    var html = '';
+    for (var i = 0; i < animateFirst; i++) html += rowHTML(CUR[i], q, 'new-row');
+    tbody.insertAdjacentHTML('afterbegin', html);
+    while (tbody.children.length > RENDER_CAP) tbody.removeChild(tbody.lastElementChild);
+    return;
+  }
+
+  tbody.innerHTML = CUR.slice(0, RENDER_CAP).map(function(r, i) {
+    return rowHTML(r, q, i < animateFirst ? 'new-row' : '');
   }).join('');
 }
 

@@ -105,8 +105,40 @@ if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_
     log "Expected owner root, no group/other write -- abort"
     exit 1
 fi
-# shellcheck source=/etc/proxymon/proxymon.env
-source "$proxymon_env"
+# LOAD_CONF
+# Read known key=value pairs from a config file, without sourcing it
+load_conf() {
+    local conf_file="$1" env_key env_value env_line
+    [[ ! -f "$conf_file" ]] && { log "WARNING: $conf_file not found -- fallback"; return 1; }
+    while IFS= read -r env_line || [[ -n "$env_line" ]]; do
+        [[ "$env_line" =~ ^[[:space:]]*[#] ]] && continue
+        [[ "$env_line" =~ ^[[:space:]]*$ ]] && continue
+        env_key="${env_line%%=*}"
+        env_value="${env_line#*=}"
+        if [[ ! "$env_line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+           || [[ "$env_value" == [[:space:]\"\']* ]] \
+           || [[ "$env_value" == *[[:space:]\"\'] ]]; then
+            log "ERROR: malformed line in $conf_file: '$env_line' -- abort"
+            exit 1
+        fi
+        case "$env_key" in
+            LAN|REPORT_IP_GLOB|LIGHTSQUID_DIR|REPORT_PATH|REALNAME_CFG|SKIPUSERS_CFG|ACL_PATH|ACL_MAC_PATH|ACL_BANDATA_PATH|ALLOW_LIST|BLOCK_LIST_DAY|BLOCK_LIST_WEEK|BLOCK_LIST_MONTH|WARNING_HTML|MAX_BANDWIDTH_DAY|MAX_BANDWIDTH_WEEK|MAX_BANDWIDTH_MONTH|BANDATA_HOTSPOT|HOTSPOT_PATH|UPDATE_REALNAME)
+                printf -v "$env_key" '%s' "$env_value"
+                ;;
+        esac
+    done < "$conf_file"
+}
+load_conf "$proxymon_env"
+
+# Resolve cross-key references (same mechanism as squidtool.sh)
+REPORT_PATH="${REPORT_PATH//\$LIGHTSQUID_DIR/$LIGHTSQUID_DIR}"
+REALNAME_CFG="${REALNAME_CFG//\$LIGHTSQUID_DIR/$LIGHTSQUID_DIR}"
+SKIPUSERS_CFG="${SKIPUSERS_CFG//\$LIGHTSQUID_DIR/$LIGHTSQUID_DIR}"
+ACL_MAC_PATH="${ACL_MAC_PATH//\$ACL_PATH/$ACL_PATH}"
+ALLOW_LIST="${ALLOW_LIST//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
+BLOCK_LIST_DAY="${BLOCK_LIST_DAY//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
+BLOCK_LIST_WEEK="${BLOCK_LIST_WEEK//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
+BLOCK_LIST_MONTH="${BLOCK_LIST_MONTH//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
 
 # ------------------------------------------------------------------------------
 # VARIABLES
@@ -127,9 +159,10 @@ UH_PREFIX='0.0.0.0:0 128.0.0.0:1 192.0.0.0:2 224.0.0.0:3 240.0.0.0:4 248.0.0.0:5
 log "bandata start..."
 
 # ------------------------------------------------------------------------------
-# FUNTIONS
+# FUNCTIONS
 # ------------------------------------------------------------------------------
 
+# PREFLIGHT CHECKS
 # Self-heal: remove orphaned .tmp files left by a previous run that failed
 # between the write and the mv (no -e/trap in this script to catch that).
 for stale_file in "$BLOCK_LIST_DAY.tmp" "$BLOCK_LIST_WEEK.tmp" "$BLOCK_LIST_MONTH.tmp" "$REALNAME_CFG.tmp" "$SKIPUSERS_CFG.tmp"; do
@@ -179,6 +212,7 @@ if [ -z "$max_bw_month" ]; then
     exit 1
 fi
 
+# FILESYSTEM LAYOUT
 # Create folders if they don't exist
 [ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"
 [ -d "$ACL_MAC_PATH" ] || mkdir -p "$ACL_MAC_PATH"
@@ -227,7 +261,8 @@ else
 
         if [ "$subshell_ok" -eq 1 ]; then
             grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") "$tmp_day" | $sort_ips | uniq > "${BLOCK_LIST_DAY}.tmp"
-            if [ "${PIPESTATUS[0]}" -le 1 ]; then
+            pipe_status=("${PIPESTATUS[@]}")
+            if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
                 mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"
             else
                 log "ERROR: cannot build daily block list -- keeping existing"
@@ -274,7 +309,10 @@ if [ "$today_dow" -eq 1 ]; then
         user_totals=$(echo "$report_files" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
         over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
         echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
-        if [ "${PIPESTATUS[2]}" -le 1 ]; then
+        pipe_status=("${PIPESTATUS[@]}")
+        if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
+           && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
+           && [ "${pipe_status[4]}" -eq 0 ]; then
             mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"
         else
             log "ERROR: cannot build weekly block list -- keeping existing"
@@ -319,7 +357,10 @@ else
     user_totals=$(echo "$report_files" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
     over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
     echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
-    if [ "${PIPESTATUS[2]}" -le 1 ]; then
+    pipe_status=("${PIPESTATUS[@]}")
+    if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
+       && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
+       && [ "${pipe_status[4]}" -eq 0 ]; then
         mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"
     else
         log "ERROR: cannot build monthly block list -- keeping existing"
@@ -352,6 +393,7 @@ all_bans=$(cat "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH" | $sort_
 
 if [ -n "$all_bans" ]; then
     for banned_ip in $all_bans; do
+        [[ "$banned_ip" =~ $UH_IPV4 ]] || { log "WARNING: not an IPv4 '$banned_ip' -- skip"; continue; }
         ipset -exist add bandata_new "$banned_ip"
     done
 fi
@@ -459,7 +501,8 @@ update_lightsquid_realname() {
             log "WARNING: $(basename "$hotspot_acl") not found -- skip"
             return
         fi
-        awk -F';' '$1 == "a" && NF >= 4 {print $3, $4}' "$hotspot_acl"
+        awk -F';' -v re="${UH_IPV4//\\./\\\\.}" \
+            '$1 == "a" && NF >= 4 && $3 ~ re {print $3, $4}' "$hotspot_acl"
     }
 
     # /etc/hosts entries (loopback and the server's own IP) generate proxy
@@ -526,4 +569,4 @@ fi
 # END
 # ------------------------------------------------------------------------------
 
-log "bandata done at: $(date)"
+log "bandata done at: $(date '+%Y-%m-%d %H:%M:%S')"
