@@ -10,14 +10,30 @@
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b>Proxy Monitor</b> is a web application designed to work exclusively with the <a href="https://www.squid-cache.org/" target="_blank">Squid-Cache</a> proxy server and requires the <a href="https://httpd.apache.org/" target="_blank">Apache2</a> web server. It retrieves traffic information directly from Squid's <code>access.log</code> file and uses it to generate detailed statistics, reports, and various analysis tools for monitoring local network usage. Its features are organized into modules, which can be accessed through the tabs located at the top of the dashboard.
+      <b>Proxy Monitor</b> is a web application designed to work exclusively with the <a href="https://www.squid-cache.org/" target="_blank">Squid-Cache</a> proxy server. It requires the <a href="https://httpd.apache.org/" target="_blank">Apache2</a> web server. <br>
+      <br>
+      It retrieves traffic information directly from Squid's <code>access.log</code> file and uses it to generate detailed statistics, reports and analysis tools for monitoring local network usage. <br>
+      <br>
+      Its features are organized into modules, reachable through the tabs at the top of the dashboard.
       <br><br>
-      <b>Proxy Monitor</b> is also a preservation project for Squid analysis tools that, despite their usefulness, have been abandoned and are no longer supported, such as SqStat, SARG, LightSquid, and SquidAnalyzer. These tools are recovered, integrated, and maintained within the <b>Proxy Monitor</b> ecosystem so they remain available and continue to receive support. Three additional in-house modules complement these tools, expanding the project's analysis and monitoring capabilities with features that include artificial intelligence.
+      <b>Proxy Monitor</b> is also a preservation project for Squid analysis tools that, despite their usefulness, were abandoned and no longer receive support. Those tools are SqStat, SARG, LightSquid and SquidAnalyzer. <br>
+      <br>
+      They are recovered, integrated and maintained inside the <b>Proxy Monitor</b> ecosystem, so they remain available and keep receiving support. <br>
+      <br>
+      Three additional in-house modules complement them and extend the project's analysis and monitoring capabilities, including features based on artificial intelligence.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b>Proxy Monitor</b> es una aplicación web diseñada para funcionar exclusivamente con el servidor proxy <a href="https://www.squid-cache.org/" target="_blank">Squid-Cache</a> y requiere el servidor web <a href="https://httpd.apache.org/" target="_blank">Apache2</a>. Obtiene la información de tráfico directamente del archivo <code>access.log</code> de Squid y la utiliza para generar estadísticas detalladas, informes y diferentes herramientas de análisis sobre el uso de la red local. Sus funcionalidades se encuentran organizadas en módulos, a los que se puede acceder mediante las pestañas ubicadas en la parte superior del panel.
+      <b>Proxy Monitor</b> es una aplicación web diseñada para funcionar exclusivamente con el servidor proxy <a href="https://www.squid-cache.org/" target="_blank">Squid-Cache</a>. Requiere el servidor web <a href="https://httpd.apache.org/" target="_blank">Apache2</a>. <br>
+      <br>
+      Obtiene la información de tráfico directamente del archivo <code>access.log</code> de Squid y la usa para generar estadísticas detalladas, reportes y herramientas de análisis del uso de la red local. <br>
+      <br>
+      Sus funciones están organizadas en módulos, accesibles desde las pestañas de la parte superior del panel.
       <br><br>
-      <b>Proxy Monitor</b> es también un proyecto de conservación de herramientas de análisis para Squid que, pese a su utilidad, han sido abandonadas y ya no cuentan con soporte, tales como SqStat, SARG, LightSquid y SquidAnalyzer, las cuales son recuperadas, integradas y mantenidas dentro del ecosistema <b>Proxy Monitor</b> para que continúen disponibles y reciban soporte. A estas herramientas se suman tres módulos propios adicionales que amplían las capacidades de análisis y monitoreo del proyecto, incluyendo funcionalidades basadas en inteligencia artificial.
+      <b>Proxy Monitor</b> es también un proyecto de conservación de herramientas de análisis para Squid que, pese a su utilidad, fueron abandonadas y ya no reciben soporte. Esas herramientas son SqStat, SARG, LightSquid y SquidAnalyzer. <br>
+      <br>
+      Se recuperan, integran y mantienen dentro del ecosistema de <b>Proxy Monitor</b>, de modo que sigan disponibles y con soporte. <br>
+      <br>
+      Tres módulos propios adicionales las complementan y amplían la capacidad de análisis y monitoreo del proyecto, incluidas funciones basadas en inteligencia artificial.
     </td>
   </tr>
 </table>
@@ -43,7 +59,7 @@ been done first.
 
 ```bash
 # other required packages (checked by pmsetup.sh, no extra setup needed)
-apt install -y wget curl git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl \
+apt install -y wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl \
                 coreutils sarg fonts-lato fonts-liberation fonts-dejavu \
                 perl cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables
@@ -199,12 +215,20 @@ sudo ./pmsetup.sh -h           # Show help message
     <td style="width: 50%; vertical-align: top;">
       <b>install</b> writes everything from scratch (Apache vhosts, <code>proxymon.env</code>, ACL lists, SARG/PHP/Apache hardening, cron). To avoid overwriting a working setup or prompting over one, it refuses to run if <code>/var/www/proxymon</code> already exists — use <b>update</b> or <b>uninstall</b> first.
       <br><br>
-      <b>update</b> only refreshes code and permissions under <code>/var/www/proxymon</code>. It never touches Apache/PHP/SARG system config, cron, ACL lists, or <code>proxymon.env</code>, and it never prompts. Sequence: stop Apache → archive live data to <code>/etc/bak/proxymon/proxymonbak_&lt;YYYYMMDD_HHMM&gt;.zip</code> → replace code → unzip that archive back over the fresh copy → reset permissions → restart Apache. A maximum of 3 archives is kept. Live data preserved this way:
+      <b>update</b> only refreshes the code and the permissions under <code>/var/www/proxymon</code>. It never touches the Apache, PHP or SARG system configuration, the cron entries, the ACL lists or <code>proxymon.env</code>, and it never prompts. <br>
+      <br>
+      Sequence: stop Apache, back up the project with <code>tools/pmbk.sh</code>, stage the live data aside, replace the code, move the live data back over the fresh copy, reset permissions, restart Apache. <br>
+      <br>
+      Live data staged aside and put back this way, never touched by <code>update</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
       <b>install</b> escribe todo desde cero (vhosts de Apache, <code>proxymon.env</code>, listas ACL, hardening de SARG/PHP/Apache, cron). Para no sobrescribir una instalación en funcionamiento ni pedir datos sobre ella, se detiene si <code>/var/www/proxymon</code> ya existe — use <b>update</b> o <b>uninstall</b> primero.
       <br><br>
-      <b>update</b> solo refresca el código y los permisos dentro de <code>/var/www/proxymon</code>. Nunca toca la configuración de Apache/PHP/SARG, el cron, las listas ACL, ni <code>proxymon.env</code>, y nunca pide datos. Secuencia: detiene Apache → archiva los datos vivos en <code>/etc/bak/proxymon/proxymonbak_&lt;YYYYMMDD_HHMM&gt;.zip</code> → reemplaza el código → desempaqueta ese archivo sobre la copia recién puesta → reestablece permisos → reinicia Apache. Se conservan como máximo 3 archivos. Datos vivos preservados de esta forma:
+      <b>update</b> solo refresca el código y los permisos dentro de <code>/var/www/proxymon</code>. Nunca toca la configuración de Apache, PHP o SARG, las entradas de cron, las listas ACL ni <code>proxymon.env</code>, y nunca pide datos. <br>
+      <br>
+      Secuencia: detiene Apache, respalda el proyecto con <code>tools/pmbk.sh</code>, aparta los datos vivos, reemplaza el código, devuelve los datos vivos sobre la copia recién puesta, reestablece permisos, reinicia Apache. <br>
+      <br>
+      Datos vivos apartados y devueltos de esta forma, nunca tocados por <code>update</code>:
     </td>
   </tr>
 </table>
@@ -353,10 +377,18 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Provides an expandable view of all client IP addresses and their traffic statistics. For each client, you can see total requests, blocked requests, and allowed requests. The module includes advanced filtering options with ACL selection, search functionality to find specific IPs or domains, and time range reports (Last 24 Hours, Last 7 Days, Last 30 Days). Individual PDF reports can be generated for each client's traffic.
+     Provides an expandable view of all client IP addresses and their traffic statistics. For each client you can see total requests, blocked requests and allowed requests. <br>
+     <br>
+     The module includes advanced filtering with ACL selection, a search function to find specific IPs or domains, and time-range reports: Last 24 Hours, Last 7 Days and Last 30 Days. <br>
+     <br>
+     Individual PDF reports can be generated for each client's traffic.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Proporciona una vista expandible de todas las direcciones IP de clientes y sus estadísticas de tráfico. Para cada cliente, puede ver el total de solicitudes, solicitudes bloqueadas y solicitudes permitidas. El módulo incluye opciones de filtrado avanzadas con selección de ACL, funcionalidad de búsqueda para encontrar IPs o dominios específicos, y reportes de rango de tiempo (Últimas 24 Horas, Últimos 7 Días, Últimos 30 Días). Se pueden generar reportes PDF individuales para el tráfico de cada cliente.
+     Proporciona una vista expandible de todas las direcciones IP de clientes y sus estadísticas de tráfico. Para cada cliente puede ver el total de solicitudes, las solicitudes bloqueadas y las permitidas. <br>
+     <br>
+     El módulo incluye filtrado avanzado con selección de ACL, una función de búsqueda para encontrar IP o dominios concretos, y reportes por rango de tiempo: Últimas 24 Horas, Últimos 7 Días y Últimos 30 Días. <br>
+     <br>
+     Se pueden generar reportes PDF individuales para el tráfico de cada cliente.
     </td>
   </tr>
 </table>
@@ -368,10 +400,18 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon provides powerful filtering capabilities, allowing you to classify traffic using ACLs (Access Control Lists) such as <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b>, or <b>Unknown ACL</b> (any rule defined in <code>squid.conf</code> that is not listed in the ACLs specified in Config). It also includes a search tool to locate clients by IP address or identify domains by name, as well as the options <b>Show Blocked Only</b> and <b>Show Allowed Only</b> to display only blocked or allowed traffic. To return to the default view, you can use the <b>Clean Filters</b> button.
+     Squidmon classifies traffic using ACLs (Access Control Lists), such as <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b> and <b>Unknown ACL</b>. The last one covers any rule defined in <code>squid.conf</code> that is not among the ACLs listed in Config. <br>
+     <br>
+     It also includes a search tool to locate clients by IP address or identify domains by name, plus the options <b>Show Blocked Only</b> and <b>Show Allowed Only</b>. <br>
+     <br>
+     To return to the default view, use the <b>Clean Filters</b> button.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon ofrece potentes capacidades de filtrado, permitiendo clasificar el tráfico mediante ACLs (Access Control Lists) como <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b>, o <b>Unknown ACL</b> (cualquier regla definida en <code>squid.conf</code> que no esté incluida en las ACLs especificadas en Config). También incluye una herramienta de búsqueda para localizar clientes por dirección IP o identificar dominios por nombre, así como las opciones <b>Show Blocked Only</b> y <b>Show Allowed Only</b> para visualizar únicamente el tráfico bloqueado o permitido. Para volver a la vista inicial, puede usar el botón <b>Clean Filters</b>.
+     Squidmon clasifica el tráfico mediante ACL (Access Control Lists), como <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b> y <b>Unknown ACL</b>. Esta última cubre cualquier regla definida en <code>squid.conf</code> que no esté entre las ACL listadas en Config. <br>
+     <br>
+     También incluye una herramienta de búsqueda para localizar clientes por dirección IP o identificar dominios por nombre, más las opciones <b>Show Blocked Only</b> y <b>Show Allowed Only</b>. <br>
+     <br>
+     Para volver a la vista por defecto, use el botón <b>Clean Filters</b>.
     </td>
   </tr>
 </table>
@@ -383,10 +423,18 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Generate detailed PDF reports for traffic analysis and auditing purposes. Reports can be generated for specific time ranges including Last 24 Hours, Last 7 Days, or Last 30 Days. Each client or domain can have an individual PDF report created, making it easy to share traffic statistics with other administrators or stakeholders. The <b>Generate PDF Report</b> button is available throughout the interface.
+     Generate detailed PDF reports for traffic analysis and auditing. <br>
+     <br>
+     Reports can be generated for specific time ranges: Last 24 Hours, Last 7 Days or Last 30 Days. Each client or domain can have its own PDF report, which makes it easy to share traffic statistics with other administrators or interested parties. <br>
+     <br>
+     The <b>Generate PDF Report</b> button is available throughout the interface.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Genere reportes PDF detallados para propósitos de análisis de tráfico y auditoría. Los reportes se pueden generar para rangos de tiempo específicos incluyendo Últimas 24 Horas, Últimos 7 Días o Últimos 30 Días. Se puede crear un reporte PDF individual para cada cliente o dominio, facilitando compartir estadísticas de tráfico con otros administradores o partes interesadas. El botón <b>Generate PDF Report</b> está disponible en toda la interfaz.
+     Genere reportes PDF detallados para análisis de tráfico y auditoría. <br>
+     <br>
+     Los reportes se pueden generar para rangos de tiempo concretos: Últimas 24 Horas, Últimos 7 Días o Últimos 30 Días. Cada cliente o dominio puede tener su propio reporte PDF, lo que facilita compartir estadísticas de tráfico con otros administradores o partes interesadas. <br>
+     <br>
+     El botón <b>Generate PDF Report</b> está disponible en toda la interfaz.
     </td>
   </tr>
 </table>
@@ -452,10 +500,18 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon reads only the current <code>access.log</code> file, not rotated files (<code>access.log.0</code>, <code>access.log.1</code>, <code>access.log.gz</code>, etc.). It's recommended to disable Squid's internal rotation with <code>logfile_rotate 0</code> in <code>squid.conf</code> and let <code>logrotate</code> handle it exclusively. Configure <code>/etc/logrotate.d/squid</code> to use minimum <code>weekly</code> (7 days) or maximum <code>monthly</code> (1 month) rotation and keep <code>rotate 7</code> for history. This prevents conflicts between both rotation systems.
+     Squidmon reads only the current <code>access.log</code> file. It does not read rotated files such as <code>access.log.0</code>, <code>access.log.1</code> or <code>access.log.gz</code>. <br>
+     <br>
+     Disable Squid's internal rotation with <code>logfile_rotate 0</code> in <code>squid.conf</code> and let <code>logrotate</code> handle it exclusively. <br>
+     <br>
+     Configure <code>/etc/logrotate.d/squid</code> with <code>weekly</code> rotation as a minimum and <code>monthly</code> as a maximum, and keep <code>rotate 7</code> for history. This prevents conflicts between the two rotation systems.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon solo lee el archivo <code>access.log</code> actual, no archivos rotados (<code>access.log.0</code>, <code>access.log.1</code>, <code>access.log.gz</code>, etc.). Se recomienda desactivar la rotación interna de Squid con <code>logfile_rotate 0</code> en <code>squid.conf</code> y dejar que <code>logrotate</code> la maneje exclusivamente. Configure <code>/etc/logrotate.d/squid</code> para usar como mínimo rotación <code>weekly</code> (7 días) o como máximo <code>monthly</code> (1 mes) y mantener <code>rotate 7</code> para el historial. Esto evita conflictos entre ambos sistemas de rotación.
+     Squidmon solo lee el archivo <code>access.log</code> actual. No lee archivos rotados como <code>access.log.0</code>, <code>access.log.1</code> o <code>access.log.gz</code>. <br>
+     <br>
+     Desactive la rotación interna de Squid con <code>logfile_rotate 0</code> en <code>squid.conf</code> y deje que <code>logrotate</code> se encargue en exclusiva. <br>
+     <br>
+     Configure <code>/etc/logrotate.d/squid</code> con rotación <code>weekly</code> como mínimo y <code>monthly</code> como máximo, y conserve <code>rotate 7</code> de historial. Esto evita conflictos entre los dos sistemas de rotación.
     </td>
   </tr>
 </table>
@@ -567,7 +623,7 @@ sudo -u www-data crontab -e
      Para agregar usuarios manualmente a las listas realname (auditar) y skipuser (excluir):<br><br>
      <em>Nota: <b>BanData</b> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pmsetup.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
      </td>
-  </table>
+  </tr>
 </table>
 
 ```bash
@@ -889,10 +945,18 @@ MAX_BANDWIDTH_MONTH=20G
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      SARG only keeps the last 7 days of logs as configured in <code>/etc/sarg/sarg.conf</code> with the parameter <code>lastlog 7</code>. Additionally, a weekly cron job automatically deletes report directories older than 30 days. If you want to change this behavior and extend the retention period (not recommended), modify both the configuration file and the crontab line according to your needs:
+      SARG only keeps the last 7 days of logs, as configured in <code>/etc/sarg/sarg.conf</code> with the parameter <code>lastlog 7</code>. <br>
+      <br>
+      In addition, a weekly cron job deletes report directories older than 30 days. <br>
+      <br>
+      To extend the retention period, which is not recommended, modify both the configuration file and the crontab line:
     </td>
     <td style="width: 50%; vertical-align: top;">
-      SARG solo conserva los últimos 7 días de registros según la configuración en <code>/etc/sarg/sarg.conf</code> con el parámetro <code>lastlog 7</code>. Además, una tarea cron semanal elimina automáticamente los directorios de reportes con más de 30 días de antigüedad. Si quiere cambiar este comportamiento y extender el período de retención (no recomendado), modifique tanto el archivo de configuración como la línea de crontab según sus necesidades:
+      SARG solo conserva los últimos 7 días de registros, según la configuración de <code>/etc/sarg/sarg.conf</code> con el parámetro <code>lastlog 7</code>. <br>
+      <br>
+      Además, una tarea cron semanal elimina los directorios de reportes con más de 30 días de antigüedad. <br>
+      <br>
+      Para ampliar el período de retención, algo no recomendado, modifique tanto el archivo de configuración como la línea de crontab:
     </td>
   </tr>
 </table>
@@ -928,10 +992,18 @@ sudo systemctl restart cron
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The password in <code>sqstat/config.inc.php</code> (<code>$cachemgr_passwd[0]="mypass";</code>) must match your Squid's <code>cachemgr_passwd</code> directive in <code>squid.conf</code> (<code>cachemgr_passwd mypass all</code>) — unless you're not using these directives at all, in which case leave both blank/commented. <code>install</code> fills this in automatically with the local user detected on the system; edit it manually afterward if you use a different password in <code>squid.conf</code>.
+     The password in <code>sqstat/config.inc.php</code>, <code>$cachemgr_passwd[0]="mypass";</code>, must match the <code>cachemgr_passwd</code> directive of your Squid in <code>squid.conf</code>, <code>cachemgr_passwd mypass all</code>. <br>
+     <br>
+     If you do not use those directives at all, leave both blank or commented out. <br>
+     <br>
+     <code>install</code> fills this in automatically with the local user detected on the system. Edit it by hand afterwards if you use a different password in <code>squid.conf</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     La contraseña en <code>sqstat/config.inc.php</code> (<code>$cachemgr_passwd[0]="mipass";</code>) debe coincidir con la directiva <code>cachemgr_passwd</code> de tu Squid en <code>squid.conf</code> (<code>cachemgr_passwd mipass all</code>) — salvo que no uses estas directivas, en cuyo caso deja ambas en blanco/comentadas. <code>install</code> la completa automáticamente con el usuario local detectado en el sistema; edítala manualmente después si usas una contraseña distinta en <code>squid.conf</code>.
+     La contraseña en <code>sqstat/config.inc.php</code>, <code>$cachemgr_passwd[0]="mipass";</code>, debe coincidir con la directiva <code>cachemgr_passwd</code> de su Squid en <code>squid.conf</code>, <code>cachemgr_passwd mipass all</code>. <br>
+     <br>
+     Si no usa esas directivas, deje ambas en blanco o comentadas. <br>
+     <br>
+     <code>install</code> la completa automáticamente con el usuario local detectado en el sistema. Edítela a mano después si usa otra contraseña en <code>squid.conf</code>.
     </td>
   </tr>
 </table>
@@ -939,16 +1011,32 @@ sudo systemctl restart cron
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     <b>Important:</b> SqStat connects to Squid from the same server where the panel runs, using <code>$squidhost[0]</code>/<code>$squidport[0]</code> from <code>sqstat/config.inc.php</code> (default: <code>127.0.0.1</code>). If your <code>squid.conf</code> binds <code>http_port</code> to a specific IP (e.g. <code>http_port 192.168.1.2:3128</code>) instead of just the port, Squid will not be listening on loopback and SqStat will fail with <code>Error (111): Connection refused</code>. Add a loopback listener alongside your existing one:
+     <b>Important:</b> SqStat connects to Squid from the same server where the panel runs, using <code>$squidhost[0]</code> and <code>$squidport[0]</code> from <code>sqstat/config.inc.php</code>. The default is <code>127.0.0.1</code>. <br>
+     <br>
+     If your <code>squid.conf</code> binds <code>http_port</code> to a specific IP, for example <code>http_port 192.168.1.2:3128</code>, instead of just the port, Squid does not listen on loopback and SqStat fails with <code>Error (111): Connection refused</code>. <br>
+     <br>
+     Add a loopback listener alongside the existing one:
      <pre>http_port 127.0.0.1:3128
 http_port 192.168.1.2:3128</pre>
-     Multiple <code>http_port</code> lines are valid as long as each IP:PORT pair is unique (a wildcard <code>http_port 3128</code> cannot coexist with an explicit IP on the same port). Then restart Squid — <code>reload</code>/<code>reconfigure</code> does not bind new ports: <code>sudo systemctl restart squid</code>. Verify with <code>ss -tlnp | grep 3128</code> (both listeners must appear). Pointing <code>$squidhost[0]</code> at the LAN IP instead is not recommended: if your firewall filters traffic to that IP, the connection is dropped and SqStat fails with <code>Error (110): Connection timed out</code>. Loopback also satisfies Squid's usual <code>http_access allow localhost manager</code> rule.
+     Multiple <code>http_port</code> lines are valid as long as each IP:PORT pair is unique. A wildcard <code>http_port 3128</code> cannot coexist with an explicit IP on the same port. <br>
+     <br>
+     Then restart Squid with <code>sudo systemctl restart squid</code>. <code>reload</code> and <code>reconfigure</code> do not bind new ports. Verify with <code>ss -tlnp | grep 3128</code>: both listeners must appear. <br>
+     <br>
+     Pointing <code>$squidhost[0]</code> at the LAN IP instead is not recommended. If your firewall filters traffic to that IP, the connection is dropped and SqStat fails with <code>Error (110): Connection timed out</code>. Loopback also satisfies Squid's usual <code>http_access allow localhost manager</code> rule.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     <b>Importante:</b> SqStat se conecta a Squid desde el mismo servidor donde corre el panel, usando <code>$squidhost[0]</code>/<code>$squidport[0]</code> de <code>sqstat/config.inc.php</code> (por defecto: <code>127.0.0.1</code>). Si tu <code>squid.conf</code> ata <code>http_port</code> a una IP específica (ej. <code>http_port 192.168.1.2:3128</code>) en vez de solo el puerto, Squid no estará escuchando en loopback y SqStat fallará con <code>Error (111): Connection refused</code>. Agrega un listener en loopback junto al que ya tienes:
+     <b>Importante:</b> SqStat se conecta a Squid desde el mismo servidor donde corre el panel, usando <code>$squidhost[0]</code> y <code>$squidport[0]</code> de <code>sqstat/config.inc.php</code>. El valor por defecto es <code>127.0.0.1</code>. <br>
+     <br>
+     Si su <code>squid.conf</code> ata <code>http_port</code> a una IP concreta, por ejemplo <code>http_port 192.168.1.2:3128</code>, en lugar de solo al puerto, Squid no escucha en loopback y SqStat falla con <code>Error (111): Connection refused</code>. <br>
+     <br>
+     Agregue un listener de loopback junto al que ya tiene:
      <pre>http_port 127.0.0.1:3128
 http_port 192.168.1.2:3128</pre>
-     Varias líneas <code>http_port</code> son válidas siempre que cada par IP:PUERTO sea único (un <code>http_port 3128</code> comodín no puede coexistir con una IP explícita en el mismo puerto). Luego reinicia Squid — <code>reload</code>/<code>reconfigure</code> no abre puertos nuevos: <code>sudo systemctl restart squid</code>. Verifica con <code>ss -tlnp | grep 3128</code> (deben aparecer ambos listeners). No se recomienda apuntar <code>$squidhost[0]</code> a la IP de la LAN: si tu firewall filtra el tráfico hacia esa IP, la conexión se descarta y SqStat falla con <code>Error (110): Connection timed out</code>. Loopback además satisface la regla habitual <code>http_access allow localhost manager</code> de Squid.
+     Varias líneas <code>http_port</code> son válidas siempre que cada par IP:PUERTO sea único. Un <code>http_port 3128</code> comodín no puede coexistir con una IP explícita en el mismo puerto. <br>
+     <br>
+     Luego reinicie Squid con <code>sudo systemctl restart squid</code>. <code>reload</code> y <code>reconfigure</code> no abren puertos nuevos. Verifique con <code>ss -tlnp | grep 3128</code>: deben aparecer ambos listeners. <br>
+     <br>
+     No se recomienda apuntar <code>$squidhost[0]</code> a la IP de la LAN. Si su firewall filtra el tráfico hacia esa IP, la conexión se descarta y SqStat falla con <code>Error (110): Connection timed out</code>. Loopback además satisface la regla habitual <code>http_access allow localhost manager</code> de Squid.
     </td>
   </tr>
 </table>
@@ -1075,10 +1163,18 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     <b>LogView</b> is a real-time Squid proxy log viewer integrated into the Proxy Monitor dashboard. It reads directly from <code>/var/log/squid/access.log</code>, parses each entry into structured fields, and displays them in an interactive table with instant full-text search, combined filters by cache code and HTTP status, column sorting, and automatic polling for new entries without reloading the page. Includes light and dark themes and a configurable refresh interval.
+     <b>LogView</b> is a real-time viewer of the Squid proxy log, integrated into the Proxy Monitor dashboard. <br>
+     <br>
+     It reads directly from <code>/var/log/squid/access.log</code>, parses each entry into structured fields and shows them in an interactive table. The table offers instant full-text search, combined filters by cache code and HTTP status, column sorting, and automatic polling for new entries without reloading the page. <br>
+     <br>
+     It includes light and dark themes and a configurable refresh interval.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     <b>LogView</b> es un visor en tiempo real del log del proxy Squid integrado en el panel de Proxy Monitor. Lee directamente desde <code>/var/log/squid/access.log</code>, parsea cada entrada en campos estructurados y los muestra en una tabla interactiva con búsqueda de texto completo instantánea, filtros combinados por cache code y código HTTP, ordenamiento por columnas y polling automático de nuevas entradas sin recargar la página. Incluye temas claro y oscuro e intervalo de refresco configurable.
+     <b>LogView</b> es un visor en tiempo real del log del proxy Squid, integrado en el panel de Proxy Monitor. <br>
+     <br>
+     Lee directamente de <code>/var/log/squid/access.log</code>, parsea cada entrada en campos estructurados y los muestra en una tabla interactiva. La tabla ofrece búsqueda de texto completo instantánea, filtros combinados por código de caché y estado HTTP, ordenamiento por columna, y consulta automática de entradas nuevas sin recargar la página. <br>
+     <br>
+     Incluye temas claro y oscuro y un intervalo de refresco configurable.
     </td>
   </tr>
 </table>
@@ -1253,7 +1349,13 @@ sudo -u www-data crontab -e
 LLM_API_KEY=your_api_key
 LLM_MODEL=model-name
 LLM_RESPONSE_FORMAT=openai</code></pre>
-      <b>Note:</b> The URL format depends on the provider. Some providers include account IDs or model names directly in the URL (e.g. Cloudflare: <code>…/accounts/ACCOUNT_ID/ai/run/MODEL_NAME</code>), others use a fixed URL with the model in <code>LLM_MODEL</code> (e.g. OpenAI, Groq), and others embed the API key as a URL parameter (e.g. Gemini: <code>…?key=YOUR_KEY</code>). Check the commented examples in the <code>.env</code> file for each provider's exact format. Leave <code>LLM_MODEL</code> empty if the model is already part of the URL.
+      <b>Note:</b> the URL format depends on the provider.
+      <ul>
+        <li>Some providers include the account ID or the model name in the URL, for example Cloudflare: <code>…/accounts/ACCOUNT_ID/ai/run/MODEL_NAME</code>.</li>
+        <li>Others use a fixed URL with the model in <code>LLM_MODEL</code>, for example OpenAI and Groq.</li>
+        <li>Others embed the API key as a URL parameter, for example Gemini: <code>…?key=YOUR_KEY</code>.</li>
+      </ul>
+      Check the commented examples in the <code>.env</code> file for each provider's exact format. Leave <code>LLM_MODEL</code> empty if the model is already part of the URL.
       <br><br>
       <code>LLM_RESPONSE_FORMAT</code> tells the worker how to read the response: <code>openai</code> (most providers), <code>ollama</code> (local Ollama), or <code>gemini</code> (Google Gemini passthrough).
       <br><br>
@@ -1274,7 +1376,13 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 LLM_API_KEY=su_api_key
 LLM_MODEL=nombre-del-modelo
 LLM_RESPONSE_FORMAT=openai</code></pre>
-      <b>Nota:</b> El formato de la URL depende del proveedor. Algunos incluyen el Account ID o el nombre del modelo directamente en la URL (ej: Cloudflare: <code>…/accounts/ACCOUNT_ID/ai/run/NOMBRE_MODELO</code>), otros usan una URL fija con el modelo en <code>LLM_MODEL</code> (ej: OpenAI, Groq), y otros insertan la API key como parámetro en la URL (ej: Gemini: <code>…?key=SU_KEY</code>). Consulte los ejemplos comentados en el archivo <code>.env</code> para el formato exacto de cada proveedor. Deje <code>LLM_MODEL</code> vacío si el modelo ya forma parte de la URL.
+      <b>Nota:</b> el formato de la URL depende del proveedor.
+      <ul>
+        <li>Algunos proveedores incluyen el Account ID o el nombre del modelo en la URL, por ejemplo Cloudflare: <code>…/accounts/ACCOUNT_ID/ai/run/NOMBRE_MODELO</code>.</li>
+        <li>Otros usan una URL fija con el modelo en <code>LLM_MODEL</code>, por ejemplo OpenAI y Groq.</li>
+        <li>Otros incrustan la clave de API como parámetro de la URL, por ejemplo Gemini: <code>…?key=SU_CLAVE</code>.</li>
+      </ul>
+      Consulte los ejemplos comentados del archivo <code>.env</code> para ver el formato exacto de cada proveedor. Deje <code>LLM_MODEL</code> vacío si el modelo ya forma parte de la URL.
       <br><br>
       <code>LLM_RESPONSE_FORMAT</code> indica al worker cómo leer la respuesta: <code>openai</code> (la mayoría de proveedores), <code>ollama</code> (Ollama local) o <code>gemini</code> (Google Gemini passthrough).
       <br><br>
@@ -1348,6 +1456,47 @@ sudo /var/www/proxymon/tools/squidtool.sh
 | Description | Descripción |
 | --- | --- |
 | Searches for a **specific term** in the `access.log` and `cache.log` records, without distinguishing between uppercase and lowercase. The text is matched literally, not as a regular expression, so characters such as `?`, `&`, `=` or `*` are searched as typed. The search includes the current, rotated and compressed files. In `access.log` it allows filtering by **client IP** and setting the search period. In `cache.log` the IP filter does not apply, because that record does not contain the client IP. The results from `access.log` and `cache.log` are shown separately, along with the number of matches found in each record. The result is written to `squid_search.html`.<br><br>For `cache.log` to record the ACL decisions -- which rule allowed or blocked each request -- Squid must have `debug_options ALL,1 33,2 28,9` enabled in `squid.conf`. Without it the search still works, but that record only holds the usual service messages. Keep in mind that this directive makes `cache.log` grow considerably. | Busca un **término específico** en los registros `access.log` y `cache.log`, sin distinguir entre mayúsculas y minúsculas. El texto se busca de forma literal, no como expresión regular, de modo que caracteres como `?`, `&`, `=` o `*` se buscan tal cual se escriben. La búsqueda incluye los archivos actuales, rotados y comprimidos. En `access.log` permite filtrar por **IP de cliente** y establecer el período de búsqueda. En `cache.log` no se aplica el filtro por IP porque este registro no contiene la IP del cliente. Los resultados de `access.log` y `cache.log` se muestran por separado, junto con la cantidad de coincidencias encontradas en cada registro. El resultado se genera en `squid_search.html`.<br><br>Para que `cache.log` registre las decisiones de ACL -- qué regla permitió o bloqueó cada petición -- Squid debe tener activada la directiva `debug_options ALL,1 33,2 28,9` en `squid.conf`. Sin ella la búsqueda sigue funcionando, pero ese registro solo contendrá los mensajes habituales del servicio. Tenga en cuenta que esa directiva hace crecer `cache.log` de forma considerable. |
+
+#### pmbk
+
+<table>
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <code>pmbk.sh</code> creates one compressed archive with Proxymon's configuration. It contains:
+      <ul>
+        <li>The project install tree, <code>/var/www/proxymon</code>, and <code>/etc/proxymon</code>.</li>
+        <li>The MAC and Squid ACL lists.</li>
+        <li>The Apache vhosts and the Apache and PHP hardening files.</li>
+        <li>SARG's configuration and its <code>usertab</code>.</li>
+        <li>The <code>bandata</code> logrotate configuration.</li>
+        <li>Root's crontab and the <code>php.ini</code> in use.</li>
+      </ul>
+      Paths that do not exist are skipped. <code>pmsetup.sh update</code> runs it automatically before touching any file.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <code>pmbk.sh</code> crea un único archivo comprimido con la configuración de Proxymon. Contiene:
+      <ul>
+        <li>El árbol de instalación del proyecto, <code>/var/www/proxymon</code>, y <code>/etc/proxymon</code>.</li>
+        <li>Las listas ACL de MAC y de Squid.</li>
+        <li>Los vhosts de Apache y los archivos de hardening de Apache y PHP.</li>
+        <li>La configuración de SARG y su <code>usertab</code>.</li>
+        <li>La configuración de logrotate de <code>bandata</code>.</li>
+        <li>El crontab de root y el <code>php.ini</code> en uso.</li>
+      </ul>
+      Las rutas que no existan se omiten. <code>pmsetup.sh update</code> lo ejecuta automáticamente antes de tocar cualquier archivo.
+    </td>
+  </tr>
+</table>
+
+| Command | Description | Descripción |
+|---|---|---|
+| `sudo bash pmbk.sh` | Create a backup now | Crear una copia ahora |
+| `sudo bash pmbk.sh install` | Register the `@monthly` cron entry | Registrar la entrada mensual en cron |
+| `sudo bash pmbk.sh uninstall` | Remove the cron entry, keeping the archives | Quitar la entrada de cron, conservando los comprimidos |
+
+> Backs up Proxymon into `/etc/bak/proxymon/pmbk_<YYYYMMDD_HHMM>.zip`, keeping up to 3 archives. `pmsetup.sh install` registers the monthly cron entry automatically; `pmsetup.sh uninstall` removes it before removing the project. Restore by unzipping it over `/`.
+>
+> Respalda Proxymon en `/etc/bak/proxymon/pmbk_<YYYYMMDD_HHMM>.zip`, conservando hasta 3 comprimidos. `pmsetup.sh install` registra la entrada mensual de cron automáticamente; `pmsetup.sh uninstall` la elimina antes de quitar el proyecto. Para restaurar, descomprímalo sobre `/`.
 
 ### PROXYMON LOGS
 

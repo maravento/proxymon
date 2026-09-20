@@ -15,11 +15,11 @@
 # first -- see below).
 # ./pmsetup.sh update Refresh code and permissions under
 # /var/www/proxymon. Stops Apache, backs up
-# live data, replaces code, restores live
-# data, resets permissions, restarts Apache.
-# Does not touch Apache/PHP/SARG system
-# config, cron, ACL lists, or
-# /etc/proxymon/proxymon.env.
+# the project with pmbk.sh, stages live data
+# aside, replaces code, puts live data back,
+# resets permissions, restarts Apache. Does
+# not touch Apache/PHP/SARG system config,
+# cron, ACL lists, or /etc/proxymon/proxymon.env.
 # ./pmsetup.sh uninstall Remove Proxymon: Apache sites, cron entries,
 # iptables/ipset rules, restore .bak configs.
 # Prompts before deleting /etc/proxymon and
@@ -55,16 +55,19 @@
 # /var/www/proxymon. It never touches Apache/PHP/SARG system config,
 # cron, ACL lists, or proxymon.env, and it never prompts. Sequence:
 # 1. Stop Apache (avoid serving a half-swapped tree).
-# 2. Archive the live data that isn't part of the modules/ repo tree
-# into /etc/bak/proxymon/proxymonbak_<YYYYMMDD_HHMM>.zip.
-# 3. cp -rf modules/* into /var/www/proxymon (same method install
+# 2. Run tools/pmbk.sh, the same project backup used everywhere else --
+# there is no separate copy here.
+# 3. Move the live data that isn't part of the modules/ repo tree
+# into a temporary staging directory.
+# 4. cp -rf modules/* into /var/www/proxymon (same method install
 # uses).
-# 4. Unzip the archive over / , restoring the live data over the
-# freshly-copied placeholders.
-# 5. Reset permissions/ownership on /var/www/proxymon.
-# 6. Restart Apache.
-# A maximum of 3 archives is kept in /etc/bak/proxymon. Live data
-# preserved:
+# 5. Move the live data back from staging over the freshly-copied
+# placeholders.
+# 6. Reset permissions/ownership on /var/www/proxymon.
+# 7. Restart Apache.
+# Steps 3 and 5 are why update never touches these paths, the same as
+# any other file --update leaves alone -- they are not backed up here,
+# only staged aside and put back. Live data staged aside and put back:
 # - lightsquid/report (daily LightSquid reports)
 # - lightsquid/realname.cfg (hostname mappings)
 # - lightsquid/skipuser.cfg (excluded users)
@@ -150,7 +153,7 @@ echo "Using local user: $local_user"
 
 # dependencies
 check_dependencies() {
-    for dep_pkg in wget curl git zip unzip ipset nbtscan mawk libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
+    for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl coreutils sarg php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables; do
         if ! dpkg -s "$dep_pkg" &>/dev/null; then
             abort "dependency '$dep_pkg' is not installed -- abort"
         fi
@@ -373,40 +376,63 @@ create_proxymon_env() {
     echo "----------------------------------------"
     printf "\n"
 
-    # LAN interface
-    echo "Available network interfaces:"
-    ip -o -4 addr show scope global | awk '{printf "  %-12s %s\n", $2, $4}'
-    lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}')
-    lan_default=${lan_default:-eth0}
-    while true; do
-        read -rp "LAN interface (default: $lan_default): " lan_answer
-        lan_answer=${lan_answer:-$lan_default}
-        if [ -e "/sys/class/net/$lan_answer" ]; then
-            break
-        fi
-        echo "Interface '$lan_answer' not found on this system. Try again."
-    done
+    # Unattended mode -- a caller (e.g. another installer) sets PROXYMON_LAN
+    # with the interface it already knows. Nothing is asked: every remaining
+    # value takes its default and is printed as it is taken.
+    local unattended=false
+    [ -n "${PROXYMON_LAN:-}" ] && unattended=true
 
-    # Server IP -- derived directly from the interface already chosen
-    # above (it was listed with its IP in "Available network interfaces"),
-    # so there's no need to ask for it again.
+    # LAN interface
+    if [ "$unattended" = true ]; then
+        [ -e "/sys/class/net/$PROXYMON_LAN" ] || abort "PROXYMON_LAN='$PROXYMON_LAN' not found on this system -- abort"
+        lan_answer="$PROXYMON_LAN"
+        echo "LAN interface: $lan_answer (preset)"
+    else
+        echo "Available network interfaces:"
+        ip -o -4 addr show scope global | awk '{printf "  %-12s %s\n", $2, $4}'
+        lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}')
+        lan_default=${lan_default:-eth0}
+        while true; do
+            read -rp "LAN interface (default: $lan_default): " lan_answer
+            lan_answer=${lan_answer:-$lan_default}
+            if [ -e "/sys/class/net/$lan_answer" ]; then
+                break
+            fi
+            echo "Interface '$lan_answer' not found on this system. Try again."
+        done
+    fi
+
+    # Server IP -- PROXYMON_SERVER_IP takes precedence when the caller
+    # supplies it. Otherwise it comes from the interface chosen above.
     mapfile -t iface_ips < <(ip -o -4 addr show dev "$lan_answer" scope global | awk '{print $4}' | cut -d/ -f1)
-    case "${#iface_ips[@]}" in
-        0)
-            abort "interface '$lan_answer' has no IPv4 address configured -- abort"
-            ;;
-        1)
-            server_ip_answer="${iface_ips[0]}"
-            echo "Server IP for LAN: $server_ip_answer (from $lan_answer)"
-            ;;
-        *)
-            # Rare: interface has multiple IPs, ask which one to use.
-            echo "Interface '$lan_answer' has multiple IPv4 addresses:"
-            select server_ip_answer in "${iface_ips[@]}"; do
-                [ -n "$server_ip_answer" ] && break
-            done
-            ;;
-    esac
+    if [ -n "${PROXYMON_SERVER_IP:-}" ]; then
+        [[ "$PROXYMON_SERVER_IP" =~ $UH_IPV4 ]] || abort "PROXYMON_SERVER_IP='$PROXYMON_SERVER_IP' is not a valid IPv4 address -- abort"
+        server_ip_answer="$PROXYMON_SERVER_IP"
+        echo "Server IP for LAN: $server_ip_answer (preset)"
+    else
+        case "${#iface_ips[@]}" in
+            0)
+                abort "interface '$lan_answer' has no IPv4 address configured -- abort"
+                ;;
+            1)
+                server_ip_answer="${iface_ips[0]}"
+                echo "Server IP for LAN: $server_ip_answer (from $lan_answer)"
+                ;;
+            *)
+                if [ "$unattended" = true ]; then
+                    server_ip_answer="${iface_ips[0]}"
+                    echo "Server IP for LAN: $server_ip_answer (first of ${#iface_ips[@]} on $lan_answer)"
+                else
+                    echo "Interface '$lan_answer' has multiple IPv4 addresses:"
+                    PS3="Select IP number: "
+                    select server_ip_answer in "${iface_ips[@]}"; do
+                        [ -n "$server_ip_answer" ] && break
+                    done
+                    unset PS3
+                fi
+                ;;
+        esac
+    fi
 
     # Glob pattern used to match per-IP report filenames under REPORT_PATH
     # (e.g. bandata.sh's "for file in $REPORT_IP_GLOB"). This is NOT a
@@ -423,6 +449,10 @@ create_proxymon_env() {
     # Bandwidth limits -- validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
     read_bandwidth() {
         local prompt_text="$1" default_value="$2" user_answer
+        if [ "$unattended" = true ]; then
+            echo "$default_value"
+            return
+        fi
         while true; do
             read -rp "$prompt_text" user_answer
             user_answer=${user_answer:-$default_value}
@@ -436,27 +466,30 @@ create_proxymon_env() {
     bw_day=$(read_bandwidth "Max bandwidth per day (default: 1G): " "1G")
     bw_week=$(read_bandwidth "Max bandwidth per week (default: 5G): " "5G")
     bw_month=$(read_bandwidth "Max bandwidth per month (default: 20G): " "20G")
-
-    # Unifi Hotspot Manager -- only ask if /etc/uhm exists
-    hotspot_enabled=false
-    hotspot_dir="/etc/uhm"
-    if [ -d "/etc/uhm" ]; then
-        read -rp "Unifi Hotspot Manager detected. Enable it in Bandata? (y/n, default: n): " hotspot_answer
-        if [[ "$hotspot_answer" =~ ^[Yy]$ ]]; then
-            hotspot_enabled=true
-        fi
+    if [ "$unattended" = true ]; then
+        echo "Max bandwidth per day: $bw_day (default)"
+        echo "Max bandwidth per week: $bw_week (default)"
+        echo "Max bandwidth per month: $bw_month (default)"
     fi
+
+    # Unifi Hotspot Manager -- enabled when uhm is installed and its ACL exists
+    hotspot_dir="/etc/uhm"
+    if [ -f "$hotspot_dir/uhm.env" ] && [ -f "$hotspot_dir/acl/uhm-auth.txt" ]; then
+        hotspot_enabled=true
+    else
+        hotspot_enabled=false
+    fi
+    echo "Unifi Hotspot in Bandata: $hotspot_enabled"
 
     # Auto-update Lightsquid realname
-    read -rp "Automatically update hostnames in Lightsquid? (y/n, default: n): " realname_answer
-    if [[ "$realname_answer" =~ ^[Yy]$ ]]; then
-        update_realname_flag=true
-    else
-        update_realname_flag=false
-    fi
+    update_realname_flag=true
+    echo "Update hostnames in Lightsquid: $update_realname_flag (default)"
 
     cat > "$env_file" << ENVEOF
-# proxymon.env -- Bandata configuration
+# =============================================================================
+# Proxymon
+# /etc/proxymon/proxymon.env
+# =============================================================================
 # Generated by pmsetup.sh on $(date '+%Y-%m-%d %H:%M:%S')
 # Edit manually if needed. Re-run pmsetup.sh install to regenerate.
 
@@ -495,6 +528,7 @@ HOTSPOT_PATH=${hotspot_dir}
 
 # Lightsquid realname auto-update
 UPDATE_REALNAME=${update_realname_flag}
+# =============================================================================
 ENVEOF
 
     chmod 640 "$env_file"
@@ -506,6 +540,24 @@ ENVEOF
 # ------------------------------------------------------------------------------
 # INSTALL
 # ------------------------------------------------------------------------------
+
+# CRON_D
+# Add or replace one line in the project's single cron.d file
+cron_d_set() {
+    local match="$1" line="$2"
+    local cron_file="/etc/cron.d/proxymon"
+    local cron_tmp
+
+    cron_tmp=$(mktemp)
+    [ -f "$cron_file" ] && { grep -vF "$match" "$cron_file" > "$cron_tmp" || true; }
+    [ -n "$line" ] && printf '%s\n' "$line" >> "$cron_tmp"
+    if [ -s "$cron_tmp" ]; then
+        install -m 644 -o root -g root "$cron_tmp" "$cron_file"
+    else
+        rm -f "$cron_file"
+    fi
+    rm -f "$cron_tmp"
+}
 
 install_proxymon() {
     if [[ -d "/var/www/proxymon" ]]; then
@@ -581,20 +633,13 @@ install_proxymon() {
 
     info "Restricting Proxymon panel to LAN..."
     if [[ -f /etc/apache2/sites-available/proxymon.conf ]]; then
-        echo "Otherwise it keeps the default 192.168.0.0/24."
-        read -rp "Restrict panel to $RANGE + 127.0.0.1? (y/n, default: y): " lan_restrict_answer
-        lan_restrict_answer=${lan_restrict_answer:-y}
-        if [[ "$lan_restrict_answer" =~ ^[Yy]$ ]]; then
-            if [[ "$RANGE" =~ $UH_CIDR ]]; then
-                # 127.0.0.1 allowed alongside the LAN so a local tunnel/trusted
-                # proxy connecting over loopback to port 18080 still works.
-                sed -i "s|192.168.0.0/24 127.0.0.1|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
-                info "Proxymon panel restricted to $RANGE and 127.0.0.1"
-            else
-                warn "RANGE='$RANGE' in $env_file_path is not a valid CIDR, keeping the default range -- fallback"
-            fi
+        if [[ "$RANGE" =~ $UH_CIDR ]]; then
+            # 127.0.0.1 allowed alongside the LAN so a local tunnel/trusted
+            # proxy connecting over loopback to port 18080 still works.
+            sed -i "s|192.168.0.0/24 127.0.0.1|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
+            info "Proxymon panel restricted to $RANGE and 127.0.0.1"
         else
-            info "keeping the default range, edit proxymon.conf by hand if needed -- skip"
+            warn "RANGE='$RANGE' in $env_file_path is not a valid CIDR, keeping the default range -- fallback"
         fi
     fi
 
@@ -650,14 +695,8 @@ install_proxymon() {
 
     info "ACL lists step finished"
 
-    if (crontab -l 2>/dev/null || true) \
-        | { grep -v "/var/www/proxymon/bandata/bandata.sh" || true; \
-            echo "*/5 * * * * /var/www/proxymon/bandata/bandata.sh >> /var/log/bandata.log 2>&1"; } \
-        | crontab - 2>/dev/null; then
-        info "Squid Monitor crontab added"
-    else
-        abort "cannot update root crontab -- abort"
-    fi
+    cron_d_set "/var/www/proxymon/bandata/bandata.sh" "*/5 * * * * root /var/www/proxymon/bandata/bandata.sh >> /var/log/bandata.log 2>&1"
+    info "Squid Monitor cron entry added"
 
     info "Configuring SARG..."
     mkdir -p /var/www/proxymon/sarg/squid-reports
@@ -693,29 +732,20 @@ install_proxymon() {
     sudo -u www-data perl -I. ./squid-analyzer -c etc/squidanalyzer.conf -d &> /dev/null || true
     cd - > /dev/null
 
-    # -- Consolidated www-data crontab update (single atomic write) --
-    # All www-data cron entries (LightSquid, SARG daily/weekly, SquidAnalyzer)
-    # are rewritten together to avoid leaving the crontab in a partial
-    # state if the installer is interrupted between operations.
-    cron_tmp=$(mktemp)
+    # LightSquid, SARG and SquidAnalyzer run as www-data. In /etc/cron.d the
+    # user is a field of the line, so they live in the project's own file.
+    cron_d_set "lightparser.pl" "*/10 * * * * www-data /var/www/proxymon/lightsquid/lightparser.pl today"
+    cron_d_set "sarg.conf" "@daily www-data /usr/bin/sarg -f /etc/sarg/sarg.conf -l /var/log/squid/access.log"
+    cron_d_set "sarg/squid-reports" '@weekly www-data find /var/www/proxymon/sarg/squid-reports -name "2*" -mtime +30 -type d -exec rm -rf {} +'
+    cron_d_set "squid-analyzer" "0 2 * * * www-data cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -c etc/squidanalyzer.conf"
 
-    sudo -u www-data crontab -l 2>/dev/null \
-        | grep -v "lightparser.pl" \
-        | grep -v "sarg.*sarg.conf.*access.log" \
-        | grep -v "find.*sarg.*squid-reports" \
-        | grep -v "squid-analyzer" \
-        > "$cron_tmp" || true
+    # legacy entries in the www-data crontab, from versions before /etc/cron.d
+    for legacy_path in lightparser.pl "sarg.conf" "squid-reports" squid-analyzer; do
+        sudo -u www-data crontab -l 2>/dev/null | { grep -vF "$legacy_path" || true; } \
+            | sudo -u www-data crontab - 2>/dev/null || true
+    done
 
-    echo "*/10 * * * * /var/www/proxymon/lightsquid/lightparser.pl today" >> "$cron_tmp"
-    echo "@daily /usr/bin/sarg -f /etc/sarg/sarg.conf -l /var/log/squid/access.log" >> "$cron_tmp"
-    echo '@weekly find /var/www/proxymon/sarg/squid-reports -name "2*" -mtime +30 -type d -exec rm -rf {} +' >> "$cron_tmp"
-    echo '0 2 * * * cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -c etc/squidanalyzer.conf' >> "$cron_tmp"
-
-    chown www-data:www-data "$cron_tmp"
-    sudo -u www-data crontab "$cron_tmp"
-    rm -f "$cron_tmp"
-
-    info "www-data crontab entries updated (LightSquid, SARG, SquidAnalyzer)"
+    info "proxymon cron entries updated (LightSquid, SARG, SquidAnalyzer)"
 
     info " Updating Prefork MPM..."
     [ -f /etc/apache2/mods-available/mpm_prefork.conf.bak ] || cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null || true
@@ -863,6 +893,7 @@ EOF
     find /var/www/proxymon -type f -name "*.cgi" -exec chmod +x {} +
     chmod +x /var/www/proxymon/bandata/bandata.sh
     chmod +x /var/www/proxymon/lightsquid/lightparser.pl
+    [ -f /var/www/proxymon/tools/pmbk.sh ] && chmod +x /var/www/proxymon/tools/pmbk.sh
     chown -R www-data:www-data /var/www/proxymon
     # bandata.sh runs entirely as root (its own root check, invoked from
     # root's crontab) and is the only thing that ever touches these 4 files
@@ -935,6 +966,11 @@ EOF
     info " Check Active Apache sites:"
     a2query -s
 
+    if [ -x /var/www/proxymon/tools/pmbk.sh ]; then
+        info "Registering pmbk.sh monthly cron entry ..."
+        /var/www/proxymon/tools/pmbk.sh install || warn "cron entry not registered -- alert"
+    fi
+
     info "Proxy Monitor installed successfully"
     info "Access Proxy Monitor: http://${SERVER_IP}:18080"
     info "Access Warning Portal: http://${SERVER_IP}:18081"
@@ -946,8 +982,9 @@ EOF
 
 # Refreshes code under /var/www/proxymon only. Does NOT touch anything
 # outside that path: no Apache/PHP/SARG/cron config, no ACL lists, no
-# proxymon.env, no service restarts. Preserves live data that lives
-# inside /var/www/proxymon but isn't part of the repo tree.
+# proxymon.env, no service restarts. Runs tools/pmbk.sh first, then
+# stages aside live data that lives inside /var/www/proxymon but isn't
+# part of the repo tree, so update never touches it.
 
 update_proxymon() {
     if [[ ! -d "/var/www/proxymon" ]]; then
@@ -955,11 +992,8 @@ update_proxymon() {
         exit 1
     fi
 
-    backup_dir="/etc/bak/proxymon"
-    backup_zip="${backup_dir}/proxymonbak_$(date +%Y%m%d_%H%M).zip"
-
-    # Live data that isn't part of the modules/ repo tree -- backed up before
-    # the file swap and restored after. Never modified in place.
+    # Live data that isn't part of the modules/ repo tree -- staged aside
+    # before the file swap and put back after. Never modified in place.
     protected_paths=(
         "lightsquid/report"
         "lightsquid/realname.cfg"
@@ -976,50 +1010,46 @@ update_proxymon() {
     info "Stopping Apache..."
     systemctl stop apache2
 
-    if ! mkdir -p "$backup_dir"; then
-        abort "cannot create $backup_dir -- abort"
+    if [ -x /var/www/proxymon/tools/pmbk.sh ]; then
+        info "Creating backup with pmbk.sh ..."
+        /var/www/proxymon/tools/pmbk.sh || warn "backup failed, continuing -- alert"
+    else
+        warn "pmbk.sh not found, no backup -- alert"
     fi
 
-    backup_list=()
+    stage_dir=$(mktemp -d) || abort "cannot create staging directory -- abort"
+    trap 'rm -rf "$stage_dir"' EXIT
+
     for rel_path in "${protected_paths[@]}"; do
         if [ -e "/var/www/proxymon/$rel_path" ]; then
-            backup_list+=("/var/www/proxymon/$rel_path")
+            mkdir -p "$stage_dir/$(dirname "$rel_path")"
+            mv "/var/www/proxymon/$rel_path" "$stage_dir/$rel_path"
         else
             info "$rel_path not present -- skip"
         fi
     done
 
-    if (( ${#backup_list[@]} == 0 )); then
-        info "Nothing to back up yet (first update on this install)"
-    elif zip -r -q "$backup_zip" "${backup_list[@]}"; then
-        chmod 600 "$backup_zip"
-        info "Backup written to $backup_zip"
-
-        # keep only the last 3
-        old_backups=("$backup_dir"/proxymonbak_*.zip)
-        if (( ${#old_backups[@]} > 3 )); then
-            printf '%s\n' "${old_backups[@]}" | sort | head -n -3 | xargs -r rm -f
-        fi
-    else
-        rm -f "$backup_zip"
-        abort "cannot write $backup_zip, check free space and permissions -- abort"
-    fi
-
     info "Replacing Proxy Monitor code..."
     cp -rf modules/* /var/www/proxymon/
 
-    if [ -f "$backup_zip" ]; then
-        info "Restoring live data from backup..."
-        unzip -o -q "$backup_zip" -d /
-        info "Live data restored"
-    fi
+    for rel_path in "${protected_paths[@]}"; do
+        if [ -e "$stage_dir/$rel_path" ]; then
+            rm -rf "/var/www/proxymon/$rel_path"
+            mkdir -p "/var/www/proxymon/$(dirname "$rel_path")"
+            mv "$stage_dir/$rel_path" "/var/www/proxymon/$rel_path"
+        fi
+    done
+    rm -rf "$stage_dir"
+    trap - EXIT
 
+    info "Live data restored"
     info "Setting permissions..."
     find /var/www/proxymon -type d -exec chmod 755 {} +
     find /var/www/proxymon -type f -exec chmod 644 {} +
     find /var/www/proxymon -type f -name "*.cgi" -exec chmod +x {} +
     [ -f /var/www/proxymon/bandata/bandata.sh ] && chmod +x /var/www/proxymon/bandata/bandata.sh
     [ -f /var/www/proxymon/lightsquid/lightparser.pl ] && chmod +x /var/www/proxymon/lightsquid/lightparser.pl
+    [ -f /var/www/proxymon/tools/pmbk.sh ] && chmod +x /var/www/proxymon/tools/pmbk.sh
     chown -R www-data:www-data /var/www/proxymon
     # bandata.sh runs entirely as root and is the only thing that touches
     # these 4 files -- see install_proxymon() for the full reasoning.
@@ -1036,7 +1066,6 @@ update_proxymon() {
         exit 1
     fi
 
-    info "Backup kept in $backup_dir (last 3 kept)."
     info "Proxy Monitor updated successfully"
 }
 
@@ -1045,6 +1074,7 @@ update_proxymon() {
 # ------------------------------------------------------------------------------
 
 uninstall_proxymon() {
+    warn "Run tools/pmbk.sh first if you want a backup."
     info " Uninstalling Proxy Monitor..."
 
     if [[ ! -d "/var/www/proxymon" ]]; then
@@ -1056,20 +1086,17 @@ uninstall_proxymon() {
         fi
     fi
 
-    # -- Consolidated www-data crontab cleanup (single atomic write) --
-    if (sudo -u www-data crontab -l 2>/dev/null || true) \
-        | { grep -v "lightparser.pl" || true; } \
-        | { grep -v "sarg.*sarg.conf.*access.log" || true; } \
-        | { grep -v "find.*sarg.*squid-reports" || true; } \
-        | { grep -v "squid-analyzer" || true; } \
-        | sudo -u www-data crontab - 2>/dev/null; then
-        info "LightSquid, SARG and SquidAnalyzer crontab entries removed"
-    else
-        warn "cannot update www-data crontab, entries may remain -- alert"
-    fi
+    rm -f /etc/cron.d/proxymon
+    info "proxymon cron entries removed"
 
-    if (crontab -l 2>/dev/null || true) | { grep -v "/var/www/proxymon/bandata/bandata.sh" || true; } | crontab - 2>/dev/null; then
-        info "Squid Monitor crontab removed"
+    # legacy entries in the www-data crontab, from versions before /etc/cron.d
+    for legacy_path in lightparser.pl "sarg.conf" "squid-reports" squid-analyzer; do
+        sudo -u www-data crontab -l 2>/dev/null | { grep -vF "$legacy_path" || true; } \
+            | sudo -u www-data crontab - 2>/dev/null || true
+    done
+
+    if (crontab -l 2>/dev/null || true) | { grep -vF "/var/www/proxymon/bandata/bandata.sh" || true; } | crontab - 2>/dev/null; then
+        info "Squid Monitor legacy crontab entry removed"
     else
         warn "cannot update root crontab, bandata.sh entry may remain -- alert"
     fi
@@ -1154,6 +1181,10 @@ uninstall_proxymon() {
         a2dissite warning.conf 2>/dev/null || true
         rm -f /etc/apache2/sites-available/warning.conf
         info "Warning site disabled"
+    fi
+
+    if [[ -x "/var/www/proxymon/tools/pmbk.sh" ]]; then
+        /var/www/proxymon/tools/pmbk.sh uninstall || true
     fi
 
     if [[ -d "/var/www/proxymon" ]]; then

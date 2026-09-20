@@ -241,21 +241,25 @@ report_traffic() {
     log "INFO: traffic report -- ip=${target_ip:-all} cutoff=$cutoff"
     echo "Analyzing, please wait..."
 
-    rows=$(zcat -f "$squid_log_file"* 2>/dev/null | gawk -v cutoff="$cutoff" -v ip="$target_ip" '
+    rows=$(zcat -f "$squid_log_file"* 2>/dev/null | awk -v cutoff="$cutoff" -v ip="$target_ip" '
         $1 > cutoff {
             if (ip != "" && $3 != ip) next
-            if (match($7, /https?:\/\/([^\/]+)/, url_parts) && url_parts[1] != "") { print $3, url_parts[1] }
+            if (match($7, /https?:\/\/[^\/]+/)) {
+                host = substr($7, RSTART, RLENGTH)
+                sub(/^https?:\/\//, "", host)
+                if (host != "") { print $3, host }
+            }
             else if ($7 ~ /^[^\/]+:[0-9]+$/) { host = $7; sub(/:[0-9]+$/, "", host); print $3, host }
         }' | sort | uniq -c | sort -nr)
 
     if [ -n "$target_ip" ]; then
-        rows=$(printf '%s\n' "$rows" | gawk 'NF >= 3')
+        rows=$(printf '%s\n' "$rows" | awk 'NF >= 3')
     else
-        rows=$(printf '%s\n' "$rows" | gawk -v min="$min_hits" 'NF >= 3 && $1 + 0 >= min')
+        rows=$(printf '%s\n' "$rows" | awk -v min="$min_hits" 'NF >= 3 && $1 + 0 >= min')
     fi
 
     row_count=$(printf '%s' "$rows" | grep -c . || true)
-    alert_count=$(printf '%s\n' "$rows" | gawk -v th="$alert_threshold" 'NF >= 3 && $1 + 0 >= th' | grep -c . || true)
+    alert_count=$(printf '%s\n' "$rows" | awk -v th="$alert_threshold" 'NF >= 3 && $1 + 0 >= th' | grep -c . || true)
 
     {
         html_open "Squid Traffic Report"
@@ -271,7 +275,7 @@ report_traffic() {
             echo "<p>No requests found for the selected period.</p>"
         else
             echo "<table><tr><th>Requests</th><th>IP</th><th>Domain</th></tr>"
-            printf '%s\n' "$rows" | html_escape | gawk -v th="$alert_threshold" 'NF >= 3 {
+            printf '%s\n' "$rows" | html_escape | awk -v th="$alert_threshold" 'NF >= 3 {
                 printf "<tr><td%s>%s</td><td>%s</td><td>%s</td></tr>\n", ($1 + 0 >= th ? " class=\"alert\"" : ""), $1, $2, $3
             }'
             echo "</table>"
@@ -299,7 +303,7 @@ report_search() {
     echo "Searching, please wait..."
 
     access_hits=$(zcat -f "$squid_log_file"* 2>/dev/null \
-        | gawk -v cutoff="$cutoff" -v ip="$target_ip" '$1 > cutoff { if (ip == "" || $3 == ip) print }' \
+        | awk -v cutoff="$cutoff" -v ip="$target_ip" '$1 > cutoff { if (ip == "" || $3 == ip) print }' \
         | grep -a -i -F -- "$search_term" \
         | perl -pe 's/^(\d+\.\d+)/localtime($1)/e')
 

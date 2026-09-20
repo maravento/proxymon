@@ -61,7 +61,7 @@ if ! flock -n 200; then
 fi
 
 # dependencies
-for dep_pkg in ipset findutils coreutils iptables util-linux mawk sed grep procps logrotate; do
+for dep_pkg in ipset findutils coreutils iptables util-linux sed grep procps logrotate; do
     if ! dpkg -s "$dep_pkg" &>/dev/null; then
         log "ERROR: dependency '$dep_pkg' is not installed -- abort"
         exit 1
