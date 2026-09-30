@@ -38,10 +38,6 @@
   </tr>
 </table>
 
-### Architecture
-
-📐 [Runtime Architecture Diagram](https://htmlpreview.github.io/?https://raw.githubusercontent.com/maravento/proxymon/master/docs/proxymon-architecture.html) — visual walkthrough of the monitoring/reporting pipeline.
-
 ## REQUIREMENTS
 
 ---
@@ -1547,13 +1543,6 @@ sudo /var/www/proxymon/tools/squidtool.sh
 
 **Optional tunnel:**
 - [Cloudflare Tunnel with Zero Trust Recommended](https://raw.githubusercontent.com/maravento/vault/master/scripts/bash/cftunnel.sh)
-
-## WORKTOOLS
-
----
-
-- [Archify](https://github.com/tt-a1i/archify)
-- [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) (default suggested provider for SquidAI, opt-in via `LLM_URL`)
 
 ## NOTICE
 

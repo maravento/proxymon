@@ -14,7 +14,7 @@
 # Both reports are written as HTML next to this script and served by the
 # proxymon vhost. Log paths come from /etc/proxymon/proxymon.env.
 #
-# log: squidtool.log, in this script's directory (rewritten on each run)
+# LOG: squidtool.log, in this script's directory (rewritten on each run)
 #
 ################################################################################
 
@@ -128,7 +128,7 @@ ask_ip() {
     local ip_answer
     read -r -p "IP address (enter for all): " ip_answer
     if [ -n "$ip_answer" ] && ! [[ "$ip_answer" =~ $UH_IPV4 ]]; then
-        log "ERROR: invalid IP '$ip_answer' -- abort"
+        log "INFO: invalid IP '$ip_answer' -- skip"
         return 1
     fi
     printf '%s' "$ip_answer"
@@ -293,7 +293,7 @@ report_search() {
     local search_term target_ip cutoff access_hits cache_hits access_count cache_count
     read -r -p "Enter the text to search (e.g. google): " search_term
     if [ -z "$search_term" ]; then
-        log "ERROR: no search term given -- abort"
+        log "INFO: no search term given -- skip"
         return
     fi
     target_ip=$(ask_ip) || return
@@ -368,7 +368,7 @@ show_menu() {
             1) report_traffic ;;
             2) report_search ;;
             3) return 0 ;;
-            *) echo "ERROR: invalid option" ;;
+            *) log "INFO: invalid option -- retry" ;;
         esac
     done
 }

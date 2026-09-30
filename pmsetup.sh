@@ -147,7 +147,8 @@ detect_local_user() {
 }
 
 if ! local_user=$(detect_local_user); then
-    abort "no valid local user found, create one with sudo access -- abort"
+    err "no valid local user found"
+    abort "create one with sudo access -- abort"
 fi
 echo "Using local user: $local_user"
 
@@ -165,6 +166,32 @@ check_dependencies() {
     fi
 }
 check_dependencies
+
+# conflicting packages
+check_conflicts() {
+    local role="$1"; shift
+    local found=()
+    for dep_pkg in "$@"; do
+        if dpkg-query -W -f='${Status}' "$dep_pkg" 2>/dev/null | grep -q "ok installed"; then
+            found+=("$dep_pkg")
+        fi
+    done
+    if [ "${#found[@]}" -gt 0 ]; then
+        for dep_pkg in "${found[@]}"; do
+            err "conflicting $role package: $dep_pkg"
+        done
+        abort "remove them with apt purge -- abort"
+    fi
+}
+
+# port in use
+check_port() {
+    local proto="$1" port="$2" role="$3"
+    if [ -n "$(ss -lnH "-${proto,,}" "sport = :$port" 2>/dev/null)" ]; then
+        err "${proto^^} port $port in use by another $role"
+        abort "stop that service before installing -- abort"
+    fi
+}
 
 # ------------------------------------------------------------------------------
 # FUNCTIONS
@@ -199,12 +226,12 @@ retry_cmd() {
     until "$@"; do
         if [ "$retry_attempt" -ge "$max_retries" ]; then
             if [ "${RETRY_CMD_SOFT_FAIL:-0}" -eq 1 ]; then
-                warn "command failed after $max_retries attempts, giving up: $* -- skip"
+                warn "command failed after $max_retries attempts, giving up: $* -- alert"
                 return 1
             fi
             abort "command failed after $max_retries attempts: $* -- abort"
         fi
-        warn "command failed (attempt $retry_attempt/$max_retries), retrying in ${retry_delay}s: $* -- retry"
+        info "attempt $retry_attempt/$max_retries: $* -- retry"
         retry_attempt=$((retry_attempt + 1))
         sleep "$retry_delay"
     done
@@ -283,7 +310,7 @@ check_squid_traffic() {
     log_lines=$(wc -l < /var/log/squid/access.log 2>/dev/null || echo 0)
 
     if [ "$log_lines" -eq 0 ]; then
-        warn "access.log empty, no traffic yet -- degraded"
+        info "access.log empty, no traffic yet"
         echo "Continuing anyway; reports will be empty until traffic starts flowing."
         return 0
     fi
@@ -292,7 +319,7 @@ check_squid_traffic() {
     log_entries=${log_entries:-0}
 
     if [ "$log_entries" -eq 0 ]; then
-        warn "no valid traffic found ($log_lines lines, 0 valid) -- degraded"
+        info "no valid traffic found ($log_lines lines, 0 valid)"
         echo "Check Squid ACLs, port, and that clients point at this proxy. Continuing anyway."
     else
         echo "Squid traffic: $log_lines lines, $log_entries valid entries"
@@ -301,6 +328,7 @@ check_squid_traffic() {
 
 run_initial_checks() {
     echo -e "Running initial checks...\n"
+    check_conflicts "web server" nginx lighttpd caddy
     check_apache_config
     check_squid_traffic
     echo -e "All checks passed!\n"
@@ -313,7 +341,8 @@ check_repo() {
     fi
     if [ "$missing_flag" -eq 1 ]; then
         echo ""
-        err "repository files not found, run: git clone https://github.com/maravento/proxymon -- abort"
+        err "repository files not found"
+        err "clone it from github.com/maravento/proxymon -- abort"
         echo ""
         exit 1
     fi
@@ -344,7 +373,7 @@ create_proxymon_env() {
     mkdir -p /etc/proxymon
 
     if [ -f "$env_file" ]; then
-        echo "$env_file already exists -- skipping configuration"
+        info "$env_file already exists -- skip"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
         local required_keys="LAN SERVER_IP RANGE REPORT_IP_GLOB LIGHTSQUID_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME"
@@ -566,6 +595,9 @@ install_proxymon() {
         exit 1
     fi
 
+    check_port tcp 18080 "web interface"
+    check_port tcp 18081 "warning page"
+
     check_repo
     mkdir -p /var/www/proxymon
     cp -rf modules/* /var/www/proxymon/
@@ -606,8 +638,8 @@ install_proxymon() {
     env_group_digit="${env_perms: -2:1}"
     env_other_digit="${env_perms: -1}"
     if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
-        err "$env_file_path has unsafe owner/permissions (owner=$env_owner perms=$env_perms) -- abort"
-        info "Expected owner root with no group/other write access. Refusing to source it."
+        err "$env_file_path owner=$env_owner perms=$env_perms"
+        err "expected root owner, no group/other write access -- abort"
         exit 1
     fi
     source "$env_file_path"
@@ -672,7 +704,7 @@ install_proxymon() {
         chown root:root "$ACL_SQUID_PATH/blocktlds.txt"
         echo "    done: $ACL_SQUID_PATH/blocktlds.txt"
     else
-        warn "blocktlds.txt not downloaded, skipping -- run install again later to retry"
+        warn "blocktlds.txt not downloaded -- alert"
     fi
 
     echo "  - blockdomains.txt ..."
@@ -681,7 +713,7 @@ install_proxymon() {
         chown root:root "$ACL_SQUID_PATH/blockdomains.txt"
         echo "    done: $ACL_SQUID_PATH/blockdomains.txt"
     else
-        warn "blockdomains.txt not downloaded, skipping -- run install again later to retry"
+        warn "blockdomains.txt not downloaded -- alert"
     fi
 
     echo "  - blockpatterns.txt ..."
@@ -690,7 +722,7 @@ install_proxymon() {
         chown root:root "$ACL_SQUID_PATH/blockpatterns.txt"
         echo "    done: $ACL_SQUID_PATH/blockpatterns.txt"
     else
-        warn "blockpatterns.txt not downloaded, skipping -- run install again later to retry"
+        warn "blockpatterns.txt not downloaded -- alert"
     fi
 
     info "ACL lists step finished"
@@ -715,7 +747,7 @@ install_proxymon() {
             info "Added $SERVER_IP $server_hostname to usertab"
         fi
     else
-        info "SERVER_IP not set in proxymon.env -- skipping usertab entry"
+        info "SERVER_IP not set in proxymon.env -- skip"
     fi
 
     info " Generating Initial SARG Report..."
@@ -922,7 +954,7 @@ EOF
         chown proxy:proxy "${squid_logs[@]}"
         chmod 640 "${squid_logs[@]}"
     else
-        info "No /var/log/squid/*.log files found yet -- skipping permissions"
+        info "No /var/log/squid/*.log files found yet -- skip"
     fi
     shopt -u nullglob
 
@@ -953,11 +985,10 @@ EOF
     info " Restarting Apache2..."
     systemctl daemon-reload
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
-        info "Apache configuration test failed. Disabling the sites just enabled so a future"
-        info "an unrelated Apache restart does not undo it."
+        err "Apache configuration test failed, disabling sites just enabled"
         a2dissite proxymon.conf 2>/dev/null || true
         a2dissite warning.conf 2>/dev/null || true
-        info "Run 'apachectl -t' to see the error, fix the configuration, then re-run install."
+        err "fix the configuration, then re-run install -- abort"
         exit 1
     fi
     info "Apache configuration OK"
@@ -1062,7 +1093,7 @@ update_proxymon() {
     if systemctl start apache2; then
         info "Apache started"
     else
-        info "Apache failed to start -- check: systemctl status apache2"
+        err "Apache failed to start -- abort"
         exit 1
     fi
 

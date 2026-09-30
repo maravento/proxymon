@@ -8,7 +8,7 @@
 #
 # Instructions:
 # Configuration is read from /etc/proxymon/proxymon.env (generated during installation)
-# Log output: /var/log/bandata.log
+# LOG: /var/log/bandata.log
 # Default limits: max 1G day / 5G week / 20G month
 # Limits can use M, G or B suffix (e.g. 500M, 1G, 1.5G)
 # bandata excludes weekends
@@ -22,10 +22,9 @@
 # bandwidth limits like any LAN client.
 # - Manual edits to skipuser.cfg do not survive: the file is regenerated here.
 #
-# NOTE on logging:
-# - Writes to /var/log/bandata.log (log + screen via tee). Rotation is
-# handled by this script itself: it self-installs /etc/logrotate.d/bandata
-# on first run (see below), so no manual truncate is needed.
+# LOG: /var/log/bandata.log, written to file and screen via tee
+#      This script self-installs /etc/logrotate.d/bandata on first run,
+#      so the file never needs a manual truncate
 #
 ################################################################################
 
@@ -93,7 +92,7 @@ fi
 
 proxymon_env="/etc/proxymon/proxymon.env"
 if [ ! -f "$proxymon_env" ]; then
-    log "ERROR: $proxymon_env not found. Run install to generate it."
+    log "ERROR: $proxymon_env not found -- abort"
     exit 1
 fi
 env_owner=$(stat -c '%U' "$proxymon_env" 2>/dev/null)
@@ -101,8 +100,8 @@ env_perms=$(stat -c '%a' "$proxymon_env" 2>/dev/null)
 env_group_digit="${env_perms: -2:1}"
 env_other_digit="${env_perms: -1}"
 if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
-    log "ERROR: $proxymon_env has unsafe owner/permissions (owner=$env_owner perms=$env_perms)."
-    log "Expected owner root, no group/other write -- abort"
+    log "ERROR: $proxymon_env owner=$env_owner perms=$env_perms"
+    log "ERROR: expected root owner, no group/other write -- abort"
     exit 1
 fi
 # LOAD_CONF
@@ -174,12 +173,11 @@ done
 
 # Validate LAN interface -- required for all iptables rules below
 if [ -z "$LAN" ]; then
-    log "ERROR: LAN is empty in $proxymon_env"
+    log "ERROR: LAN is empty in $proxymon_env -- abort"
     exit 1
 fi
 if [ ! -e "/sys/class/net/$LAN" ]; then
     log "ERROR: interface '$LAN' does not exist -- abort"
-    log "Available interfaces: $(ls /sys/class/net 2>/dev/null | tr '\n' ' ')"
     exit 1
 fi
 
@@ -193,22 +191,22 @@ sort_ips="sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
 # treating the limit as 0, which would block the entire network.
 max_bw_day=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_DAY/,/.}" 2>/dev/null)
 if [ -z "$max_bw_day" ]; then
-    log "ERROR: invalid MAX_BANDWIDTH_DAY value in $proxymon_env: '${MAX_BANDWIDTH_DAY}'"
-    log "Expected format: 500M, 1G, 1.5G"
+    log "ERROR: invalid MAX_BANDWIDTH_DAY '${MAX_BANDWIDTH_DAY}'"
+    log "ERROR: expected format 500M, 1G, 1.5G -- abort"
     exit 1
 fi
 
 max_bw_week=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_WEEK/,/.}" 2>/dev/null)
 if [ -z "$max_bw_week" ]; then
-    log "ERROR: invalid MAX_BANDWIDTH_WEEK value in $proxymon_env: '${MAX_BANDWIDTH_WEEK}'"
-    log "Expected format: 500M, 1G, 1.5G"
+    log "ERROR: invalid MAX_BANDWIDTH_WEEK '${MAX_BANDWIDTH_WEEK}'"
+    log "ERROR: expected format 500M, 1G, 1.5G -- abort"
     exit 1
 fi
 
 max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}" 2>/dev/null)
 if [ -z "$max_bw_month" ]; then
-    log "ERROR: invalid MAX_BANDWIDTH_MONTH value in $proxymon_env: '${MAX_BANDWIDTH_MONTH}'"
-    log "Expected format: 500M, 1G, 1.5G"
+    log "ERROR: invalid MAX_BANDWIDTH_MONTH '${MAX_BANDWIDTH_MONTH}'"
+    log "ERROR: expected format 500M, 1G, 1.5G -- abort"
     exit 1
 fi
 
@@ -246,14 +244,14 @@ else
         tmp_day=$(mktemp)
         subshell_ok=0
         (
-            cd "$day_logs_dir" || { log "ERROR: cannot cd into $day_logs_dir" >&2; exit 1; }
+            cd "$day_logs_dir" || { log "WARNING: cannot cd into $day_logs_dir -- alert" >&2; exit 1; }
             shopt -s nullglob
             for report_file in $REPORT_IP_GLOB; do
                 user_bytes=$(awk '$1=="total:" {print $2}' "$report_file")
                 if [[ "$user_bytes" =~ $UH_UINT ]] && (( user_bytes > max_bw_day )); then
                     echo "$report_file"
                 elif [ -n "$user_bytes" ] && ! [[ "$user_bytes" =~ $UH_UINT ]]; then
-                    log "WARNING: non-numeric total '$user_bytes' in $day_logs_dir/$report_file -- skipping" >&2
+                    log "WARNING: non-numeric total '$user_bytes' in $report_file -- alert" >&2
                 fi
             done
             exit 0
@@ -265,11 +263,11 @@ else
             if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
                 mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"
             else
-                log "ERROR: cannot build daily block list -- keeping existing"
+                log "WARNING: cannot build daily block list -- fallback"
                 rm -f "${BLOCK_LIST_DAY}.tmp"
             fi
         else
-            log "ERROR: subshell failed for $day_logs_dir -- keeping existing block list"
+            log "WARNING: subshell failed for $day_logs_dir -- fallback"
         fi
         rm -f "$tmp_day"
     fi
@@ -315,7 +313,7 @@ if [ "$today_dow" -eq 1 ]; then
            && [ "${pipe_status[4]}" -eq 0 ]; then
             mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"
         else
-            log "ERROR: cannot build weekly block list -- keeping existing"
+            log "WARNING: cannot build weekly block list -- fallback"
             rm -f "${BLOCK_LIST_WEEK}.tmp"
         fi
     fi
@@ -363,7 +361,7 @@ else
        && [ "${pipe_status[4]}" -eq 0 ]; then
         mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"
     else
-        log "ERROR: cannot build monthly block list -- keeping existing"
+        log "WARNING: cannot build monthly block list -- fallback"
         rm -f "${BLOCK_LIST_MONTH}.tmp"
     fi
 fi
@@ -393,7 +391,7 @@ all_bans=$(cat "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH" | $sort_
 
 if [ -n "$all_bans" ]; then
     for banned_ip in $all_bans; do
-        [[ "$banned_ip" =~ $UH_IPV4 ]] || { log "WARNING: not an IPv4 '$banned_ip' -- skip"; continue; }
+        [[ "$banned_ip" =~ $UH_IPV4 ]] || { log "WARNING: not an IPv4 '$banned_ip' -- alert"; continue; }
         ipset -exist add bandata_new "$banned_ip"
     done
 fi
@@ -402,7 +400,7 @@ fi
 if ipset swap bandata_new bandata; then
     ipset destroy bandata_new
 else
-    log "ERROR: ipset swap failed, bandata not updated -- alert"
+    log "WARNING: ipset swap failed, bandata not updated -- alert"
 fi
 
 if [ -n "$all_bans" ]; then
@@ -498,7 +496,7 @@ update_lightsquid_realname() {
     process_hotspot() {
         local hotspot_acl="$HOTSPOT_PATH/acl/uhm-auth.txt"
         if [ ! -f "$hotspot_acl" ]; then
-            log "WARNING: $(basename "$hotspot_acl") not found -- skip"
+            log "WARNING: $(basename "$hotspot_acl") not found -- alert"
             return
         fi
         awk -F';' -v re="${UH_IPV4//\\./\\\\.}" \

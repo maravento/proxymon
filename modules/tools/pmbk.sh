@@ -21,13 +21,12 @@
 # OUTPUT:
 # /etc/bak/proxymon/pmbk_<YYYYMMDD_HHMM>.zip
 #
-#
 # EXIT CODES:
 # 0 - Archive created
 # 1 - Not root, already running, missing dependency, nothing to back up,
 #     or the archive could not be written
 #
-# LOG: /var/log/proxymon.log (shared with the rest of the project)
+# LOG: /var/log/proxymon.log
 #
 ################################################################################
 
@@ -143,8 +142,8 @@ case "${1:-}" in
     "")
         ;;
     *)
-        log "ERROR: unknown action '$1' -- abort"
         log "ERROR: use no argument, 'install' or 'uninstall'"
+        log "ERROR: unknown action '$1' -- abort"
         exit 1
         ;;
 esac
@@ -199,9 +198,9 @@ if (( ${#backup_list[@]} == 0 )); then
     exit 1
 fi
 
-if zip -r -q "$backup_zip" "${backup_list[@]}"; then
+if (umask 077; zip -r -q "$backup_zip" "${backup_list[@]}"); then
     chmod 600 "$backup_zip"
-    log "INFO: backup written to $backup_zip"
+    log "INFO: backup written to $(basename "$backup_zip")"
 
     # keep only the last 3
     old_backups=("$backup_dir"/pmbk_*.zip)
@@ -210,8 +209,7 @@ if zip -r -q "$backup_zip" "${backup_list[@]}"; then
     fi
 else
     rm -f "$backup_zip"
-    log "ERROR: cannot write the archive"
-    log "ERROR: $backup_zip"
+    log "ERROR: cannot write archive $(basename "$backup_zip")"
     log "ERROR: check free space and permissions -- abort"
     exit 1
 fi
