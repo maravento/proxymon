@@ -79,12 +79,40 @@ panel_port="18080"
 min_hits=20
 alert_threshold=300
 
-# Squid log paths come from proxymon.env, never sourced: the file is read
-# key by key and SQUID_LOG_FILE may reference SQUID_LOG_DIR, which is
-# expanded here instead of by the shell.
+# ------------------------------------------------------------------------------
+# ENV
+# ------------------------------------------------------------------------------
+
+# PERMS
+# Owner and mode of every .env this script reads
+env_specs=("$proxymon_env root:www-data 640")
+for env_spec in "${env_specs[@]}"; do
+    read -r env_path env_owner_want env_perms_want <<< "$env_spec"
+    if [ ! -f "$env_path" ]; then
+        log "ERROR: $(basename "$env_path") not found -- abort"
+        exit 1
+    fi
+    env_owner=$(stat -c '%U:%G' "$env_path" 2>/dev/null)
+    env_perms=$(stat -c '%a' "$env_path" 2>/dev/null)
+    if [[ "$env_owner" != "$env_owner_want" ]] \
+       || [[ "$env_perms" != "$env_perms_want" ]]; then
+        if chown "$env_owner_want" "$env_path" 2>/dev/null \
+           && chmod "$env_perms_want" "$env_path" 2>/dev/null; then
+            log "INFO: $(basename "$env_path") perms fixed -- fixed"
+        else
+            log "ERROR: cannot fix $(basename "$env_path") perms -- abort"
+            exit 1
+        fi
+    fi
+done
+unset env_specs env_spec env_path env_owner_want env_perms_want
+unset env_owner env_perms
+
+# LOAD_CONF
+# Read known key=value pairs from a config file, without sourcing it
 load_conf() {
     local conf_file="$1" env_key env_value env_line
-    [[ ! -f "$conf_file" ]] && return 1
+    [[ ! -f "$conf_file" ]] && { log "WARNING: $conf_file not found -- fallback"; return 1; }
     while IFS= read -r env_line || [[ -n "$env_line" ]]; do
         [[ "$env_line" =~ ^[[:space:]]*[#] ]] && continue
         [[ "$env_line" =~ ^[[:space:]]*$ ]] && continue
@@ -93,28 +121,60 @@ load_conf() {
         if [[ ! "$env_line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
            || [[ "$env_value" == [[:space:]\"\']* ]] \
            || [[ "$env_value" == *[[:space:]\"\'] ]]; then
-            log "ERROR: malformed line in $conf_file: '$env_line' -- abort"
+            log "ERROR: malformed line in $(basename "$conf_file"): '$env_line' -- abort"
             exit 1
         fi
         case "$env_key" in
-            SQUID_LOG_DIR)  squid_log_dir="$env_value" ;;
-            SQUID_LOG_FILE) squid_log_file="$env_value" ;;
+            SQUID_LOG_DIR|SQUID_LOG_FILE)
+                printf -v "$env_key" '%s' "$env_value"
+                ;;
         esac
     done < "$conf_file"
-    return 0
 }
 
-squid_log_dir=""
-squid_log_file=""
-if ! load_conf "$proxymon_env"; then
-    log "WARNING: $(basename "$proxymon_env") not found -- fallback"
+# LOAD
+load_conf "$proxymon_env" || true
+
+# SQUID_LOG_FILE names SQUID_LOG_DIR instead of repeating its path. The
+# reference is expanded here, right after the read, so KEY CHECK below
+# validates the final value and not the literal text.
+SQUID_LOG_FILE="${SQUID_LOG_FILE//\$SQUID_LOG_DIR/$SQUID_LOG_DIR}"
+SQUID_LOG_FILE="${SQUID_LOG_FILE//\$\{SQUID_LOG_DIR\}/$SQUID_LOG_DIR}"
+
+# KEY CHECK
+# Collect every failure first, then decide -- a single abort reports them all
+key_errors=()
+for env_key in SQUID_LOG_DIR SQUID_LOG_FILE; do
+    if ! grep -q "^${env_key}=" "$proxymon_env"; then
+        key_errors+=("$env_key missing line")
+    elif [[ -z "${!env_key:-}" ]]; then
+        key_errors+=("$env_key not set")
+    fi
+done
+if (( ${#key_errors[@]} > 0 )); then
+    for key_error in "${key_errors[@]}"; do
+        log "ERROR: $key_error"
+    done
+    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -- abort"
+    exit 1
 fi
-squid_log_dir="${squid_log_dir:-/var/log/squid}"
-squid_log_file="${squid_log_file:-$squid_log_dir/access.log}"
-squid_log_file="${squid_log_file//\$SQUID_LOG_DIR/$squid_log_dir}"
-squid_log_file="${squid_log_file//\$\{SQUID_LOG_DIR\}/$squid_log_dir}"
+unset key_errors key_error env_key
+
+# FALLBACK
+# Second layer of protection, behind KEY CHECK -- by design never reached
+if [ -z "${SQUID_LOG_DIR:-}" ]; then
+    log "WARNING: no SQUID_LOG_DIR in proxymon.env -- fallback"
+fi
+squid_log_dir="${SQUID_LOG_DIR:-/var/log/squid}"
+if [ -z "${SQUID_LOG_FILE:-}" ]; then
+    log "WARNING: no SQUID_LOG_FILE in proxymon.env -- fallback"
+fi
+squid_log_file="${SQUID_LOG_FILE:-$squid_log_dir/access.log}"
 cache_log_file="$squid_log_dir/cache.log"
 
+# KEY GUARD
+# Every report below reads this file, so a path that no longer matches the
+# filesystem produces an empty report instead of an error.
 if ! ls "$squid_log_file"* >/dev/null 2>&1; then
     log "ERROR: access log not found in $squid_log_dir -- abort"
     exit 1

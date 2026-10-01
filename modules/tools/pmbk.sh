@@ -11,7 +11,8 @@
 # a notice.
 #
 # Run it by hand before applying changes, or let the monthly cron entry
-# do it. Restore by unzipping the archive over /.
+# do it. Restore by unzipping the archive over /. Only the 3 most recent
+# archives are kept; older ones are deleted automatically.
 #
 # USAGE:
 # sudo bash pmbk.sh            Create a backup now

@@ -87,23 +87,43 @@ EOF
 fi
 
 # ------------------------------------------------------------------------------
+# VARIABLES
+# ------------------------------------------------------------------------------
+
+# validation -- one variable per thing validated; use directly with =~
+UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+UH_UINT='^(0|[1-9][0-9]*)$'
+
+# ------------------------------------------------------------------------------
 # ENV
 # ------------------------------------------------------------------------------
 
+# PERMS
+# Owner and mode of every .env this script reads
 proxymon_env="/etc/proxymon/proxymon.env"
-if [ ! -f "$proxymon_env" ]; then
-    log "ERROR: $proxymon_env not found -- abort"
-    exit 1
-fi
-env_owner=$(stat -c '%U' "$proxymon_env" 2>/dev/null)
-env_perms=$(stat -c '%a' "$proxymon_env" 2>/dev/null)
-env_group_digit="${env_perms: -2:1}"
-env_other_digit="${env_perms: -1}"
-if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
-    log "ERROR: $proxymon_env owner=$env_owner perms=$env_perms"
-    log "ERROR: expected root owner, no group/other write -- abort"
-    exit 1
-fi
+env_specs=("$proxymon_env root:www-data 640")
+for env_spec in "${env_specs[@]}"; do
+    read -r env_path env_owner_want env_perms_want <<< "$env_spec"
+    if [ ! -f "$env_path" ]; then
+        log "ERROR: $(basename "$env_path") not found -- abort"
+        exit 1
+    fi
+    env_owner=$(stat -c '%U:%G' "$env_path" 2>/dev/null)
+    env_perms=$(stat -c '%a' "$env_path" 2>/dev/null)
+    if [[ "$env_owner" != "$env_owner_want" ]] \
+       || [[ "$env_perms" != "$env_perms_want" ]]; then
+        if chown "$env_owner_want" "$env_path" 2>/dev/null \
+           && chmod "$env_perms_want" "$env_path" 2>/dev/null; then
+            log "INFO: $(basename "$env_path") perms fixed -- fixed"
+        else
+            log "ERROR: cannot fix $(basename "$env_path") perms -- abort"
+            exit 1
+        fi
+    fi
+done
+unset env_specs env_spec env_path env_owner_want env_perms_want
+unset env_owner env_perms
+
 # LOAD_CONF
 # Read known key=value pairs from a config file, without sourcing it
 load_conf() {
@@ -117,7 +137,7 @@ load_conf() {
         if [[ ! "$env_line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
            || [[ "$env_value" == [[:space:]\"\']* ]] \
            || [[ "$env_value" == *[[:space:]\"\'] ]]; then
-            log "ERROR: malformed line in $conf_file: '$env_line' -- abort"
+            log "ERROR: malformed line in $(basename "$conf_file"): '$env_line' -- abort"
             exit 1
         fi
         case "$env_key" in
@@ -127,9 +147,13 @@ load_conf() {
         esac
     done < "$conf_file"
 }
-load_conf "$proxymon_env"
 
-# Resolve cross-key references (same mechanism as squidtool.sh)
+# LOAD
+load_conf "$proxymon_env" || true
+
+# Some values name another key instead of repeating its path. The reference is
+# expanded here, right after the read, so KEY CHECK below validates the final
+# value and not the literal "$LIGHTSQUID_DIR/..." text.
 REPORT_PATH="${REPORT_PATH//\$LIGHTSQUID_DIR/$LIGHTSQUID_DIR}"
 REALNAME_CFG="${REALNAME_CFG//\$LIGHTSQUID_DIR/$LIGHTSQUID_DIR}"
 SKIPUSERS_CFG="${SKIPUSERS_CFG//\$LIGHTSQUID_DIR/$LIGHTSQUID_DIR}"
@@ -139,27 +163,56 @@ BLOCK_LIST_DAY="${BLOCK_LIST_DAY//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
 BLOCK_LIST_WEEK="${BLOCK_LIST_WEEK//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
 BLOCK_LIST_MONTH="${BLOCK_LIST_MONTH//\$ACL_BANDATA_PATH/$ACL_BANDATA_PATH}"
 
-# ------------------------------------------------------------------------------
-# VARIABLES
-# ------------------------------------------------------------------------------
+# KEY CHECK
+# Collect every failure first, then decide -- a single abort reports them all
+key_errors=()
+for env_key in LAN REPORT_IP_GLOB LIGHTSQUID_DIR REPORT_PATH REALNAME_CFG \
+               SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_BANDATA_PATH \
+               ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH \
+               WARNING_HTML BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME; do
+    if ! grep -q "^${env_key}=" "$proxymon_env"; then
+        key_errors+=("$env_key missing line")
+    elif [[ -z "${!env_key:-}" ]]; then
+        key_errors+=("$env_key not set")
+    fi
+done
+# numfmt is the only parser that accepts the IEC forms the administrator
+# writes (500M, 1G, 1.5G), so it is also what validates them. An empty result
+# would otherwise be treated as a 0 limit, blocking the entire network.
+for env_key in MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH; do
+    if ! grep -q "^${env_key}=" "$proxymon_env"; then
+        key_errors+=("$env_key missing line")
+    elif [[ -z "${!env_key:-}" ]]; then
+        key_errors+=("$env_key not set")
+    elif [[ -z "$(LC_ALL=C numfmt --from=iec "${!env_key/,/.}" 2>/dev/null)" ]]; then
+        key_errors+=("$env_key invalid size, expected 500M, 1G or 1.5G")
+    fi
+done
+if (( ${#key_errors[@]} > 0 )); then
+    for key_error in "${key_errors[@]}"; do
+        log "ERROR: $key_error"
+    done
+    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -- abort"
+    exit 1
+fi
+unset key_errors key_error env_key
 
-# validation -- one variable per thing validated; use directly with =~
-UH_OCT='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
-UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
-UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
-UH_NETMASK='^(0\.0\.0\.0|128\.0\.0\.0|192\.0\.0\.0|224\.0\.0\.0|240\.0\.0\.0|248\.0\.0\.0|252\.0\.0\.0|254\.0\.0\.0|255\.0\.0\.0|255\.128\.0\.0|255\.192\.0\.0|255\.224\.0\.0|255\.240\.0\.0|255\.248\.0\.0|255\.252\.0\.0|255\.254\.0\.0|255\.255\.0\.0|255\.255\.128\.0|255\.255\.192\.0|255\.255\.224\.0|255\.255\.240\.0|255\.255\.248\.0|255\.255\.252\.0|255\.255\.254\.0|255\.255\.255\.0|255\.255\.255\.128|255\.255\.255\.192|255\.255\.255\.224|255\.255\.255\.240|255\.255\.255\.248|255\.255\.255\.252|255\.255\.255\.254|255\.255\.255\.255)$'
-UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
-UH_UINT='^(0|[1-9][0-9]*)$'
-UH_FQDN='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
-UH_MAC_RE='([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}'
-UH_MAC="^${UH_MAC_RE}$"
-UH_PREFIX='0.0.0.0:0 128.0.0.0:1 192.0.0.0:2 224.0.0.0:3 240.0.0.0:4 248.0.0.0:5 252.0.0.0:6 254.0.0.0:7 255.0.0.0:8 255.128.0.0:9 255.192.0.0:10 255.224.0.0:11 255.240.0.0:12 255.248.0.0:13 255.252.0.0:14 255.254.0.0:15 255.255.0.0:16 255.255.128.0:17 255.255.192.0:18 255.255.224.0:19 255.255.240.0:20 255.255.248.0:21 255.255.252.0:22 255.255.254.0:23 255.255.255.0:24 255.255.255.128:25 255.255.255.192:26 255.255.255.224:27 255.255.255.240:28 255.255.255.248:29 255.255.255.252:30 255.255.255.254:31 255.255.255.255:32'
+# KEY GUARD
+# Each key above is valid on its own. These two relations are not.
+if [ ! -e "/sys/class/net/$LAN" ]; then
+    log "ERROR: interface '$LAN' does not exist -- abort"
+    exit 1
+fi
+# Byte forms of the three limits, derived from keys KEY CHECK already validated
+max_bw_day=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_DAY/,/.}")
+max_bw_week=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_WEEK/,/.}")
+max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}")
+
+# ------------------------------------------------------------------------------
+# MAIN
+# ------------------------------------------------------------------------------
 
 log "bandata start..."
-
-# ------------------------------------------------------------------------------
-# FUNCTIONS
-# ------------------------------------------------------------------------------
 
 # PREFLIGHT CHECKS
 # Self-heal: remove orphaned .tmp files left by a previous run that failed
@@ -171,45 +224,10 @@ for stale_file in "$BLOCK_LIST_DAY.tmp" "$BLOCK_LIST_WEEK.tmp" "$BLOCK_LIST_MONT
     fi
 done
 
-# Validate LAN interface -- required for all iptables rules below
-if [ -z "$LAN" ]; then
-    log "ERROR: LAN is empty in $proxymon_env -- abort"
-    exit 1
-fi
-if [ ! -e "/sys/class/net/$LAN" ]; then
-    log "ERROR: interface '$LAN' does not exist -- abort"
-    exit 1
-fi
-
 # today
 today_dow=$(date +"%u")
 # reorganize IP
 sort_ips="sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
-# BANDWIDTH LIMITS VALIDATION
-# Convert and validate MAX_BANDWIDTH_* before any comparison is made.
-# If numfmt fails (empty/invalid value), abort instead of silently
-# treating the limit as 0, which would block the entire network.
-max_bw_day=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_DAY/,/.}" 2>/dev/null)
-if [ -z "$max_bw_day" ]; then
-    log "ERROR: invalid MAX_BANDWIDTH_DAY '${MAX_BANDWIDTH_DAY}'"
-    log "ERROR: expected format 500M, 1G, 1.5G -- abort"
-    exit 1
-fi
-
-max_bw_week=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_WEEK/,/.}" 2>/dev/null)
-if [ -z "$max_bw_week" ]; then
-    log "ERROR: invalid MAX_BANDWIDTH_WEEK '${MAX_BANDWIDTH_WEEK}'"
-    log "ERROR: expected format 500M, 1G, 1.5G -- abort"
-    exit 1
-fi
-
-max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}" 2>/dev/null)
-if [ -z "$max_bw_month" ]; then
-    log "ERROR: invalid MAX_BANDWIDTH_MONTH '${MAX_BANDWIDTH_MONTH}'"
-    log "ERROR: expected format 500M, 1G, 1.5G -- abort"
-    exit 1
-fi
-
 # FILESYSTEM LAYOUT
 # Create folders if they don't exist
 [ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"

@@ -14,26 +14,26 @@
       <br>
       It retrieves traffic information directly from Squid's <code>access.log</code> file and uses it to generate detailed statistics, reports and analysis tools for monitoring local network usage. <br>
       <br>
-      Its features are organized into modules, reachable through the tabs at the top of the dashboard.
+      The dashboard organizes its features into modules, which you can open from the tabs at the top.
       <br><br>
       <b>Proxy Monitor</b> is also a preservation project for Squid analysis tools that, despite their usefulness, were abandoned and no longer receive support. Those tools are SqStat, SARG, LightSquid and SquidAnalyzer. <br>
       <br>
       They are recovered, integrated and maintained inside the <b>Proxy Monitor</b> ecosystem, so they remain available and keep receiving support. <br>
       <br>
-      Three additional in-house modules complement them and extend the project's analysis and monitoring capabilities, including features based on artificial intelligence.
+      Three in-house modules—Monitor (Squidmon), LogView and AI (SquidAI)—complement the four preserved projects. Bandata works alongside Traffic (LightSquid) to enforce data-usage limits.
     </td>
     <td style="width: 50%; vertical-align: top;">
       <b>Proxy Monitor</b> es una aplicación web diseñada para funcionar exclusivamente con el servidor proxy <a href="https://www.squid-cache.org/" target="_blank">Squid-Cache</a>. Requiere el servidor web <a href="https://httpd.apache.org/" target="_blank">Apache2</a>. <br>
       <br>
-      Obtiene la información de tráfico directamente del archivo <code>access.log</code> de Squid y la usa para generar estadísticas detalladas, reportes y herramientas de análisis del uso de la red local. <br>
+      Obtiene los datos de tráfico del archivo <code>access.log</code> de Squid y los presenta como estadísticas e informes para analizar el uso de la red local. <br>
       <br>
-      Sus funciones están organizadas en módulos, accesibles desde las pestañas de la parte superior del panel.
+      El panel organiza sus funciones en módulos, accesibles desde las pestañas superiores.
       <br><br>
       <b>Proxy Monitor</b> es también un proyecto de conservación de herramientas de análisis para Squid que, pese a su utilidad, fueron abandonadas y ya no reciben soporte. Esas herramientas son SqStat, SARG, LightSquid y SquidAnalyzer. <br>
       <br>
       Se recuperan, integran y mantienen dentro del ecosistema de <b>Proxy Monitor</b>, de modo que sigan disponibles y con soporte. <br>
       <br>
-      Tres módulos propios adicionales las complementan y amplían la capacidad de análisis y monitoreo del proyecto, incluidas funciones basadas en inteligencia artificial.
+      Tres módulos propios —Monitor (Squidmon), LogView e IA (SquidAI)— complementan los cuatro proyectos preservados. Bandata trabaja junto con Traffic (LightSquid) para aplicar límites de consumo de datos.
     </td>
   </tr>
 </table>
@@ -58,7 +58,8 @@ been done first.
 apt install -y wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl \
                 coreutils sarg fonts-lato fonts-liberation fonts-dejavu \
                 perl cron sudo util-linux iproute2 passwd findutils sed \
-                grep hostname ncurses-bin systemd libc-bin iptables
+                grep hostname ncurses-bin systemd libc-bin iptables \
+                gawk gzip procps logrotate
 
 # squid
 apt install -y squid-openssl squid-langpack squid-common squidclient squid-purge
@@ -167,18 +168,18 @@ sudo bash pmsetup.sh
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     - If any IP addresses on your local network do not go through the Squid proxy, then they will not appear in the reports.
+     - IP addresses that bypass the Squid proxy do not appear in its reports.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     - Si alguna dirección IP de su red local no pasan por el proxy Squid, entonces no aparecerá en los reportes.
+     - Las direcciones IP de la red local cuyo tráfico no pase por el proxy Squid no aparecerán en sus informes.
     </td>
   </tr>
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     - The results shown in the <b>Squidmon Search</b> and <b>Traffic Search</b> sections are examples and may vary depending on your environment, dataset size, historical data volume, and computational resources available for ACL processing.
+     - The results in <b>Squidmon Search</b> and <b>Traffic Search</b> are examples. Actual results vary with your environment, the amount of log history, and the resources available to process ACLs.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     - Los resultados mostrados en las secciones <b>Squidmon Search</b> y <b>Traffic Search</b> son ejemplos y pueden variar según tu entorno, tamaño del conjunto de datos, volumen de datos históricos y recursos computacionales disponibles para el procesamiento de ACLs.
+     - Los resultados de <b>Squidmon Search</b> y <b>Traffic Search</b> son ejemplos. Los resultados reales dependen del entorno, la cantidad de registros históricos y los recursos disponibles para procesar las ACL.
     </td>
   </tr>
 </table>
@@ -209,22 +210,22 @@ sudo ./pmsetup.sh -h           # Show help message
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b>install</b> writes everything from scratch (Apache vhosts, <code>proxymon.env</code>, ACL lists, SARG/PHP/Apache hardening, cron). To avoid overwriting a working setup or prompting over one, it refuses to run if <code>/var/www/proxymon</code> already exists — use <b>update</b> or <b>uninstall</b> first.
+      <b>install</b> installs and configures Proxy Monitor, including Apache rules, <code>proxymon.env</code>, ACL lists, Apache/PHP/SARG settings, and scheduled tasks. If <code>/var/www/proxymon</code> already exists, it stops to avoid overwriting an installation. In that case, use <b>update</b> or <b>uninstall</b>.
       <br><br>
       <b>update</b> only refreshes the code and the permissions under <code>/var/www/proxymon</code>. It never touches the Apache, PHP or SARG system configuration, the cron entries, the ACL lists or <code>proxymon.env</code>, and it never prompts. <br>
       <br>
-      Sequence: stop Apache, back up the project with <code>tools/pmbk.sh</code>, stage the live data aside, replace the code, move the live data back over the fresh copy, reset permissions, restart Apache. <br>
+      The process stops Apache, creates a backup with <code>tools/pmbk.sh</code>, sets aside the data to preserve, replaces the code, restores that data, resets permissions, and restarts Apache. <br>
       <br>
-      Live data staged aside and put back this way, never touched by <code>update</code>:
+      The following data files and directories are moved aside and restored by <code>update</code>; their contents are preserved:
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b>install</b> escribe todo desde cero (vhosts de Apache, <code>proxymon.env</code>, listas ACL, hardening de SARG/PHP/Apache, cron). Para no sobrescribir una instalación en funcionamiento ni pedir datos sobre ella, se detiene si <code>/var/www/proxymon</code> ya existe — use <b>update</b> o <b>uninstall</b> primero.
+      <b>install</b> instala y configura Proxy Monitor, incluidas las reglas de Apache, el archivo <code>proxymon.env</code>, las listas ACL, los ajustes de Apache/PHP/SARG y las tareas programadas. Si <code>/var/www/proxymon</code> ya existe, se detiene para evitar sobrescribir una instalación. En ese caso, use <b>update</b> o <b>uninstall</b>.
       <br><br>
       <b>update</b> solo refresca el código y los permisos dentro de <code>/var/www/proxymon</code>. Nunca toca la configuración de Apache, PHP o SARG, las entradas de cron, las listas ACL ni <code>proxymon.env</code>, y nunca pide datos. <br>
       <br>
-      Secuencia: detiene Apache, respalda el proyecto con <code>tools/pmbk.sh</code>, aparta los datos vivos, reemplaza el código, devuelve los datos vivos sobre la copia recién puesta, reestablece permisos, reinicia Apache. <br>
+      El proceso detiene Apache, crea una copia de seguridad con <code>tools/pmbk.sh</code>, aparta los datos que debe conservar, reemplaza el código, restaura esos datos, ajusta los permisos y vuelve a iniciar Apache. <br>
       <br>
-      Datos vivos apartados y devueltos de esta forma, nunca tocados por <code>update</code>:
+      <code>update</code> aparta y restaura los siguientes archivos y directorios, conservando su contenido:
     </td>
   </tr>
 </table>
@@ -259,10 +260,10 @@ sudo ./pmsetup.sh -h           # Show help message
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Squid Monitor (squidmon) provides detailed real-time traffic analysis and monitoring of your Squid proxy. It displays comprehensive statistics including blocked domains, blocked clients, traffic patterns, and ACL matching information. The module allows you to monitor, filter, and generate detailed reports on network activity and content blocking.
+     Squid Monitor (squidmon) provides detailed real-time traffic analysis and monitoring of your Squid proxy. It displays comprehensive statistics including blocked domains, blocked clients, traffic patterns, and ACL matching information. You can filter this activity and generate detailed reports on network traffic and blocked content.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Squid Monitor (squidmon) proporciona análisis de tráfico en tiempo real y monitoreo detallado de su proxy Squid. Muestra estadísticas completas incluyendo dominios bloqueados, clientes bloqueados, patrones de tráfico e información de coincidencia de ACL. El módulo permite monitorear, filtrar y generar reportes detallados sobre actividad de red y bloqueo de contenido.
+     Squid Monitor (Squidmon) ofrece análisis del tráfico de Squid en tiempo real. Muestra estadísticas sobre dominios y clientes bloqueados, patrones de tráfico y coincidencias con las ACL. También permite filtrar la actividad y generar informes detallados sobre el tráfico de red y el contenido bloqueado.
     </td>
   </tr>
 </table>
@@ -277,7 +278,7 @@ sudo ./pmsetup.sh -h           # Show help message
       This section defines the parameters that Squid Monitor uses to interpret and display network activity, including data sources (access control lists —ACLs—), the maximum number of lines to analyze from the Squid log, the time range of the data, and the automatic refresh interval. The default path for ACLs is <code>/etc/acl</code> and the following lists are integrated:
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Esta sección define los parámetros que Squid Monitor utiliza para interpretar y visualizar la actividad de la red, incluyendo las fuentes de datos (listas de control de acceso —ACLs—), el número máximo de líneas a analizar del registro de Squid, el rango temporal de los datos y la frecuencia de actualización automática. El path por defecto de las ACLs es <code>/etc/acl</code> y se integran las siguientes listas:
+      Aquí se configuran los parámetros que Squid Monitor usa para mostrar la actividad de la red: las listas de control de acceso (ACL), el máximo de líneas del registro de Squid que se analizarán, el período de consulta y el intervalo de actualización. La ruta predeterminada de las ACL es <code>/etc/acl</code>. Estas son las listas integradas:
     </td>
   </tr>
 </table>
@@ -292,10 +293,10 @@ regex:(announce\.php\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent pr
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      To change the lists, modify this section of <b>Config</b>, as shown in the image above, entering only the file name of each list — Squid Monitor looks it up under <code>/etc/acl</code>, in any subdirectory. If you move the lists elsewhere, change the path in <code>/etc/proxymon/proxymon.env</code>.
+      To change the lists, enter only each file name in the <b>Config</b> section. Squid Monitor looks for the files under <code>/etc/acl</code>, including its subdirectories. If you move them, update the path in <code>/etc/proxymon/proxymon.env</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Para cambiar las listas, modifíquese en esta sección de <b>Config</b>, como se muestra en la imagen superior, indicando únicamente el nombre del archivo de cada lista — Squid Monitor lo busca dentro de <code>/etc/acl</code>, en cualquier subdirectorio. Si mueve las listas a otra ubicación, cambie el path en <code>/etc/proxymon/proxymon.env</code>.
+      Para cambiar las listas, indique en la sección <b>Config</b> solo el nombre de cada archivo. Squid Monitor lo buscará dentro de <code>/etc/acl</code>, incluidas sus subcarpetas. Si cambia la ubicación de las listas, actualice la ruta en <code>/etc/proxymon/proxymon.env</code>.
     </td>
   </tr>
 </table>
@@ -309,10 +310,10 @@ ACL_PATH=/etc/acl
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b>⚠️ Important:</b> Any ACL you want to declare in Squidmon configuration must also be declared in your <code>squid.conf</code> for blocking to take effect. Example for declaring default ACLs:
+      <b>⚠️ Important:</b> For a rule to block traffic, it must be defined in both Squidmon configuration and <code>squid.conf</code>. Here is an example using the default ACLs:
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b>⚠️ Importante:</b> Cualquier ACL que quiera declarar en la configuración de Squidmon, también deberá declararlas en su <code>squid.conf</code> para que surta efecto el bloqueo. Ejemplo para declarar las ACLs por defecto:
+      <b>⚠️ Importante:</b> Para que una regla bloquee tráfico, debe estar definida tanto en la configuración de Squidmon como en <code>squid.conf</code>. Este es un ejemplo con las ACL predeterminadas:
     </td>
   </tr>
 </table>
@@ -338,7 +339,7 @@ http_access deny workdays blockdomains
       <b style="color: #d9534f;">⚠️ Warning:</b> Default values are <b>24 hours</b> and <b>50,000 lines</b> from <i>access.log</i>. Increasing these values may slow down the module and raise system resource usage. Refer to the <b>Squidmon Search</b> section. To reset the filters to their default values, press the <b>Reset to Default</b> button.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b style="color: #d9534f;">⚠️ Advertencia:</b> Los valores por defecto son de <b>24 horas</b> y <b>50&nbsp;000 líneas</b> del archivo <i>access.log</i>. Aumentar estos valores puede ralentizar el módulo y elevar el uso de recursos del sistema. Consulte la sección <b>Squidmon Search</b>. Para resetear los filtros a sus valores por default, presione el botón <b>Reset to Default</b>.
+      <b style="color: #d9534f;">⚠️ Advertencia:</b> Los valores predeterminados son <b>24 horas</b> y <b>50&nbsp;000 líneas</b> de <i>access.log</i>. Si los aumenta, el módulo podría tardar más y consumir más recursos. Consulte la sección <b>Squidmon Search</b>. Para restablecer los valores iniciales, pulse <b>Reset to Default</b>.
     </td>
   </tr>
 </table>
@@ -350,18 +351,18 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     <b>Top Blocked Domains:</b> Displays a list of the most frequently blocked domains on your network. Shows the domain name with port information and the total number of blocked requests for each domain. This helps identify which sites or services are being blocked most often and allows administrators to adjust blocking policies accordingly.
+     <b>Top Blocked Domains:</b> Shows the domains Squid blocks most often, along with the port and number of blocked requests. This helps identify frequently blocked sites or services and adjust access rules.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     <b>Top Blocked Domains:</b> Muestra una lista de los dominios más bloqueados frecuentemente en su red. Muestra el nombre del dominio con información del puerto y el número total de solicitudes bloqueadas para cada dominio. Esto ayuda a identificar qué sitios o servicios se están bloqueando más frecuentemente y permite a los administradores ajustar las políticas de bloqueo en consecuencia.
+     <b>Top Blocked Domains:</b> Muestra los dominios que Squid bloquea con mayor frecuencia, junto con el puerto y el número de solicitudes bloqueadas. Esta información ayuda a identificar qué sitios o servicios se bloquean más y a ajustar las reglas de acceso.
     </td>
   </tr>
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     <b>Top Blocked Clients:</b> Shows the client IP addresses with the highest number of blocked requests. Each entry displays the total requests made, blocked requests count, and the percentage of traffic that was blocked. This helps identify clients that frequently attempt to access restricted content and may require additional monitoring or bandwidth management.
+     <b>Top Blocked Clients:</b> Shows the client IP addresses with the most blocked requests. Each row includes the total number of requests, how many were blocked, and the percentage they represent. This helps identify clients that often try to access restricted content and may need follow-up.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     <b>Top Blocked Clients:</b> Muestra las direcciones IP de los clientes con el mayor número de solicitudes bloqueadas. Cada entrada muestra el total de solicitudes realizadas, el conteo de solicitudes bloqueadas y el porcentaje del tráfico que fue bloqueado. Esto ayuda a identificar clientes que frecuentemente intentan acceder a contenido restringido y pueden requerir monitoreo adicional o gestión de ancho de banda.
+     <b>Top Blocked Clients:</b> Muestra las IP de los clientes con más solicitudes bloqueadas. Cada fila incluye el total de solicitudes, cuántas se bloquearon y qué porcentaje representan. Así puedes identificar equipos que intentan acceder con frecuencia a contenido restringido y decidir si requieren seguimiento.
     </td>
   </tr>
 </table>
@@ -373,18 +374,18 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Provides an expandable view of all client IP addresses and their traffic statistics. For each client you can see total requests, blocked requests and allowed requests. <br>
+     Expand a client IP to view its traffic statistics, including total, blocked, and allowed requests. <br>
      <br>
-     The module includes advanced filtering with ACL selection, a search function to find specific IPs or domains, and time-range reports: Last 24 Hours, Last 7 Days and Last 30 Days. <br>
+     Filter by ACL, search for IP addresses or domains, and select a period of 24 hours, 7 days, or 30 days. <br>
      <br>
-     Individual PDF reports can be generated for each client's traffic.
+     You can also generate a PDF report for each client.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Proporciona una vista expandible de todas las direcciones IP de clientes y sus estadísticas de tráfico. Para cada cliente puede ver el total de solicitudes, las solicitudes bloqueadas y las permitidas. <br>
+     Permite desplegar las IP de los clientes y consultar, para cada una, el total de solicitudes y cuántas fueron bloqueadas o permitidas. <br>
      <br>
-     El módulo incluye filtrado avanzado con selección de ACL, una función de búsqueda para encontrar IP o dominios concretos, y reportes por rango de tiempo: Últimas 24 Horas, Últimos 7 Días y Últimos 30 Días. <br>
+     Puedes filtrar por ACL, buscar IP o dominios y consultar períodos de 24 horas, 7 días o 30 días. <br>
      <br>
-     Se pueden generar reportes PDF individuales para el tráfico de cada cliente.
+     También puedes generar un informe PDF para cada cliente.
     </td>
   </tr>
 </table>
@@ -398,16 +399,16 @@ http_access deny workdays blockdomains
     <td style="width: 50%; vertical-align: top;">
      Squidmon classifies traffic using ACLs (Access Control Lists), such as <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b> and <b>Unknown ACL</b>. The last one covers any rule defined in <code>squid.conf</code> that is not among the ACLs listed in Config. <br>
      <br>
-     It also includes a search tool to locate clients by IP address or identify domains by name, plus the options <b>Show Blocked Only</b> and <b>Show Allowed Only</b>. <br>
+     Search by IP address or domain, and filter to show only blocked or only allowed traffic. <br>
      <br>
-     To return to the default view, use the <b>Clean Filters</b> button.
+     Select <b>Clean Filters</b> to clear the filters.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon clasifica el tráfico mediante ACL (Access Control Lists), como <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b> y <b>Unknown ACL</b>. Esta última cubre cualquier regla definida en <code>squid.conf</code> que no esté entre las ACL listadas en Config. <br>
+     Squidmon clasifica el tráfico según las ACL, como <b>Blocked TLD</b>, <b>Blocked Sites</b>, <b>Blocked Patterns</b>, <b>Block IPv4</b> y <b>Unknown ACL</b>. Esta última agrupa las reglas de <code>squid.conf</code> que no aparecen en la sección <b>Config</b>. <br>
      <br>
-     También incluye una herramienta de búsqueda para localizar clientes por dirección IP o identificar dominios por nombre, más las opciones <b>Show Blocked Only</b> y <b>Show Allowed Only</b>. <br>
+     Puedes buscar por IP o dominio y filtrar para ver solo el tráfico bloqueado o solo el permitido. <br>
      <br>
-     Para volver a la vista por defecto, use el botón <b>Clean Filters</b>.
+     Pulsa <b>Clean Filters</b> para borrar los filtros.
     </td>
   </tr>
 </table>
@@ -419,18 +420,18 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Generate detailed PDF reports for traffic analysis and auditing. <br>
+     Generate PDF traffic reports. <br>
      <br>
-     Reports can be generated for specific time ranges: Last 24 Hours, Last 7 Days or Last 30 Days. Each client or domain can have its own PDF report, which makes it easy to share traffic statistics with other administrators or interested parties. <br>
+     Choose the last 24 hours, 7 days, or 30 days. You can also create a report for a client or domain and share it with anyone. <br>
      <br>
-     The <b>Generate PDF Report</b> button is available throughout the interface.
+     The <b>Generate PDF Report</b> button appears in the interface.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Genere reportes PDF detallados para análisis de tráfico y auditoría. <br>
+     Puedes generar informes PDF de tráfico. <br>
      <br>
-     Los reportes se pueden generar para rangos de tiempo concretos: Últimas 24 Horas, Últimos 7 Días o Últimos 30 Días. Cada cliente o dominio puede tener su propio reporte PDF, lo que facilita compartir estadísticas de tráfico con otros administradores o partes interesadas. <br>
+     Puedes elegir las últimas 24 horas, los últimos 7 días o los últimos 30 días, y generar un informe para un cliente o dominio para compartirlo con quien quieras. <br>
      <br>
-     El botón <b>Generate PDF Report</b> está disponible en toda la interfaz.
+     El botón <b>Generate PDF Report</b> aparece en la interfaz.
     </td>
   </tr>
 </table>
@@ -442,10 +443,10 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     When expanding a specific client IP, you can view detailed information about blocked URLs including the specific URLs that were blocked, the ACL rule that matched (e.g., <b>Blocked Sites</b>), and the number of times each URL was attempted. This granular level of detail helps identify problematic browsing patterns and allows for fine-tuning of access control policies.
+     Expand a client IP to see the blocked URLs, the matching ACL rule (for example, <b>Blocked Sites</b>), and how many times each URL was requested. This helps identify browsing patterns and adjust access rules.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Al expandir una IP de cliente específica, puede ver información detallada sobre URLs bloqueadas incluyendo las URLs específicas que fueron bloqueadas, la regla de ACL que coincidió (por ejemplo, <b>Blocked Sites</b>), y el número de veces que se intentó acceder a cada URL. Este nivel de detalle granular ayuda a identificar patrones de navegación problemáticos y permite afinar las políticas de control de acceso.
+     Al desplegar una IP, puedes consultar las URL bloqueadas, la regla de ACL que coincidió —por ejemplo, <b>Blocked Sites</b>— y cuántas veces se solicitó cada URL. Estos datos ayudan a reconocer patrones de navegación y ajustar las reglas de acceso.
     </td>
   </tr>
 </table>
@@ -457,10 +458,10 @@ http_access deny workdays blockdomains
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     If you have an ACL in Squid-Cache that uses <code>url_regex</code>, you cannot declare its file path in the Squid Monitor configuration module; You must declare your content directly in the <b>Config</b> section of the module settings. Example:
+     If a Squid ACL uses <code>url_regex</code>, Squid Monitor cannot read it from a file. Enter the expression directly in the module's <b>Config</b> section, as shown here:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Si tiene una ACL en Squid-Cache que utiliza <code>url_regex</code>, no puede declarar su ruta de archivo en el módulo de configuración de Squid Monitor; debe declarar directamente su contenido en la sección <b>Config</b> de la configuración del módulo. Ejemplo:
+     Si una ACL de Squid usa <code>url_regex</code>, Squid Monitor no puede leerla desde un archivo. Copie su expresión directamente en la sección <b>Config</b> del módulo, como en este ejemplo:
     </td>
   </tr>
 </table>
@@ -496,18 +497,18 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon reads only the current <code>access.log</code> file. It does not read rotated files such as <code>access.log.0</code>, <code>access.log.1</code> or <code>access.log.gz</code>. <br>
+     Squidmon reads only the current <code>access.log</code>; it does not process rotated files. <br>
      <br>
-     Disable Squid's internal rotation with <code>logfile_rotate 0</code> in <code>squid.conf</code> and let <code>logrotate</code> handle it exclusively. <br>
+     Disable Squid's internal rotation with <code>logfile_rotate 0</code>, then configure <code>logrotate</code> to rotate the file at a frequency that suits your network, such as weekly or monthly. <br>
      <br>
-     Configure <code>/etc/logrotate.d/squid</code> with <code>weekly</code> rotation as a minimum and <code>monthly</code> as a maximum, and keep <code>rotate 7</code> for history. This prevents conflicts between the two rotation systems.
+     In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Squidmon solo lee el archivo <code>access.log</code> actual. No lee archivos rotados como <code>access.log.0</code>, <code>access.log.1</code> o <code>access.log.gz</code>. <br>
+     Squidmon solo lee el <code>access.log</code> actual; no procesa los archivos rotados. <br>
      <br>
-     Desactive la rotación interna de Squid con <code>logfile_rotate 0</code> en <code>squid.conf</code> y deje que <code>logrotate</code> se encargue en exclusiva. <br>
+     Desactive la rotación interna de Squid con <code>logfile_rotate 0</code> y configure <code>logrotate</code> para rotar el archivo con una frecuencia adecuada para su red, por ejemplo semanal o mensual. <br>
      <br>
-     Configure <code>/etc/logrotate.d/squid</code> con rotación <code>weekly</code> como mínimo y <code>monthly</code> como máximo, y conserve <code>rotate 7</code> de historial. Esto evita conflictos entre los dos sistemas de rotación.
+     En <code>/etc/logrotate.d/squid</code>, puedes conservar siete rotaciones con <code>rotate 7</code>.
     </td>
   </tr>
 </table>
@@ -537,10 +538,10 @@ sudo sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The first time you open Squid Report in your browser, you may receive an error message. This is because you haven't run the script for the first time, or your LAN traffic hasn't passed through Squid, so there's no data in the <code>/var/www/proxymon/lightsquid/report</code> folder. The installation script runs the command that generates the reports, but if they still don't appear, open the terminal and run it manually:
+     The first time you open <b>Traffic (LightSquid)</b>, reports may not be available yet. This happens if they have not been generated or your network traffic has not passed through Squid. The installer attempts to generate the initial report; if it does not appear, run this command:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     La primera vez que abra Squid Report en su navegador, puede salir un mensaje de error. Esto se debe a que no ha ejecutado por primera vez el script o el tráfico de su LAN no ha pasado por Squid y, por tanto, no hay datos en la carpeta <code>/var/www/proxymon/lightsquid/report</code>. El script de instalación ejecuta el comando que genera los reportes, pero si continúan sin aparecer, abra el terminal y ejecute manualmente:
+     La primera vez que abras <b>Traffic (LightSquid)</b>, puede que todavía no haya informes. Esto ocurre si aún no se han generado o si el tráfico de la red no ha pasado por Squid. El instalador intenta generar el informe inicial; si no aparece, ejecuta este comando:
     </td>
   </tr>
 </table>
@@ -556,10 +557,10 @@ sudo /var/www/proxymon/lightsquid/lightparser.pl today
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      In the General Statistics module, the search bar allows you to quickly filter and find specific data within the report table. Simply enter a keyword or value in the search field and click the SEARCH button to display matching results. This feature helps you locate information efficiently without scrolling through the entire dataset.
+      In <b>General Statistics</b>, enter a word or value in the search bar and select <b>SEARCH</b>. The table will show matching rows, so you do not have to scan the entire report.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      En el módulo General Statistics, la barra de búsqueda te permite filtrar y encontrar datos específicos rápidamente dentro de la tabla de reportes. Simplemente ingresa una palabra clave o valor en el campo de búsqueda y haz clic en el botón SEARCH para mostrar los resultados coincidentes. Esta función te ayuda a localizar información de manera eficiente sin necesidad de desplazarte por todo el conjunto de datos.
+      En <b>General Statistics</b>, escribe una palabra o un valor en la barra de búsqueda y pulsa <b>SEARCH</b>. La tabla mostrará las filas coincidentes, sin que tengas que recorrer todo el informe.
     </td>
   </tr>
 </table>
@@ -573,17 +574,17 @@ sudo /var/www/proxymon/lightsquid/lightparser.pl today
 <table width="100%">
   <tr>
     <td style="width: 50%;">
-      <b>Result:</b> 1,323 entries found in <b>5.4 seconds</b>. Full-text search across all indexed domains.<br><br>
+      <b>Result:</b> 1,323 matches in <b>5.4 seconds</b>. The search scans LightSquid daily reports for the entered term, regardless of letter case.<br><br>
       <b>Data Source:</b> LightSquid reports<br>
       <code>/var/www/proxymon/lightsquid/report/YYYYMMDD/</code><br><br>
-      <b>Search Method:</b> Grep-optimized index with Perl regex fallback<br><br>
+      <b>Search Method:</b> Reads report files and searches for the literal term<br><br>
       <b>Use Case:</b> Historical analysis, domain trends, bandwidth reports
     </td>
     <td style="width: 50%;">
-      <b>Resultado:</b> 1,323 registros encontrados en <b>5.4 s</b>. Búsqueda de texto completo en todos los dominios y sitios indexados.<br><br>
+      <b>Resultado:</b> 1 323 coincidencias en <b>5,4 s</b>. La búsqueda recorre los informes diarios de LightSquid y encuentra el texto indicado, sin distinguir mayúsculas de minúsculas.<br><br>
       <b>Fuente de Datos:</b> Reportes de LightSquid<br>
       <code>/var/www/proxymon/lightsquid/report/YYYYMMDD/</code><br><br>
-      <b>Método de Búsqueda:</b> Índice optimizado con grep y alternativa de regex Perl<br><br>
+      <b>Método de Búsqueda:</b> Lectura de los archivos de informes y búsqueda literal del término<br><br>
       <b>Caso de Uso:</b> Análisis histórico, tendencias de dominios, reportes de ancho de banda
     </td>
   </tr>
@@ -594,10 +595,10 @@ sudo /var/www/proxymon/lightsquid/lightparser.pl today
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The installation script adds a task to the crontab to run every 10 minutes. You can change it according to your preferences.
+     The installer schedules LightSquid report generation every 10 minutes. To change the frequency, edit its entry in <code>/etc/cron.d/proxymon</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     El script de instalación agrega una tarea al crontab para que se ejecute cada 10 minutos. Puedes cambiarla según tus preferencias.
+     El instalador programa la generación de informes de LightSquid cada 10 minutos. Para cambiar la frecuencia, edita la tarea de LightSquid en <code>/etc/cron.d/proxymon</code>.
     </td>
   </tr>
 </table>
@@ -612,12 +613,12 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     To add users manually to realname (audit) and skipuser (exclude) lists:<br><br>
-     <em>Note: <b>BanData</b> updates these lists automatically on every run, if enabled: declare your ACLs in the <code>exclude_acls</code> variable and answer "y" to "Automatically update hostnames in Lightsquid?" during <code>pmsetup.sh install</code> (default: n). This sets <code>UPDATE_REALNAME=true</code> in <code>/etc/proxymon/proxymon.env</code>.</em>
+     You can add users manually to <code>realname.cfg</code> and exclude IP addresses from reports with <code>skipuser.cfg</code>.<br><br>
+     <em>Note: <b>when <code>UPDATE_REALNAME=true</code>—the default for a new installation—Bandata generates <code>realname.cfg</code> from non-excluded MAC ACLs and, when enabled, data from <code>uhm-auth.txt</code>. It also generates <code>skipuser.cfg</code> from the IP addresses in <code>mac-unlimited.txt</code> and IPv4 entries in <code>/etc/hosts</code>. If it finds data, it replaces the contents of those files, so manual edits may be lost.</em>
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Para agregar usuarios manualmente a las listas realname (auditar) y skipuser (excluir):<br><br>
-     <em>Nota: <b>BanData</b> actualiza estas listas automáticamente en cada ejecución, si está habilitado: declare sus ACLs en la variable <code>exclude_acls</code> y responda "y" a "Automatically update hostnames in Lightsquid?" durante <code>pmsetup.sh install</code> (por defecto: n). Esto define <code>UPDATE_REALNAME=true</code> en <code>/etc/proxymon/proxymon.env</code>.</em>
+     Puedes añadir usuarios manualmente a <code>realname.cfg</code> y excluir IP de los informes con <code>skipuser.cfg</code>.<br><br>
+     <em>Nota: cuando <code>UPDATE_REALNAME=true</code> —valor predeterminado al instalar—, Bandata genera <code>realname.cfg</code> con las ACL MAC no excluidas y, si corresponde, los datos de <code>uhm-auth.txt</code>. También genera <code>skipuser.cfg</code> con las IP de <code>mac-unlimited.txt</code> y las direcciones IPv4 de <code>/etc/hosts</code>. Si encuentra datos, reemplaza el contenido de esos archivos, por lo que los cambios manuales pueden perderse.</em>
      </td>
   </tr>
 </table>
@@ -637,10 +638,10 @@ sudo nano /var/www/proxymon/lightsquid/skipuser.cfg
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     To exclude users:
+     To exclude IP addresses from reports, add them to <code>skipuser.cfg</code>. If <code>UPDATE_REALNAME=true</code>, Bandata normally rebuilds this file from <code>mac-unlimited.txt</code> and <code>/etc/hosts</code>, so manual changes may be replaced:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Para excluir usuarios:
+     Para excluir IP de los informes, añádelas a <code>skipuser.cfg</code>. Si <code>UPDATE_REALNAME=true</code>, Bandata normalmente vuelve a generar este archivo a partir de <code>mac-unlimited.txt</code> y <code>/etc/hosts</code>, por lo que puede reemplazar los cambios manuales:
     </td>
   </tr>
 </table>
@@ -685,10 +686,10 @@ sudo netdiscover
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     There are only two themes available: "base" (very outdated) and "metro" (default).
+     LightSquid includes two themes: <b>metro</b>, the default, and <b>base</b>, which has an older design.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Solo hay dos temas disponibles. "base" (muy anticuado) y "metro" (por defecto).
+     LightSquid incluye dos temas: <b>metro</b>, el predeterminado, y <b>base</b>, de diseño más antiguo.
     </td>
   </tr>
 </table>
@@ -704,10 +705,10 @@ $templatename        ="metro_tpl";
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Traffic statistics are displayed in the web application, along with the users who exceeded their limits. To change the data limit in the <code>lightsquid.cfg</code> statistics:
+     LightSquid displays traffic statistics and identifies users who exceed the configured threshold. To change that threshold, edit <code>lightsquid.cfg</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Las estadísticas del tráfico se muestran en la aplicación web, junto con los usuarios que superaron el límite. Para cambiar el límite de datos en las estadísticas de <code>lightsquid.cfg</code>:
+     LightSquid muestra las estadísticas de tráfico y señala a los usuarios que superan el umbral configurado. Para cambiar ese umbral, edita <code>lightsquid.cfg</code>:
     </td>
   </tr>
 </table>
@@ -729,10 +730,10 @@ $perusertrafficlimit = 1000*1024*1024;
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      In the <b>General Statistics</b> module, the <b>Tools</b> button located on the right side of the header provides multiple export options. You can Copy the table data to your clipboard, Print the report directly, or export it in various formats including PDF, Excel (XLSX), and CSV for further analysis and sharing.
+      In <b>General Statistics</b>, open <b>Tools</b> on the right side of the header to copy or print the table, or export it as PDF, XLSX, or CSV.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      En el módulo <b>General Statistics</b>, el botón <b>Tools</b> ubicado en el lado derecho del encabezado ofrece múltiples opciones de exportación. Puedes Copiar los datos de la tabla al portapapeles, Imprimir el reporte directamente, o exportarlo en diversos formatos incluyendo PDF, Excel (XLSX) y CSV para análisis posterior y compartirlo.
+      En <b>General Statistics</b>, abre <b>Tools</b>, a la derecha del encabezado, para copiar o imprimir la tabla y exportarla como PDF, XLSX o CSV.
     </td>
   </tr>
 </table>
@@ -742,10 +743,10 @@ $perusertrafficlimit = 1000*1024*1024;
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Squid Report can generate reports in PDF, CSV, and other formats, but it will only display the top domains. If you want to retrieve all the domains visited on your local network in a single ACL suitable for Squid, run the following command:
+     LightSquid can export reports, but its site view shows a selection of top domains. To collect the domains recorded in the daily reports and create a list for a Squid ACL, run:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Squid Report puede generar reportes en PDF, CSV, etc., pero solo mostrará los dominios principales (TOP). Si desea obtener todos los dominios visitados en su red local en una sola ACL apta para Squid, ejecute el siguiente comando:
+     LightSquid permite exportar informes, pero su vista de sitios muestra una selección de los dominios principales. Para reunir los dominios registrados en los informes diarios y generar una lista para una ACL de Squid, ejecuta:
     </td>
   </tr>
 </table>
@@ -767,7 +768,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
       <ul>
         <li>Weekends are excluded from the calculation.</li>
         <li>The limits must match those configured in Squid Report.</li>
-        <li>The script updates <em>realname.cfg</em> from Lightsquid.</li>
+        <li>Bandata can generate <code>realname.cfg</code> to map IP addresses to names and <code>skipuser.cfg</code> to exclude IP addresses from LightSquid reports. It reads MAC ACLs, <code>/etc/hosts</code>, and, when enabled, the captive portal's <code>uhm-auth.txt</code>.</li>
       </ul>
     </td>
     <td style="width: 50%; vertical-align: top;">
@@ -777,7 +778,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
       <ul>
         <li>Los fines de semana quedan excluidos del cálculo.</li>
         <li>Los límites deben coincidir con los configurados en Squid Report.</li>
-        <li>El script se encarga de actualizar <em>realname.cfg</em> de Lightsquid.</li>
+        <li>Bandata puede generar <code>realname.cfg</code> para asociar IP con nombres y <code>skipuser.cfg</code> para excluir IP de los informes de LightSquid. Toma los datos de las ACL MAC, de <code>/etc/hosts</code> y, si está activado, de <code>uhm-auth.txt</code> del portal cautivo.</li>
       </ul>
     </td>
   </tr>
@@ -798,10 +799,10 @@ sudo crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     When a user's IP address exceeds the quota limit -daily, weekly, or monthly- they will be redirected to the Warning portal:
+     When an IP address exceeds its daily, weekly, or monthly quota, Bandata redirects its HTTP traffic to the Warning portal. Other traffic is blocked:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Cuando la IP de un usuario supera el límite de cuota -diaria, semanal o mensual-, será redirigida al portal de advertencia (Warning):
+     Cuando una IP supera su cuota diaria, semanal o mensual, Bandata redirige su tráfico HTTP al portal de advertencia (Warning) y bloquea el resto del tráfico:
     </td>
   </tr>
 </table>
@@ -815,10 +816,10 @@ http://192.168.X.X:18081
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     To check the banned IPs:
+     To view the blocked IP addresses:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Para verificar las IPs baneadas:
+     Para consultar las IP bloqueadas:
     </td>
   </tr>
 </table>
@@ -832,10 +833,10 @@ cat /var/www/proxymon/bandata/acl/{banmonth,banweek,banday}.txt | uniq
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     To set the data limit, you can use GBytes, MBytes, or Bytes; for example: 0.5G, 512M, or 536870912. By default, the data usage limits are: 1 Gigabyte (1G) per day, 5 Gigabytes (5G) per week, and 20 Gigabytes (20G) per month.
+     You can enter limits in gigabytes, megabytes, or bytes; for example, <code>0.5G</code>, <code>512M</code>, or <code>536870912</code>. The default limits are 1 GB per day, 5 GB per week, and 20 GB per month.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Para establecer el límite de datos, puede usar GBytes, MBytes o Bytes; por ejemplo: 0.5G, 512M o 536870912. Por defecto, los valores del límite de consumo son: 1 Gigabyte (1G) diario, 5 Gigabytes (5G) semanales y 20 Gigabytes (20G) mensuales.
+     Puedes indicar los límites en gigabytes, megabytes o bytes; por ejemplo, <code>0.5G</code>, <code>512M</code> o <code>536870912</code>. Los valores predeterminados son 1 GB al día, 5 GB a la semana y 20 GB al mes.
     </td>
   </tr>
 </table>
@@ -845,10 +846,10 @@ cat /var/www/proxymon/bandata/acl/{banmonth,banweek,banday}.txt | uniq
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The script checks the current day's Squid Report and blocks any users on the local network who exceed the set consumption limit. The block will be lifted the following day. To change the daily data limit in <code>/var/www/proxymon/bandata/bandata.sh</code>:
+     Bandata compares the day's usage with the daily limit and blocks IP addresses that exceed it. On each weekday run, it recalculates the daily list from that day's report; it clears the list on weekends. An IP address is no longer blocked by the daily quota once it disappears from that list, though it may remain blocked if it appears in the weekly or monthly list. To change the daily limit, edit <code>/etc/proxymon/proxymon.env</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     El script verifica el informe del día actual de Squid Report y bloquea a cualquier usuario de la red local que supere el consumo establecido. El bloqueo se levantará al día siguiente. Para cambiar el límite de datos diario en <code>/var/www/proxymon/bandata/bandata.sh</code>:
+     Bandata compara el consumo del día con el límite diario y bloquea las IP que lo superan. En cada ejecución de lunes a viernes recalcula la lista diaria con el informe de ese día; durante el fin de semana la vacía. La IP deja de estar bloqueada por cuota diaria cuando desaparece de esa lista, aunque puede seguir bloqueada si aparece en la lista semanal o mensual. Para cambiar el límite diario, edita <code>/etc/proxymon/proxymon.env</code>:
     </td>
   </tr>
 </table>
@@ -862,10 +863,10 @@ MAX_BANDWIDTH_DAY=1G
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Every Monday, the script analyzes the bandwidth usage from the weekdays (Monday to Friday) of the previous week. If any local network user exceeds the weekly limit (default: 5G), they will be blocked. To change the weekly data limit in <code>/var/www/proxymon/bandata/bandata.sh</code>:
+     Every Monday, Bandata totals the usage recorded from Monday to Friday of the previous week and updates the weekly list. If an IP address exceeds the limit (5 GB by default), it remains blocked under the weekly quota until a later Monday calculation removes it from that list. It may also remain blocked if it appears in the daily or monthly list. To change the weekly limit, edit <code>/etc/proxymon/proxymon.env</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Cada lunes, el script analiza el consumo de los días hábiles (lunes a viernes) de la semana anterior. Si un usuario de la red local supera el límite semanal (por defecto 5G), será bloqueado. Para cambiar el límite de datos semanal en <code>/var/www/proxymon/bandata/bandata.sh</code>:
+     Cada lunes, Bandata suma el consumo registrado de lunes a viernes de la semana anterior y actualiza la lista semanal. Si una IP supera el límite —5 GB de forma predeterminada—, permanece bloqueada por cuota semanal hasta que el cálculo de un lunes posterior la quite de esa lista. También puede seguir bloqueada si aparece en la lista diaria o mensual. Para cambiar el límite semanal, edita <code>/etc/proxymon/proxymon.env</code>:
     </td>
   </tr>
 </table>
@@ -879,10 +880,10 @@ MAX_BANDWIDTH_WEEK=5G
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     At any time, the script can analyze the accumulated traffic during the weekdays of the current month (excluding weekends). If any user exceeds the monthly limit (default: 20G), they will be blocked immediately. To change the monthly data limit in <code>/var/www/proxymon/bandata/bandata.sh</code>:
+     On every run, Bandata totals usage recorded on weekdays in the current month and updates the monthly list. If an IP address exceeds the limit (20 GB by default), it remains blocked under the monthly quota while it appears on that list. At the start of the next month, the list is calculated from the new month's reports, removing blocks that applied only to the previous month. The IP may remain blocked if it appears in the daily or weekly list. To change the monthly limit, edit <code>/etc/proxymon/proxymon.env</code>:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     En cualquier momento, el script puede analizar el tráfico acumulado durante los días hábiles del mes actual (excluyendo fines de semana). Si detecta que un usuario ha superado el límite mensual (por defecto 20G), lo bloqueará de inmediato. Para cambiar el límite de datos mensual en <code>/var/www/proxymon/bandata/bandata.sh</code>:
+     En cada ejecución, Bandata suma el consumo de los días hábiles del mes en curso y actualiza la lista mensual. Si una IP supera el límite —20 GB de forma predeterminada—, permanece bloqueada por cuota mensual mientras figure en esa lista. Al comenzar el mes siguiente, la lista se calcula con los informes del nuevo mes y elimina los bloqueos que solo correspondían al mes anterior. La IP puede seguir bloqueada si aparece en la lista diaria o semanal. Para cambiar el límite mensual, edita <code>/etc/proxymon/proxymon.env</code>:
     </td>
   </tr>
 </table>
@@ -890,6 +891,17 @@ MAX_BANDWIDTH_WEEK=5G
 ```bash
 MAX_BANDWIDTH_MONTH=20G
 ```
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Bandata forma el conjunto de IP bloqueadas uniendo las listas diaria, semanal y mensual. Una IP deja de estar bloqueada cuando ya no aparece en ninguna de las tres.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Bandata builds the blocked IP set by combining the daily, weekly, and monthly lists. An IP address is unblocked only when it no longer appears in any of the three.
+    </td>
+  </tr>
+</table>
 
 ### REPORTS (SARG)
 
@@ -941,18 +953,18 @@ MAX_BANDWIDTH_MONTH=20G
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      SARG only keeps the last 7 days of logs, as configured in <code>/etc/sarg/sarg.conf</code> with the parameter <code>lastlog 7</code>. <br>
+      SARG processes logs from the last 7 days, as set by <code>lastlog 7</code> in <code>/etc/sarg/sarg.conf</code>. <br>
       <br>
-      In addition, a weekly cron job deletes report directories older than 30 days. <br>
+      Separately, a weekly task deletes SARG report directories older than 30 days. <br>
       <br>
-      To extend the retention period, which is not recommended, modify both the configuration file and the crontab line:
+      To change these periods, edit both the configuration file and the scheduled task:
     </td>
     <td style="width: 50%; vertical-align: top;">
-      SARG solo conserva los últimos 7 días de registros, según la configuración de <code>/etc/sarg/sarg.conf</code> con el parámetro <code>lastlog 7</code>. <br>
+      SARG procesa los registros de los últimos 7 días, según el parámetro <code>lastlog 7</code> de <code>/etc/sarg/sarg.conf</code>. <br>
       <br>
-      Además, una tarea cron semanal elimina los directorios de reportes con más de 30 días de antigüedad. <br>
+      Por separado, una tarea semanal elimina los directorios de informes de SARG que tengan más de 30 días. <br>
       <br>
-      Para ampliar el período de retención, algo no recomendado, modifique tanto el archivo de configuración como la línea de crontab:
+      Para cambiar estos períodos, modifica tanto el archivo de configuración como la tarea programada:
     </td>
   </tr>
 </table>
@@ -977,10 +989,10 @@ sudo systemctl restart cron
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     <b>SqStat</b> is a script that allows you to verify the active connections of users. Use the cachemgr protocol to obtain information about the Squid.
+     <b>SqStat</b> shows the proxy's active connections. It uses the Cache Manager (cachemgr) protocol to query Squid.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     <b>SqStat</b> es un script que permite verificar las conexiones activas de los usuarios. Utiliza el protocolo cachemgr para obtener información de Squid.
+     <b>SqStat</b> muestra las conexiones activas del proxy. Para consultar Squid, usa el protocolo Cache Manager (cachemgr).
     </td>
   </tr>
 </table>
@@ -1044,10 +1056,10 @@ http_port 192.168.1.2:3128</pre>
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     You can switch between light and dark themes by running the following command:
+     To switch between the light and dark themes, run the corresponding command:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Puede intercambiar entre tema claro u oscuro, ejecutando el siguiente comando:
+     Para cambiar entre los temas claro y oscuro, ejecuta el comando correspondiente:
     </td>
   </tr>
 </table>
@@ -1081,10 +1093,10 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     If you have a very large ACL defined in your <code>squid.conf</code>, it is normal for sqstat to temporarily lose its connection and display an error when Squid is restarted or reloaded, because Squid has not yet finished its startup or reload process; just wait a minute or two for the service to stabilize and then press F5 to refresh the page.
+     If <code>squid.conf</code> contains a large ACL, SqStat may temporarily lose its connection while Squid restarts or reloads its configuration. Wait for the service to become available again, then press F5 to refresh the page.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Si tienes una ACL muy extensa definida en tu <code>squid.conf</code>, es normal que al reiniciar o recargar Squid la interfaz de sqstat pierda temporalmente la conexión y muestre un error, ya que Squid todavía no ha terminado su proceso de arranque o recarga; simplemente espera uno o dos minutos a que el servicio se estabilice y luego presiona F5 para actualizar la página..
+     Si <code>squid.conf</code> contiene una ACL extensa, SqStat puede perder la conexión mientras Squid se reinicia o recarga su configuración. Espera a que el servicio vuelva a estar disponible y luego pulsa F5 para actualizar la página.
     </td>
   </tr>
 </table>
@@ -1095,42 +1107,8 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 
 <table width="100%">
   <tr>
-    <td style="width: 50%; vertical-align: top;">
-      Analyzer is a web-based monitoring tool for real-time analysis of connections and network traffic on the Squid proxy server.
-      <h4>Features</h4>
-      <ul>
-        <li>Real-time Squid proxy connection monitoring</li>
-        <li>Active connections and users display</li>
-        <li>Grouping by host or username</li>
-        <li>Current and average bandwidth speed calculation</li>
-        <li>IP to hostname resolution</li>
-        <li>Connection duration tracking</li>
-        <li>Data transfer size monitoring</li>
-        <li>Auto-refresh capability</li>
-        <li>Web-based interface</li>
-        <li>Multiple server configuration support</li>
-        <li>Detailed connection information display</li>
-        <li>Session-based speed analytics</li>
-      </ul>
-    </td>
-    <td style="width: 50%; vertical-align: top;">
-      Analyzer es una herramienta web de monitoreo para análisis en tiempo real de conexiones y tráfico de red del servidor proxy Squid.
-      <h4>Características</h4>
-      <ul>
-        <li>Monitoreo en tiempo real de conexiones Squid</li>
-        <li>Visualización de conexiones activas y usuarios</li>
-        <li>Agrupamiento por host o nombre de usuario</li>
-        <li>Cálculo de velocidad de ancho de banda actual y promedio</li>
-        <li>Resolución de IP a nombre de host</li>
-        <li>Seguimiento de duración de conexiones</li>
-        <li>Monitoreo del tamaño de transferencia de datos</li>
-        <li>Capacidad de auto-actualización</li>
-        <li>Interfaz basada en web</li>
-        <li>Soporte para múltiples configuraciones de servidor</li>
-        <li>Visualización detallada de información de conexión</li>
-        <li>Análisis de velocidad basado en sesiones</li>
-      </ul>
-    </td>
+    <td style="width: 50%; vertical-align: top;">SquidAnalyzer parses Squid access logs and generates web reports about network traffic. Its views let you explore statistics by period, client, and domain, as well as traffic trends and transfer volumes.</td>
+    <td style="width: 50%; vertical-align: top;">SquidAnalyzer analiza los registros de acceso de Squid y genera informes web sobre el tráfico. Sus vistas permiten explorar estadísticas por período, clientes y dominios, además de consultar tendencias y volúmenes de transferencia.</td>
   </tr>
 </table>
 
@@ -1139,10 +1117,10 @@ sudo sed -i "s/sqstat-dark\.css/sqstat.css/" /var/www/proxymon/sqstat/sqstat.cla
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The installation script adds a task to the crontab to run daily at 2:00 AM. You can change it according to your preferences.
+     The installer schedules SquidAnalyzer to generate reports every day at 2:00 a.m. To change the time, edit its entry in <code>/etc/cron.d/proxymon</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     El script de instalación agrega una tarea al crontab para que se ejecute todos los días a las 2:00 AM. Puedes cambiarla según tus preferencias.
+     El instalador programa SquidAnalyzer para generar informes todos los días a las 2:00 a. m. Para cambiar la hora, edita su tarea en <code>/etc/cron.d/proxymon</code>.
     </td>
   </tr>
 </table>
@@ -1159,18 +1137,18 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     <b>LogView</b> is a real-time viewer of the Squid proxy log, integrated into the Proxy Monitor dashboard. <br>
+     <b>LogView</b> displays new entries from <code>/var/log/squid/access.log</code> in a table that refreshes periodically. <br>
      <br>
-     It reads directly from <code>/var/log/squid/access.log</code>, parses each entry into structured fields and shows them in an interactive table. The table offers instant full-text search, combined filters by cache code and HTTP status, column sorting, and automatic polling for new entries without reloading the page. <br>
+     Search the loaded entries, filter by cache code or HTTP status, and sort columns. <br>
      <br>
-     It includes light and dark themes and a configurable refresh interval.
+     It also offers light and dark themes and a configurable refresh interval.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     <b>LogView</b> es un visor en tiempo real del log del proxy Squid, integrado en el panel de Proxy Monitor. <br>
+     <b>LogView</b> muestra las nuevas entradas de <code>/var/log/squid/access.log</code> en una tabla que se actualiza periódicamente. <br>
      <br>
-     Lee directamente de <code>/var/log/squid/access.log</code>, parsea cada entrada en campos estructurados y los muestra en una tabla interactiva. La tabla ofrece búsqueda de texto completo instantánea, filtros combinados por código de caché y estado HTTP, ordenamiento por columna, y consulta automática de entradas nuevas sin recargar la página. <br>
+     Puedes buscar entre las entradas cargadas, filtrar por código de caché o estado HTTP y ordenar las columnas. <br>
      <br>
-     Incluye temas claro y oscuro y un intervalo de refresco configurable.
+     También ofrece temas claro y oscuro y permite ajustar el intervalo de actualización.
     </td>
   </tr>
 </table>
@@ -1189,7 +1167,7 @@ sudo -u www-data crontab -e
 | <img src="./img/logview_refresh.png" width="150"> | Polling interval for new entries: 1s (default), 3s, 5s, 10s, or 30s. | Intervalo de sondeo para nuevas entradas: 1s (por defecto), 3s, 5s, 10s o 30s. |
 | <img src="./img/logview_live.png" width="150"> | Live mode active. LogView polls access.log automatically and prepends new rows with a green animation. | Modo en vivo activo. LogView sondea el access.log automáticamente y agrega nuevas filas con animación verde. |
 | <img src="./img/logview_pause.png" width="150"> | Polling suspended. Indicator turns red and shows PAUSED. Click again to resume. | Sondeo suspendido. El indicador cambia a rojo y muestra PAUSED. Haga clic nuevamente para reanudar. |
-| <img src="./img/logview_darkmodebutton.png" width="150"> | Dark Mode button. | Boton para Modo Oscuro. |
+| <img src="./img/logview_darkmodebutton.png" width="150"> | Dark Mode button. | Botón para activar el modo oscuro. |
 
 #### Search Bar
 
@@ -1198,18 +1176,18 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      Search bar. Filters loaded entries in real time by IP, URL, user, HTTP method, cache or response code.
+      The search bar filters loaded entries by IP address, URL, user, HTTP method, cache code, or HTTP response code.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Barra de búsqueda. Filtra las entradas cargadas en tiempo real por IP, URL, usuario, método HTTP, caché o código de respuesta.
+      La barra filtra las entradas cargadas por IP, URL, usuario, método HTTP, código de caché o código de respuesta HTTP.
     </td>
   </tr>
 </table>
 
 | Message | Description | Descripción |
 | ------- | ----------- | ----------- |
-| <img src="./img/logview_fulllog.png" width="150"> | Click to activate full log search mode. | Púlselo para activar el modo de búsqueda completa del log. |
-| <img src="./img/logview_livelog.png" width="150"> | Click to return to live view. | Púlselo para regresar a la vista en tiempo real. |
+| <img src="./img/logview_fulllog.png" width="150"> | Select this option to search the full log. | Selecciona esta opción para buscar en el registro completo. |
+| <img src="./img/logview_livelog.png" width="150"> | Select this option to return to the live view. | Selecciona esta opción para volver a la vista en tiempo real. |
 
 ### AI
 
@@ -1218,7 +1196,7 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b>SquidAI</b> is a domain-specific conversational assistant (ANI) for network administrators, based on a hybrid RAG architecture that employs in-memory BM25 lexical retrieval and generation via an external LLM API. It analyzes logs from Squid Proxy, LightSquid reports, and ACLs, combining deterministic responses with natural language generation to provide detailed reports on:
+      <b>SquidAI</b> is an assistant for network administrators. It uses BM25 to find relevant information in its data and a language model (LLM) to respond in natural language. It combines data from Squid, LightSquid reports, and ACL lists to help answer questions about user profiles, blocked activity, incidents, and network usage:
       <ul>
         <li><b>User profiles:</b> Activity summary, most visited domains and blacklist verification for specific users.</li>
         <li><b>Security incidents:</b> Detection of direct IP access, Torrent/P2P traffic, Log4Shell patterns, .onion sites and other suspicious behaviors.</li>
@@ -1227,10 +1205,10 @@ sudo -u www-data crontab -e
         <li><b>Consumption thresholds:</b> Users exceeding specific GB limits (e.g. "more than 3 GB").</li>
         <li><b>User list:</b> Complete list of registered users from <code>realname.cfg</code> (excluding <code>skipuser.cfg</code>) of LightSquid.</li>
       </ul>
-      The assistant responds in the same language in which the user asks (Spanish or English) and displays the information in formatted tables and detailed analyzes.
+      The assistant responds in Spanish or English, matching the language of the question, and presents its findings in tables and detailed analyses.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b>SquidAI</b> es un asistente conversacional de dominio específico (ANI) para administradores de red, basado en una arquitectura RAG híbrida que emplea recuperación léxica BM25 en memoria y generación mediante un LLM externo vía API. Analiza logs de Squid Proxy, reportes de LightSquid y ACLs, combinando respuestas deterministas con generación en lenguaje natural para proporcionar reportes detallados sobre:
+      <b>SquidAI</b> es un asistente especializado para administradores de red. Usa BM25 para localizar información relevante en sus datos y un modelo de lenguaje (LLM) para responder en lenguaje natural. Combina respuestas basadas en datos de Squid, informes de LightSquid y listas ACL. Puede ayudar a consultar perfiles de usuario, actividad bloqueada, incidentes y consumo de la red:
       <ul>
         <li><b>Perfiles de usuario:</b> Resumen de actividad, dominios más visitados y verificación en lista negra para usuarios específicos.</li>
         <li><b>Incidentes de seguridad:</b> Detección de accesos a IPs directas, tráfico Torrent/P2P, patrones Log4Shell, sitios .onion y otros comportamientos sospechosos.</li>
@@ -1239,7 +1217,7 @@ sudo -u www-data crontab -e
         <li><b>Umbrales de consumo:</b> Usuarios que superan límites específicos en GB (ej: "más de 3 GB").</li>
         <li><b>Lista de usuarios:</b> Lista completa de usuarios registrados desde <code>realname.cfg</code> (excluyendo <code>skipuser.cfg</code>) de LightSquid.</li>
       </ul>
-      El asistente responde en el mismo idioma en que el usuario pregunta (español o inglés) y muestra la información en tablas formateadas y análisis detallados.
+      El asistente responde en español o inglés, según el idioma de la consulta, y presenta la información en tablas y análisis detallados.
     </td>
   </tr>
 </table>
@@ -1324,10 +1302,10 @@ sudo -u www-data crontab -e
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <b>⚠️ Important:</b> For security incident detection, SquidAI uses <code>/etc/acl/squid/blockpatterns.txt</code> and direct IPv4 detection. The severity classification (CRITICAL, HIGH, MEDIUM) is calculated based on hit frequency.
+      <b>⚠️ Important:</b> For security incident detection, SquidAI uses <code>/etc/acl/squid/blockpatterns.txt</code> and direct IPv4 detection. Severity depends on the pattern type and number of matches; results can be classified as <b>CRITICAL</b>, <b>HIGH</b>, <b>MEDIUM</b>, or <b>LOW</b>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <b>⚠️ Importante:</b> Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/acl/squid/blockpatterns.txt</code> y detección de IPv4 directa. La clasificación de severidad (CRITICAL, HIGH, MEDIUM) se calcula en base a la frecuencia de hits.
+      <b>⚠️ Importante:</b> Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/acl/squid/blockpatterns.txt</code> y detección de IPv4 directa. La severidad depende del tipo de patrón y del número de coincidencias; los resultados pueden clasificarse como <b>CRITICAL</b>, <b>HIGH</b>, <b>MEDIUM</b> o <b>LOW</b>.
     </td>
   </tr>
 </table>
@@ -1357,11 +1335,10 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
       <br><br>
       The file includes commented examples for: <b>Cloudflare Workers AI</b>, <b>OpenAI</b>, <b>Groq</b>, <b>OpenRouter</b>, <b>Together AI</b>, <b>Ollama</b> (local), <b>LM Studio</b> (local) and <b>Google Gemini</b>. Uncomment one block and fill in your credentials.
       <br><br>
-      <b>🔒 Security:</b> The <code>.env</code> file is stored in <code>/etc/proxymon/</code>, outside the Apache webroot. Permissions are set to <code>640</code> (<code>root:www-data</code>) so only PHP can read it.
+      <b>🔒 Security:</b> The <code>.env</code> file is stored in <code>/etc/proxymon/</code>, outside the Apache webroot. Permissions are set to <code>640</code> (<code>root:www-data</code>), allowing root and processes in the <code>www-data</code> group, including Apache PHP, to read the file.
       <br><br>
       <b>🔄 Rate Limits &amp; Retries:</b> LLM APIs may experience congestion depending on demand. SquidAI implements an automatic retry mechanism: up to <b>4 attempts</b> with progressive delays (4s, 8s, 15s) before giving up. If the API is temporarily unavailable, the assistant will display retry messages. After all attempts fail, it will show a message (check table).
       <br><br>
-      <b>🔌 LLM Status:</b> The connection indicator shows three states: <b>Checking</b> (yellow), <b>Connected</b> (green), and <b>Offline</b> (red) (check table).
     </td>
     <td style="width: 50%; vertical-align: top;">
       <b>🔧 Configuración de API:</b> SquidAI requiere un proveedor LLM para funcionar. El archivo de configuración se encuentra fuera del webroot por seguridad:
@@ -1384,11 +1361,10 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
       <br><br>
       El archivo incluye ejemplos comentados para: <b>Cloudflare Workers AI</b>, <b>OpenAI</b>, <b>Groq</b>, <b>OpenRouter</b>, <b>Together AI</b>, <b>Ollama</b> (local), <b>LM Studio</b> (local) y <b>Google Gemini</b>. Descomente un bloque y complete sus credenciales.
       <br><br>
-      <b>🔒 Seguridad:</b> El archivo <code>.env</code> se almacena en <code>/etc/proxymon/</code>, fuera del webroot de Apache. Los permisos son <code>640</code> (<code>root:www-data</code>) para que solo PHP pueda leerlo.
+      <b>🔒 Seguridad:</b> El archivo <code>.env</code> se almacena en <code>/etc/proxymon/</code>, fuera del webroot de Apache. Los permisos son <code>640</code> (<code>root:www-data</code>): el archivo queda accesible para root y para los procesos del grupo <code>www-data</code>, incluido PHP de Apache.
       <br><br>
       <b>🔄 Límites de tasa y reintentos:</b> Las APIs LLM pueden experimentar congestión según la demanda. SquidAI implementa un mecanismo de reintento automático: hasta <b>4 intentos</b> con retardos progresivos (4s, 8s, 15s) antes de desistir. Si la API no está disponible temporalmente, el asistente mostrará mensajes de reintento y al finalizar mostrará un mensaje (ver tabla).
       <br><br>
-      <b>🔌 Estado LLM:</b> El indicador de conexión muestra tres estados: <b>Checking</b> (amarillo), <b>Connected</b> (verde) y <b>Offline</b> (rojo) (ver tabla).
     </td>
   </tr>
 </table>
@@ -1396,17 +1372,17 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 | Message | Description | Descripción |
 | ------- | ----------- | ----------- |
 | <img src="./img/squidai-retry.png" width="400"> | Example of the automatic retry message. | Ejemplo del mensaje de reintento automático. |
-| <img src="./img/squidai-api.png" width="400"> | API Down Example. | Ejemplo de API caída. |
+| <img src="./img/squidai-api.png" width="400"> | Example shown when the API is unavailable. | Ejemplo de API no disponible. |
 
 #### LLM status
 
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-    <b>🔌 LLM Status:</b> The connection indicator shows three states: <b>Checking</b> (yellow), <b>Connected</b> (green), and <b>Offline</b> (red) (check table).
+    <b>🔌 LLM Status:</b> The LED indicates whether the connection is checking, connected, or offline.
     </td>
     <td style="width: 50%; vertical-align: top;">
-    <b>🔌 Estado LLM:</b> El indicador de conexión muestra tres estados: <b>Checking</b> (amarillo), <b>Connected</b> (verde) y <b>Offline</b> (rojo) (ver tabla).
+    <b>🔌 Estado LLM:</b> El LED indica si la conexión se está verificando, está conectada o está fuera de línea.
     </td>
   </tr>
 </table>
@@ -1421,21 +1397,21 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 
 | Description | Descripción |
 | --- | --- |
-| Command-line utilities that complement the panel, installed in `/var/www/proxymon/tools` and run by the administrator over a shell. The panel serves the HTML reports they leave behind. | Utilidades de consola que complementan el panel, instaladas en `/var/www/proxymon/tools` y ejecutadas por el administrador desde una terminal. El panel sirve los informes HTML que ellas dejan. |
+| Command-line utilities are installed in `/var/www/proxymon/tools` and run from a terminal. The HTML reports they generate can be viewed from the panel. | Las utilidades de consola se instalan en `/var/www/proxymon/tools` y se ejecutan desde la terminal. Los informes HTML que generan se pueden consultar desde el panel. |
 
 #### Squidtool
 
 | Description | Descripción |
 | --- | --- |
-| Advanced command-line tool that extends the reach of the panel by working with the Squid logs through two functions: **Traffic Report** and **Log Search**. It is run with: | Herramienta avanzada de consola que amplía el alcance del panel al trabajar con los registros de Squid mediante dos funciones: **Informe de tráfico** y **Búsqueda en registros**. Se ejecuta con: |
+| Squidtool is a command-line utility with two functions: generate a traffic report and search Squid logs. Run it with: | Squidtool es una utilidad de consola con dos funciones: generar un informe de tráfico y buscar términos en los registros de Squid. Se ejecuta con: |
 
 ```bash
 sudo /var/www/proxymon/tools/squidtool.sh
 ```
 
-> Each function generates its own HTML report and overwrites the previous file, so only the latest result of each kind is kept. Both reports are served by the panel and restricted to the LAN. The activity of the tool is recorded in `/var/www/proxymon/tools/squidtool.log`.
+> Each function generates an HTML report and replaces the previous report of the same type, so only the latest result is kept. The reports are available from the panel, which restricts access to the LAN. Tool activity is logged in `/var/www/proxymon/tools/squidtool.log`.
 >
-> Cada función genera su propio informe HTML y sobrescribe el archivo anterior, por lo que solo se conserva el último resultado de cada tipo. Ambos informes son servidos por el panel y están restringidos a la LAN. La actividad de la herramienta se registra en `/var/www/proxymon/tools/squidtool.log`.
+> Cada función genera un informe HTML y reemplaza el anterior del mismo tipo; solo se conserva el resultado más reciente. Los informes se consultan desde el panel, que restringe el acceso a la red local. La herramienta registra su actividad en `/var/www/proxymon/tools/squidtool.log`.
 
 ##### Traffic Report
 
@@ -1458,28 +1434,28 @@ sudo /var/www/proxymon/tools/squidtool.sh
 <table>
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <code>pmbk.sh</code> creates one compressed archive with Proxymon's configuration. It contains:
+      <code>pmbk.sh</code> creates a ZIP archive with the Proxy Monitor installation and configuration, including the paths listed below:
       <ul>
         <li>The project install tree, <code>/var/www/proxymon</code>, and <code>/etc/proxymon</code>.</li>
         <li>The MAC and Squid ACL lists.</li>
         <li>The Apache vhosts and the Apache and PHP hardening files.</li>
         <li>SARG's configuration and its <code>usertab</code>.</li>
         <li>The <code>bandata</code> logrotate configuration.</li>
-        <li>Root's crontab and the <code>php.ini</code> in use.</li>
+        <li>The project's <code>/etc/cron.d/proxymon</code> entry and the <code>php.ini</code> in use.</li>
       </ul>
-      Paths that do not exist are skipped. <code>pmsetup.sh update</code> runs it automatically before touching any file.
+      Paths that do not exist are skipped. <code>pmsetup.sh update</code> runs this backup before updating project files.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <code>pmbk.sh</code> crea un único archivo comprimido con la configuración de Proxymon. Contiene:
+      <code>pmbk.sh</code> crea un archivo ZIP con la instalación y configuración de Proxy Monitor, incluidas las rutas que se enumeran a continuación:
       <ul>
         <li>El árbol de instalación del proyecto, <code>/var/www/proxymon</code>, y <code>/etc/proxymon</code>.</li>
         <li>Las listas ACL de MAC y de Squid.</li>
         <li>Los vhosts de Apache y los archivos de hardening de Apache y PHP.</li>
         <li>La configuración de SARG y su <code>usertab</code>.</li>
         <li>La configuración de logrotate de <code>bandata</code>.</li>
-        <li>El crontab de root y el <code>php.ini</code> en uso.</li>
+        <li>La entrada <code>/etc/cron.d/proxymon</code> del proyecto y el <code>php.ini</code> en uso.</li>
       </ul>
-      Las rutas que no existan se omiten. <code>pmsetup.sh update</code> lo ejecuta automáticamente antes de tocar cualquier archivo.
+      Las rutas que no existan se omiten. <code>pmsetup.sh update</code> ejecuta esta copia de seguridad antes de actualizar los archivos del proyecto.
     </td>
   </tr>
 </table>
@@ -1509,10 +1485,10 @@ sudo /var/www/proxymon/tools/squidtool.sh
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     This project incorporates and enhances components from multiple sources, building upon their legacies after discontinuation or stagnation. The details of the original projects are described below:
+     Proxy Monitor preserves and integrates four Squid analysis tools that no longer receive maintenance: LightSquid, SARG, SqStat and SquidAnalyzer. The table lists their official versions and available community updates.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Este proyecto incorpora y mejora componentes de múltiples fuentes, continuando su legado tras su descontinuación o estancamiento. Los detalles de los proyectos originales se describen a continuación:
+     Proxy Monitor preserva e integra cuatro herramientas de análisis para Squid que ya no reciben mantenimiento: LightSquid, SARG, SqStat y SquidAnalyzer. La tabla muestra sus versiones oficiales y las actualizaciones comunitarias disponibles.
     </td>
   </tr>
 </table>
@@ -1531,12 +1507,10 @@ sudo /var/www/proxymon/tools/squidtool.sh
 <table>
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      This project is designed to run locally and be accessed over a LAN. It is not recommended to expose it to the internet, as it lacks the hardening required for public-facing deployments.
-      If you choose to publish it despite this warning, it is strongly recommended to do so through an on-demand tunnel rather than opening ports directly. This approach lets you start and stop public access at will, without permanently exposing your server.
+      This project is designed for use on a local network (LAN). It does not include the security hardening needed for direct exposure to the internet. If internet access is required, an on-demand tunnel is recommended instead of opening ports directly. This enables access when needed without leaving the server permanently exposed.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Este proyecto está diseñado para ejecutarse localmente y ser accedido en red LAN. No se recomienda exponerlo a internet, ya que no cuenta con el endurecimiento necesario para despliegues públicos.
-      Si decide publicarlo a pesar de esta advertencia, se recomienda hacerlo a través de un túnel bajo demanda en lugar de abrir puertos directamente. Este enfoque le permite iniciar y detener el acceso público a voluntad, sin exponer el servidor de forma permanente.
+      Este proyecto está diseñado para usarse en una red local (LAN). No cuenta con las medidas de seguridad necesarias para exponerlo directamente a Internet. Si se requiere acceso desde Internet, se recomienda utilizar un túnel bajo demanda en lugar de abrir puertos directamente. Así, el acceso se habilita cuando hace falta y el servidor no queda expuesto permanentemente.
     </td>
   </tr>
 </table>
