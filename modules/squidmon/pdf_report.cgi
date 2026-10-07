@@ -6,7 +6,7 @@ use warnings;
 print "Content-type: text/html; charset=utf-8\n\n";
 
 # Variables
-our (%config, %in);
+our (%config, %in, $config_file, %config_defaults);
 
 eval {
     # load config
@@ -19,18 +19,17 @@ eval {
     my $module_name = 'squidmon';
     &load_language($module_name) if defined &load_language;
 
-    my $config_file = '/var/www/proxymon/squidmon/etc/config';
-    &read_file($config_file, \%config) if defined &read_file;
+    &load_config() if defined &load_config;
 
-    my $log_file       = $config{'squid_log'} || '/var/log/squid/access.log';
-    my $max_lines      = $in{'max_lines'} || $config{'max_lines'} || 50000;
-    my $time_range     = $in{'time_range'} || $config{'time_range'} || 24;
+    my $log_file       = $config{'squid_log'};
+    my $max_lines      = $in{'max_lines'} || $config{'max_lines'};
+    my $time_range     = $in{'time_range'} || $config{'time_range'};
     my $specific_client = $in{'client_ip'} || '';
 
     # Validate as plain integers — these come straight from request params
-    $max_lines  = 50000 unless $max_lines  =~ /^\d+$/;
+    $max_lines  = $config_defaults{'max_lines'} unless $max_lines  =~ /^\d+$/;
     $max_lines  = 200000 if $max_lines > 200000;
-    $time_range = 24    unless $time_range =~ /^\d+$/;
+    $time_range = $config_defaults{'time_range'} unless $time_range =~ /^\d+$/;
     $specific_client = '' unless $specific_client =~ /^[0-9a-fA-F.:]*$/; # IPv4/IPv6 only
 
     $max_lines = 100000 if $time_range > 168;
@@ -40,12 +39,34 @@ eval {
     %stats = (total_requests => 0, blocked_requests => 0, allowed_requests => 0);
 
     # Read the last lines of the log
-    my @log_lines;
+    my @log_lines = ();
     if (open(my $fh, '<', $log_file)) {
-        my @all = <$fh>;
-        close $fh;
-        @log_lines = @all[-$max_lines .. -1] if @all > $max_lines;
-        @log_lines = @all if @all <= $max_lines;
+        # Read file in reverse to get last N lines efficiently
+        seek($fh, 0, 2);
+        my $file_size = tell($fh);
+        my $chunk_size = 8192;
+        my $buffer = '';
+        my $lines_found = 0;
+
+        while ($file_size > 0 && $lines_found < $max_lines) {
+            my $read_size = $chunk_size;
+            $read_size = $file_size if $file_size < $chunk_size;
+            $file_size -= $read_size;
+
+            seek($fh, $file_size, 0);
+            read($fh, my $chunk, $read_size);
+            $buffer = $chunk . $buffer;
+
+            my @lines = split(/\n/, $buffer);
+            $buffer = shift(@lines) if $file_size > 0;
+
+            unshift(@log_lines, @lines);
+            $lines_found = scalar(@log_lines);
+        }
+        close($fh);
+
+        # Keep only last N lines
+        @log_lines = splice(@log_lines, -$max_lines) if $max_lines > 0 && scalar(@log_lines) > $max_lines;
     }
 
     foreach my $line (@log_lines) {

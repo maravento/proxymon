@@ -3,18 +3,17 @@
 #
 ################################################################################
 #
-# Squid Analysis Tool
+# squidtool -- Squid log analysis for proxymon
 #
-# Advanced companion to the proxymon panel: looks into the Squid logs the
-# panel does not cover, including rotated and compressed files.
+# DESCRIPTION:
+# Reads the Squid logs the panel does not cover, rotated and compressed
+# ones included, and writes its reports as HTML. Requires root.
 #
-# 1) Traffic report -- requests per IP and domain, with alerts
-# 2) Log search     -- literal text, no regex, in access.log and cache.log
+# USAGE:
+# sudo bash squidtool.sh    Interactive menu
 #
-# Both reports are written as HTML next to this script and served by the
-# proxymon vhost. Log paths come from /etc/proxymon/proxymon.env.
-#
-# LOG: squidtool.log, in this script's directory (rewritten on each run)
+# LOG: /etc/proxymon/tools/squidtool.log
+#      Written in this script's own directory, so it follows the script
 #
 ################################################################################
 
@@ -70,8 +69,9 @@ UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]
 UH_UINT='^(0|[1-9][0-9]*)$'
 
 proxymon_env="/etc/proxymon/proxymon.env"
-traffic_html="$script_dir/squid_traffic.html"
-search_html="$script_dir/squid_search.html"
+report_dir="/etc/proxymon/tools/reports"
+traffic_html="$report_dir/squid_traffic.html"
+search_html="$report_dir/squid_search.html"
 panel_port="18080"
 # Rows below this many requests are dropped from the traffic report when no
 # IP was given, so the table is not flooded by one-off entries. A report for
@@ -171,6 +171,17 @@ if [ -z "${SQUID_LOG_FILE:-}" ]; then
 fi
 squid_log_file="${SQUID_LOG_FILE:-$squid_log_dir/access.log}"
 cache_log_file="$squid_log_dir/cache.log"
+
+# REPORT DIR
+# Root owns the whole chain down to the reports, so nothing else can swap a
+# path for a symlink while this script writes. Apache serves them through
+# an Alias in proxymon.conf and only needs read access.
+if ! mkdir -p "$report_dir"; then
+    log "ERROR: cannot create $report_dir -- abort"
+    exit 1
+fi
+chown root:root "$report_dir"
+chmod 755 "$report_dir"
 
 # KEY GUARD
 # Every report below reads this file, so a path that no longer matches the
@@ -283,11 +294,11 @@ EOF
 # Leaves the report readable by the panel and prints where to open it
 publish_report() {
     local report_file="$1" server_ip
-    chown www-data:www-data "$report_file" 2>/dev/null || true
+    chown root:root "$report_file"
     chmod 644 "$report_file"
     server_ip=$(grep -oP "^Listen \K[0-9.]+(?=:${panel_port})" /etc/apache2/ports.conf 2>/dev/null | head -1)
     server_ip="${server_ip:-localhost}"
-    echo "Report: http://${server_ip}:${panel_port}/proxymon/tools/$(basename "$report_file")"
+    echo "Report: http://${server_ip}:${panel_port}/proxymon/squidtool/$(basename "$report_file")"
     echo "File  : $report_file"
 }
 

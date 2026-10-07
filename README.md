@@ -139,17 +139,19 @@ a2enmod -q php || true
 
 ```
 proxymon/
-├── modules/                    # Web modules served from /var/www/proxymon
-│   ├── bandata/                # Data usage control (bandata.sh and its ACLs)
+├── modules/                    # Web content served from /var/www/proxymon
 │   ├── lightsquid/             # LightSquid reports
 │   ├── logview/                # Live tail of Squid access.log
 │   ├── sqstat/                 # SqStat active connections view
 │   ├── squidai/                # SquidAI conversational assistant
 │   ├── squidanalyzer/          # SquidAnalyzer reports
 │   ├── squidmon/               # Squid Monitor: real-time traffic and ACL analysis
+│   ├── warning/                # Captive portal warning page
+│   └── index.html              # Main page with the module tabs
+├── config/                     # Root-only files, installed to /etc/proxymon
+│   ├── bandata/                # Data usage control (bandata.sh and its ACLs)
 │   ├── tools/                  # Maintenance scripts
-│   ├── index.html              # Main page with the module tabs
-│   └── proxymon.conf           # Apache vhost
+│   └── vhost/                  # Apache vhosts, installed to sites-available
 └── pmsetup.sh                  # Installer: install, update, uninstall
 ```
 
@@ -202,7 +204,7 @@ sudo bash pmsetup.sh
 ```bash
 sudo ./pmsetup.sh              # Interactive menu
 sudo ./pmsetup.sh install      # Install Proxy Monitor
-sudo ./pmsetup.sh update       # Update Proxy Monitor code (/var/www/proxymon only)
+sudo ./pmsetup.sh update       # Update Proxy Monitor code (live data preserved)
 sudo ./pmsetup.sh uninstall    # Uninstall Proxy Monitor
 sudo ./pmsetup.sh -h           # Show help message
 ```
@@ -212,20 +214,24 @@ sudo ./pmsetup.sh -h           # Show help message
     <td style="width: 50%; vertical-align: top;">
       <b>install</b> installs and configures Proxy Monitor, including Apache rules, <code>proxymon.env</code>, ACL lists, Apache/PHP/SARG settings, and scheduled tasks. If <code>/var/www/proxymon</code> already exists, it stops to avoid overwriting an installation. In that case, use <b>update</b> or <b>uninstall</b>.
       <br><br>
-      <b>update</b> only refreshes the code and the permissions under <code>/var/www/proxymon</code>. It never touches the Apache, PHP or SARG system configuration, the cron entries, the ACL lists or <code>proxymon.env</code>, and it never prompts. <br>
+      <b>update</b> only refreshes the code and the permissions: the web content under <code>/var/www/proxymon</code> and the root scripts under <code>/etc/proxymon</code>. It never touches the Apache, PHP or SARG system configuration, the cron entries, the ACL lists or <code>proxymon.env</code>, and it never prompts. <br>
       <br>
-      The process stops Apache, creates a backup with <code>tools/pmbk.sh</code>, sets aside the data to preserve, replaces the code, restores that data, resets permissions, and restarts Apache. <br>
+      The process stops Apache, creates a backup with <code>pmbk.sh</code>, replaces the code, resets permissions, and restarts Apache. The copy skips the live data, so that data is never written to. <br>
       <br>
-      The following data files and directories are moved aside and restored by <code>update</code>; their contents are preserved:
+      Do not interrupt an update with Ctrl-C. Apache is stopped for the whole process, and the installer only guarantees to start it again on its own exit paths. A signal can leave the service down and the code half replaced. If it happens, start Apache with <code>sudo systemctl start apache2</code> and run the update again. <br>
+      <br>
+      <code>update</code> never writes to the following files and directories, so their contents are preserved:
     </td>
     <td style="width: 50%; vertical-align: top;">
       <b>install</b> instala y configura Proxy Monitor, incluidas las reglas de Apache, el archivo <code>proxymon.env</code>, las listas ACL, los ajustes de Apache/PHP/SARG y las tareas programadas. Si <code>/var/www/proxymon</code> ya existe, se detiene para evitar sobrescribir una instalación. En ese caso, use <b>update</b> o <b>uninstall</b>.
       <br><br>
-      <b>update</b> solo refresca el código y los permisos dentro de <code>/var/www/proxymon</code>. Nunca toca la configuración de Apache, PHP o SARG, las entradas de cron, las listas ACL ni <code>proxymon.env</code>, y nunca pide datos. <br>
+      <b>update</b> solo refresca el código y los permisos: el contenido web dentro de <code>/var/www/proxymon</code> y los scripts root dentro de <code>/etc/proxymon</code>. Nunca toca la configuración de Apache, PHP o SARG, las entradas de cron, las listas ACL ni <code>proxymon.env</code>, y nunca pide datos. <br>
       <br>
-      El proceso detiene Apache, crea una copia de seguridad con <code>tools/pmbk.sh</code>, aparta los datos que debe conservar, reemplaza el código, restaura esos datos, ajusta los permisos y vuelve a iniciar Apache. <br>
+      El proceso detiene Apache, crea una copia de seguridad con <code>pmbk.sh</code>, reemplaza el código, ajusta los permisos y vuelve a iniciar Apache. La copia omite los datos vivos, así que nunca se escribe sobre ellos. <br>
       <br>
-      <code>update</code> aparta y restaura los siguientes archivos y directorios, conservando su contenido:
+      No interrumpa una actualización con Ctrl-C. Apache queda detenido durante todo el proceso, y el instalador solo garantiza volver a iniciarlo en sus propias salidas. Una señal puede dejar el servicio caído y el código a medio reemplazar. Si ocurre, inicie Apache con <code>sudo systemctl start apache2</code> y repita la actualización. <br>
+      <br>
+      <code>update</code> nunca escribe en los siguientes archivos y directorios, así que su contenido se conserva:
     </td>
   </tr>
 </table>
@@ -239,11 +245,49 @@ sudo ./pmsetup.sh -h           # Show help message
 | `squidmon/etc/config` | SquidMon config file | Archivo de configuración de SquidMon |
 | `squidanalyzer/output` | SquidAnalyzer rendered reports | Reportes generados por SquidAnalyzer |
 | `sqstat/config.inc.php` | SQStat custom config (e.g. cachemgr credentials) | Config personalizada de SQStat (ej. credenciales de cachemgr) |
-| `bandata/acl/allowdata.txt` | Bandata quota-exempt IP list | Lista de IP exentas de cuota de Bandata |
+| `warning/warning.html` | Captive portal warning page | Página de aviso del portal cautivo |
+| `/etc/proxymon/bandata/acl` | Bandata quota lists | Listas de cuota de Bandata |
 
 <b>Access Proxymon</b>: [http://localhost:18080](http://localhost:18080)
 
 <b>Warning for Bandata</b>: http://192.168.X.X:18081 (LAN-only, not reachable via localhost)
+
+### proxymon.env
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <code>pmsetup.sh</code> creates <code>/etc/proxymon/proxymon.env</code> during installation and never overwrites it on <b>update</b>. It is the one file the whole project reads: <code>bandata.sh</code>, <code>squidtool.sh</code>, <code>logview/api.php</code> and <code>squidai/worker.php</code> all load it. <code>pmsetup.sh</code> aborts if a key is missing from the file.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <code>pmsetup.sh</code> crea <code>/etc/proxymon/proxymon.env</code> durante la instalación y no lo sobrescribe en <b>update</b>. Es el archivo que lee todo el proyecto: lo cargan <code>bandata.sh</code>, <code>squidtool.sh</code>, <code>logview/api.php</code> y <code>squidai/worker.php</code>. <code>pmsetup.sh</code> aborta si falta una clave.
+    </td>
+  </tr>
+</table>
+
+| Variable | Read by | Description | Descripción |
+|----------|---------|--------------|-------------|
+| `LAN` | `bandata.sh` | LAN interface the quota rules apply to | Interfaz LAN a la que se aplican las reglas de cuota |
+| `SERVER_IP` | `pmsetup.sh`, `worker.php` | Server's own IPv4; added to SARG's `usertab` and excluded from the reports | IPv4 del servidor; se añade al `usertab` de SARG y se excluye de los informes |
+| `RANGE` | `pmsetup.sh` | CIDR allowed to reach the panel, written into `proxymon.conf`. It must be a network CIDR, not a filename glob: a glob belongs in `REPORT_IP_GLOB`. An invalid value keeps the default range and raises a `WARNING` | CIDR autorizado a entrar al panel, escrito en `proxymon.conf`. Debe ser un CIDR de red, no un glob de nombre de archivo: el glob va en `REPORT_IP_GLOB`. Un valor inválido conserva el rango por omisión y emite un `WARNING` |
+| `REPORT_IP_GLOB` | `bandata.sh` | Glob that matches the client IPs inside a LightSquid report | Glob que localiza las IP de cliente dentro de un informe de LightSquid |
+| `LIGHTSQUID_DIR` | `bandata.sh` | LightSquid installation directory | Directorio de instalación de LightSquid |
+| `REPORT_PATH` | `bandata.sh`, `worker.php` | Directory holding the daily LightSquid reports | Directorio con los informes diarios de LightSquid |
+| `REALNAME_CFG`, `SKIPUSERS_CFG` | `bandata.sh`, `worker.php` | LightSquid hostname mappings and excluded-user list | Mapeo de hostnames y lista de usuarios excluidos de LightSquid |
+| `ACL_PATH`, `ACL_MAC_PATH`, `ACL_SQUID_PATH` | `pmsetup.sh`, `bandata.sh`, `worker.php` | ACL tree shared with the other projects on the host, and its MAC and Squid branches | Árbol de ACL compartido con los otros proyectos del host, y sus ramas MAC y Squid |
+| `ACL_BANDATA_PATH` | `bandata.sh` | Directory holding Bandata's own quota lists | Directorio con las listas de cuota propias de Bandata |
+| `ALLOW_LIST` | `bandata.sh` | IPs exempt from every quota | IP exentas de toda cuota |
+| `BLOCK_LIST_DAY`, `BLOCK_LIST_WEEK`, `BLOCK_LIST_MONTH` | `bandata.sh` | The three lists Bandata rewrites, one per quota window | Las tres listas que Bandata reescribe, una por ventana de cuota |
+| `SQUID_LOG_DIR`, `SQUID_LOG_FILE` | `squidtool.sh`, `api.php`, `worker.php` | Squid log directory and `access.log` path | Directorio de logs de Squid y ruta de `access.log` |
+| `WARNING_HTML` | `bandata.sh` | Captive portal page where Bandata writes the current quota values | Página del portal cautivo donde Bandata escribe los valores de cuota vigentes |
+| `CACHE_PATH` | `pmsetup.sh`, `worker.php` | SquidAI cache directory, owned by `www-data` with mode `750` | Directorio de caché de SquidAI, propiedad de `www-data` con permisos `750` |
+| `MAX_BANDWIDTH_DAY`, `MAX_BANDWIDTH_WEEK`, `MAX_BANDWIDTH_MONTH` | `bandata.sh` | The three quota limits; see BanData below | Los tres límites de cuota; ver BanData más abajo |
+| `BANDATA_HOTSPOT`, `HOTSPOT_PATH` | `bandata.sh` | Whether a UniFi hotspot is in use, and where its files live | Si hay un hotspot UniFi en uso, y dónde están sus archivos |
+| `UPDATE_REALNAME` | `bandata.sh` | Whether Bandata refreshes LightSquid's `realname.cfg` on each run | Si Bandata refresca el `realname.cfg` de LightSquid en cada ejecución |
+
+> `/etc/proxymon/` holds a second file, `.env`, with the SquidAI credentials `LLM_URL`, `LLM_API_KEY`, `LLM_MODEL` and `LLM_RESPONSE_FORMAT`. See API Configuration.
+>
+> `/etc/proxymon/` contiene un segundo archivo, `.env`, con las credenciales de SquidAI `LLM_URL`, `LLM_API_KEY`, `LLM_MODEL` y `LLM_RESPONSE_FORMAT`. Ver «API Configuration».
 
 ## HOW TO USE
 
@@ -275,28 +319,28 @@ sudo ./pmsetup.sh -h           # Show help message
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      This section defines the parameters that Squid Monitor uses to interpret and display network activity, including data sources (access control lists —ACLs—), the maximum number of lines to analyze from the Squid log, the time range of the data, and the automatic refresh interval. The default path for ACLs is <code>/etc/acl</code> and the following lists are integrated:
+      This section defines the parameters that Squid Monitor uses to interpret and display network activity, including data sources (access control lists —ACLs—), the maximum number of lines to analyze from the Squid log, the time range of the data, and the automatic refresh interval. Each list is declared with its full path, one per line, and the module reads exactly that path: it never searches any directory. These are the lists it ships with:
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Aquí se configuran los parámetros que Squid Monitor usa para mostrar la actividad de la red: las listas de control de acceso (ACL), el máximo de líneas del registro de Squid que se analizarán, el período de consulta y el intervalo de actualización. La ruta predeterminada de las ACL es <code>/etc/acl</code>. Estas son las listas integradas:
+      Aquí se configuran los parámetros que Squid Monitor usa para mostrar la actividad de la red: las listas de control de acceso (ACL), el máximo de líneas del registro de Squid que se analizarán, el período de consulta y el intervalo de actualización. Cada lista se declara con su ruta completa, una por línea. El módulo lee esa ruta y no busca en ningún directorio. Estas son las listas que trae:
     </td>
   </tr>
 </table>
 
 ```bash
-blocktlds.txt=Blocked TLD
-blockdomains.txt=Blocked Sites
+/etc/acl/squid/blocktlds.txt=Blocked TLD
+/etc/acl/squid/blockdomains.txt=Blocked Sites
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
-regex:(announce\.php\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\.utorrent|XBT|mtc1)=Blocked Patterns
+regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|peer_id=|porn|psiphon|torrent|ultrasurf)=Blocked Patterns
 ```
 
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      To change the lists, enter only each file name in the <b>Config</b> section. Squid Monitor looks for the files under <code>/etc/acl</code>, including its subdirectories. If you move them, update the path in <code>/etc/proxymon/proxymon.env</code>.
+      To change the lists, enter each full path in the <b>Config</b> section, one per line, followed by <code>=</code> and its label. Squid Monitor opens exactly that path and searches no directory. If you move a list, edit its line in <b>Config</b>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Para cambiar las listas, indique en la sección <b>Config</b> solo el nombre de cada archivo. Squid Monitor lo buscará dentro de <code>/etc/acl</code>, incluidas sus subcarpetas. Si cambia la ubicación de las listas, actualice la ruta en <code>/etc/proxymon/proxymon.env</code>.
+      Para cambiar las listas, indique en la sección <b>Config</b> la ruta completa de cada archivo, una por línea, seguida de <code>=</code> y su etiqueta. Squid Monitor abre esa ruta y no busca en ninguna carpeta. Si cambia una lista de sitio, edite su línea en <b>Config</b>.
     </td>
   </tr>
 </table>
@@ -329,7 +373,7 @@ include /etc/squid/conf.d/*.conf
 acl blocktlds dstdomain "/etc/acl/squid/blocktlds.txt"
 http_access deny workdays blocktlds
 # Block: domains
-acl blocksites dstdomain "/etc/acl/squid/blockdomains.txt"
+acl blockdomains dstdomain "/etc/acl/squid/blockdomains.txt"
 http_access deny workdays blockdomains
 ```
 
@@ -467,7 +511,7 @@ http_access deny workdays blockdomains
 </table>
 
 ```bash
-regex:(announce\.php\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\.utorrent|XBT|mtc1)=Blocked Patterns
+regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|peer_id=|porn|psiphon|torrent|ultrasurf)=Blocked Patterns
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 ```
 
@@ -769,6 +813,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
         <li>Weekends are excluded from the calculation.</li>
         <li>The limits must match those configured in Squid Report.</li>
         <li>Bandata can generate <code>realname.cfg</code> to map IP addresses to names and <code>skipuser.cfg</code> to exclude IP addresses from LightSquid reports. It reads MAC ACLs, <code>/etc/hosts</code>, and, when enabled, the captive portal's <code>uhm-auth.txt</code>.</li>
+        <li>On its first run Bandata writes <code>/etc/logrotate.d/bandata</code> if that file is missing, so <code>/var/log/bandata.log</code> never needs a manual truncate. The generated rule rotates the log daily, keeps seven rotations compressed, and recreates it as <code>640 root adm</code>. An existing file is left untouched, so your own changes are preserved.</li>
       </ul>
     </td>
     <td style="width: 50%; vertical-align: top;">
@@ -779,6 +824,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
         <li>Los fines de semana quedan excluidos del cálculo.</li>
         <li>Los límites deben coincidir con los configurados en Squid Report.</li>
         <li>Bandata puede generar <code>realname.cfg</code> para asociar IP con nombres y <code>skipuser.cfg</code> para excluir IP de los informes de LightSquid. Toma los datos de las ACL MAC, de <code>/etc/hosts</code> y, si está activado, de <code>uhm-auth.txt</code> del portal cautivo.</li>
+        <li>En su primera ejecución, Bandata crea <code>/etc/logrotate.d/bandata</code> si ese archivo no existe, por lo que <code>/var/log/bandata.log</code> nunca necesita un truncado manual. La regla generada rota el log a diario, conserva siete rotaciones comprimidas y lo recrea como <code>640 root adm</code>. Si el archivo ya existe, no lo modifica, así que tus cambios se conservan.</li>
       </ul>
     </td>
   </tr>
@@ -787,7 +833,7 @@ find /var/www/proxymon/lightsquid/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[0-
 ```bash
 # Bandata - Monitor bandwidth usage and enforce data limits (every 5 minutes)
 sudo crontab -e
-*/5 * * * * /var/www/proxymon/bandata/bandata.sh
+*/5 * * * * /etc/proxymon/bandata/bandata.sh
 ```
 
 [![bandata terminal](./img/bandata-terminal.png)](https://www.maravento.com/)
@@ -825,7 +871,7 @@ http://192.168.X.X:18081
 </table>
 
 ```bash
-cat /var/www/proxymon/bandata/acl/{banmonth,banweek,banday}.txt | uniq
+cat /etc/proxymon/bandata/acl/{banmonth,banweek,banday}.txt | uniq
 ```
 
 ##### Data Limit
@@ -1397,7 +1443,7 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 
 | Description | Descripción |
 | --- | --- |
-| Command-line utilities are installed in `/var/www/proxymon/tools` and run from a terminal. The HTML reports they generate can be viewed from the panel. | Las utilidades de consola se instalan en `/var/www/proxymon/tools` y se ejecutan desde la terminal. Los informes HTML que generan se pueden consultar desde el panel. |
+| Command-line utilities are installed in `/etc/proxymon/tools` and run from a terminal. The HTML reports they generate can be viewed from the panel. | Las utilidades de consola se instalan en `/etc/proxymon/tools` y se ejecutan desde la terminal. Los informes HTML que generan se pueden consultar desde el panel. |
 
 #### Squidtool
 
@@ -1406,12 +1452,12 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 | Squidtool is a command-line utility with two functions: generate a traffic report and search Squid logs. Run it with: | Squidtool es una utilidad de consola con dos funciones: generar un informe de tráfico y buscar términos en los registros de Squid. Se ejecuta con: |
 
 ```bash
-sudo /var/www/proxymon/tools/squidtool.sh
+sudo /etc/proxymon/tools/squidtool.sh
 ```
 
-> Each function generates an HTML report and replaces the previous report of the same type, so only the latest result is kept. The reports are available from the panel, which restricts access to the LAN. Tool activity is logged in `/var/www/proxymon/tools/squidtool.log`.
+> Each function generates an HTML report and replaces the previous report of the same type, so only the latest result is kept. The reports are written to `/etc/proxymon/tools/reports`, outside the Apache webroot, and the panel serves them read-only under the same LAN restriction. Tool activity is logged in `/etc/proxymon/tools/squidtool.log`.
 >
-> Cada función genera un informe HTML y reemplaza el anterior del mismo tipo; solo se conserva el resultado más reciente. Los informes se consultan desde el panel, que restringe el acceso a la red local. La herramienta registra su actividad en `/var/www/proxymon/tools/squidtool.log`.
+> Cada función genera un informe HTML y reemplaza el anterior del mismo tipo; solo se conserva el resultado más reciente. Los informes se escriben en `/etc/proxymon/tools/reports`, fuera del webroot de Apache, y el panel los publica en modo lectura con la misma restricción a la red local. La herramienta registra su actividad en `/etc/proxymon/tools/squidtool.log`.
 
 ##### Traffic Report
 
@@ -1466,16 +1512,18 @@ sudo /var/www/proxymon/tools/squidtool.sh
 | `sudo bash pmbk.sh install` | Register the `@monthly` cron entry | Registrar la entrada mensual en cron |
 | `sudo bash pmbk.sh uninstall` | Remove the cron entry, keeping the archives | Quitar la entrada de cron, conservando los comprimidos |
 
-> Backs up Proxymon into `/etc/bak/proxymon/pmbk_<YYYYMMDD_HHMM>.zip`, keeping up to 3 archives. `pmsetup.sh install` registers the monthly cron entry automatically; `pmsetup.sh uninstall` removes it before removing the project. Restore by unzipping it over `/`.
+> Backs up Proxymon into `/etc/bak/proxymon/pmbk_<YYYYMMDD_HHMMSS>.zip`, keeping up to 3 archives. `pmsetup.sh install` registers the monthly cron entry automatically; `pmsetup.sh uninstall` removes it before removing the project. Restore by unzipping it over `/`.
 >
-> Respalda Proxymon en `/etc/bak/proxymon/pmbk_<YYYYMMDD_HHMM>.zip`, conservando hasta 3 comprimidos. `pmsetup.sh install` registra la entrada mensual de cron automáticamente; `pmsetup.sh uninstall` la elimina antes de quitar el proyecto. Para restaurar, descomprímalo sobre `/`.
+> Respalda Proxymon en `/etc/bak/proxymon/pmbk_<YYYYMMDD_HHMMSS>.zip`, conservando hasta 3 comprimidos. `pmsetup.sh install` registra la entrada mensual de cron automáticamente; `pmsetup.sh uninstall` la elimina antes de quitar el proyecto. Para restaurar, descomprímalo sobre `/`.
 
 ### PROXYMON LOGS
 
 ```bash
 /var/log/apache2/proxymon_access.log
 /var/log/apache2/proxymon_error.log
-/var/log/bandata.log
+/var/log/bandata.log                 # Rotated via /etc/logrotate.d/bandata
+pmsetup.log                          # In pmsetup.sh's own directory, rewritten on each run
+/etc/proxymon/tools/squidtool.log    # In squidtool.sh's own directory, rewritten on each run
 ```
 
 ## ORIGINAL PROJECTS

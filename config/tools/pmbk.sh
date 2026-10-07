@@ -3,29 +3,16 @@
 #
 ################################################################################
 #
-# pmbk - configuration backup for proxymon
+# pmbk -- configuration backup for proxymon
 #
 # DESCRIPTION:
-# Creates one compressed archive containing the project installation and
-# relevant system configuration. Paths that do not exist are skipped with
-# a notice.
-#
-# Run it by hand before applying changes, or let the monthly cron entry
-# do it. Restore by unzipping the archive over /. Only the 3 most recent
-# archives are kept; older ones are deleted automatically.
+# Creates one compressed archive with the proxymon installation and its
+# system configuration. Requires root.
 #
 # USAGE:
 # sudo bash pmbk.sh            Create a backup now
 # sudo bash pmbk.sh install    Register the @monthly cron entry
 # sudo bash pmbk.sh uninstall  Remove the cron entry (keeps archives)
-#
-# OUTPUT:
-# /etc/bak/proxymon/pmbk_<YYYYMMDD_HHMM>.zip
-#
-# EXIT CODES:
-# 0 - Archive created
-# 1 - Not root, already running, missing dependency, nothing to back up,
-#     or the archive could not be written
 #
 # LOG: /var/log/proxymon.log
 #
@@ -74,8 +61,8 @@ done
 # ------------------------------------------------------------------------------
 
 backup_dir="/etc/bak/proxymon"
-backup_zip="${backup_dir}/pmbk_$(date +%Y%m%d_%H%M).zip"
-installed_path="/var/www/proxymon/tools/$(basename "$0")"
+backup_zip="${backup_dir}/pmbk_$(date +%Y%m%d_%H%M%S).zip"
+installed_path="/etc/proxymon/tools/$(basename "$0")"
 
 # ------------------------------------------------------------------------------
 # FUNCTIONS
@@ -118,17 +105,11 @@ register_cron() {
     cron_d_set "$installed_path" "@monthly root $installed_path"
     log "INFO: cron entry registered, runs @monthly"
     log "INFO: $installed_path"
-
-    # legacy entry in root's crontab, from versions before /etc/cron.d
-    crontab -l 2>/dev/null | { grep -vF "$installed_path" || true; } | crontab - 2>/dev/null || true
 }
 
 deregister_cron() {
     cron_d_set "$installed_path" ""
     log "INFO: cron entry removed, archives kept"
-
-    # legacy entry in root's crontab, from versions before /etc/cron.d
-    crontab -l 2>/dev/null | { grep -vF "$installed_path" || true; } | crontab - 2>/dev/null || true
 }
 
 case "${1:-}" in
@@ -199,8 +180,19 @@ if (( ${#backup_list[@]} == 0 )); then
     exit 1
 fi
 
-if (umask 077; zip -r -q "$backup_zip" "${backup_list[@]}"); then
-    chmod 600 "$backup_zip"
+# Build under a .part name so zip always starts from nothing, and so a failed
+# run can only ever delete its own work. The archive takes its final name once
+# zip has succeeded, which also keeps the retention glob from seeing a partial.
+backup_part="${backup_zip}.part"
+rm -f "$backup_part"
+if (umask 077; zip -r -q -y "$backup_part" "${backup_list[@]}"); then
+    chmod 600 "$backup_part"
+    if ! mv -f "$backup_part" "$backup_zip"; then
+        rm -f "$backup_part"
+        log "ERROR: cannot name archive $(basename "$backup_zip")"
+        log "ERROR: check free space and permissions -- abort"
+        exit 1
+    fi
     log "INFO: backup written to $(basename "$backup_zip")"
 
     # keep only the last 3
@@ -209,7 +201,7 @@ if (umask 077; zip -r -q "$backup_zip" "${backup_list[@]}"); then
         printf '%s\n' "${old_backups[@]}" | sort | head -n -3 | xargs -r rm -f
     fi
 else
-    rm -f "$backup_zip"
+    rm -f "$backup_part"
     log "ERROR: cannot write archive $(basename "$backup_zip")"
     log "ERROR: check free space and permissions -- abort"
     exit 1

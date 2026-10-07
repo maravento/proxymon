@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use Time::HiRes qw(gettimeofday);
-use File::Find ();
 
 # Escape special HTML characters to prevent XSS.
 sub h {
@@ -16,23 +15,20 @@ sub h {
     $str =~ s/'/&#39;/g;
     return $str;
 }
-# Resolve an ACL list by file name inside /etc/acl. The config stores only
-# the name; the subdirectory is not part of it, so a list may live in
-# /etc/acl or in any subdirectory below it.
-sub find_acl_file {
-    my ($name) = @_;
-    return undef unless defined $name;
-    $name =~ s{^.*/}{};
-    return undef if $name eq '' || $name !~ /^[A-Za-z0-9._-]+$/;
-    return undef unless -d '/etc/acl';
-    my @found;
-    File::Find::find(sub {
-        push @found, $File::Find::name if -f $_ && $_ eq $name;
-    }, '/etc/acl');
-    return (sort @found)[0];
+# Resolve an ACL list from the module configuration, which stores the full
+# path. Nothing is searched for: the path is taken only if it is absolute,
+# free of traversal and points at an existing regular file.
+sub resolve_acl_file {
+    my ($path) = @_;
+    return undef unless defined $path;
+    $path =~ s/^\s+|\s+$//g;
+    return undef unless $path =~ m{^/[A-Za-z0-9._/-]+$};
+    return undef if $path =~ m{(?:^|/)\.\.(?:/|$)};
+    return undef unless -f $path;
+    return $path;
 }
 
-our ($module_name, %text, %config, %in);
+our ($module_name, %text, %config, %in, $config_file, %config_defaults);
 
 # Match $text against a user-supplied regex pattern with a hard time limit,
 # so a catastrophic-backtracking ACL pattern (e.g. "(a+)+$") cannot hang
@@ -55,26 +51,23 @@ do '/var/www/proxymon/squidmon/squidmon-standalone.pl';
 &init_config();
 &ReadParse();
 
-my $config_file = '/var/www/proxymon/squidmon/etc/config';
-
 $module_name = 'squidmon';
 
 # Load language and config
 &load_language($module_name);
-&read_file($config_file, \%config);
-$config{'acl_list'} =~ s/\\n/\n/g if $config{'acl_list'};
+&load_config();
 
 # Get configuration values
-my $log_file = $config{'squid_log'} || '/var/log/squid/access.log';
-my $max_lines = $config{'max_lines'} || '50000';
-my $acl_list = $config{'acl_list'} || '';
-my $auto_refresh = $config{'auto_refresh'} || '0';
-my $refresh_interval = $config{'refresh_interval'} || '60';
-my $time_range = $config{'time_range'} || '24';
-$time_range = int($time_range) || 24;
+my $log_file = $config{'squid_log'};
+my $max_lines = $config{'max_lines'};
+my $acl_list = $config{'acl_list'};
+my $auto_refresh = $config{'auto_refresh'};
+my $refresh_interval = $config{'refresh_interval'};
+my $time_range = int($config{'time_range'}) || $config_defaults{'time_range'};
 
 # Validate refresh interval
-$refresh_interval = 60 if $refresh_interval !~ /^\d+$/ || $refresh_interval < 30;
+$refresh_interval = $config_defaults{'refresh_interval'}
+    if $refresh_interval !~ /^\d+$/ || $refresh_interval < 30;
 
 # Parse ACL list - SUPPORT BOTH \n AND \t
 my @monitored_acls = ();
@@ -82,29 +75,29 @@ if ($acl_list) {
     foreach my $acl_entry (split(/[\n\t]+/, $acl_list)) {
         $acl_entry =~ s/^\s+|\s+$//g;
         next if $acl_entry eq '';
-        
+
         # Support regex: prefix for regex-based ACLs
         if ($acl_entry =~ /^regex:(.+)=(.+)$/) {
             my $regex_pattern = $1;
             my $label = $2;
             $regex_pattern =~ s/^\s+|\s+$//g;
             $label =~ s/^\s+|\s+$//g;
-            push @monitored_acls, { 
-                type => 'regex', 
-                value => $regex_pattern, 
-                label => $label 
+            push @monitored_acls, {
+                type => 'regex',
+                value => $regex_pattern,
+                label => $label
             };
         }
         # File-based ACL
         elsif ($acl_entry =~ /^([^=]+)=(.+)$/) {
-            my $path = find_acl_file($1);
+            my $path = resolve_acl_file($1);
             my $label = $2;
             next unless defined $path;
             $label =~ s/^\s+|\s+$//g;
-            push @monitored_acls, { 
-                type => 'file', 
-                value => $path, 
-                label => $label 
+            push @monitored_acls, {
+                type => 'file',
+                value => $path,
+                label => $label
             };
         }
     }
@@ -122,7 +115,6 @@ print "<a href='config.cgi' style='display: inline-block; padding: 10px 20px; ba
 print "</div>";
 
 my %client_acl_stats = ();
-#my %debug_info = ();
 # TIME MEASUREMENT VARIABLES
 my $search_start_time;
 my $search_elapsed_ms = 0;
@@ -292,24 +284,24 @@ if (open(my $fh, '<', $log_file)) {
     my $chunk_size = 8192;
     my $buffer = '';
     my $lines_found = 0;
-    
+
     while ($file_size > 0 && $lines_found < $lines_to_read) {
         my $read_size = $chunk_size;
         $read_size = $file_size if $file_size < $chunk_size;
         $file_size -= $read_size;
-        
+
         seek($fh, $file_size, 0);
         read($fh, my $chunk, $read_size);
         $buffer = $chunk . $buffer;
-        
+
         my @lines = split(/\n/, $buffer);
         $buffer = shift(@lines) if $file_size > 0;
-        
+
         unshift(@log_lines, @lines);
         $lines_found = scalar(@log_lines);
     }
     close($fh);
-    
+
     # Keep only last N lines
     @log_lines = splice(@log_lines, -$lines_to_read) if scalar(@log_lines) > $lines_to_read;
 }
@@ -381,7 +373,7 @@ if ($action_code =~ /^TCP_DENIED/) {
     foreach my $acl (@matched_acls) {
         $acl_hits{$acl}++;
     }
-    
+
     # If no ACL matched, count as Unknown ACL
     if (!@matched_acls) {
         $acl_hits{'Unknown ACL'}++;
@@ -452,9 +444,9 @@ print "</div>";
 if ($total > 0) {
     my $blocked_percent = sprintf("%.1f", ($blocked / $total) * 100);
     my $allowed_percent = sprintf("%.1f", ($allowed / $total) * 100);
-    
+
     print "<table style='width: 100%; border-collapse: collapse; margin: 20px 0; color: #000000 !important;'>";
-    
+
     # Header row - No background, just text
     print "<tr>";
     print "<th style='text-align: left; padding: 12px; width: 15%; color: #000000 !important; border: 1px solid #e5e7eb !important;'>Type</th>";
@@ -462,7 +454,7 @@ if ($total > 0) {
     print "<th style='text-align: center; padding: 12px; width: 10%; color: #000000 !important; border: 1px solid #e5e7eb !important;'>Percent</th>";
     print "<th style='padding: 12px; width: 63%; color: #000000 !important; border: 1px solid #e5e7eb !important;'>Distribution</th>";
     print "</tr>";
-    
+
     # Blocked row
     print "<tr style='background: #fef2f2;'>";
     print "<td style='padding: 12px; border: 1px solid #e5e7eb; color: #000000 !important; text-align: left;'><strong style='color: #dc2626 !important;'>🚫 Blocked</strong></td>";
@@ -492,9 +484,9 @@ if ($total > 0) {
     print "<div style='background: #3b82f6; height: 25px; width: 100%; border-radius: 4px;'></div>";
     print "</td>";
     print "</tr>";
-    
+
     print "</table>";
-    
+
     # Additional information about the period
     print "<div style='margin-top: 15px; padding: 10px; background: #fffbeb; border-radius: 6px; border-left: 4px solid #f59e0b;'>";
     print "<small style='color: #000000 !important;'>";
@@ -502,7 +494,7 @@ if ($total > 0) {
     print "Analyzed " . format_number(scalar(@log_lines)) . " log lines from Squid access log.";
     print "</small>";
     print "</div>";
-    
+
 } else {
     print "<div style='text-align: center; padding: 40px; color: #000000 !important;'>";
     print "No traffic data available for the last $time_range hours";
@@ -515,7 +507,7 @@ print "</div>";
 if (@monitored_acls > 0) {
     print "<div class='content-card'>";
     print "<h2>📋 $text{'acl_stats_title'}</h2>";
-    
+
     if (scalar(keys %acl_hits) > 0) {
         print "<div class='table-responsive'>";
         print "<table class='data-table'>";
@@ -526,14 +518,14 @@ if (@monitored_acls > 0) {
         print "<th>$text{'acl_percentage'}</th>";
         print "<th style='width: 40%;'>$text{'acl_activity'}</th>";
         print "</tr></thead><tbody>";
-        
+
         my $total_acl_blocks = 0;
         $total_acl_blocks += $_ for values %acl_hits;
-        
+
         foreach my $acl_label (sort { ($acl_hits{$b} || 0) <=> ($acl_hits{$a} || 0) } keys %acl_hits) {
             my $hits = $acl_hits{$acl_label};
             my $percentage = $total_acl_blocks > 0 ? sprintf("%.1f", ($hits / $total_acl_blocks) * 100) : 0;
-            
+
             # Find ACL type
             my $acl_type = 'file';
             foreach my $acl (@monitored_acls) {
@@ -542,7 +534,7 @@ if (@monitored_acls > 0) {
                     last;
                 }
             }
-            
+
             print "<tr>";
             print "<td><strong>$acl_label</strong></td>";
             print "<td><span class='badge " . ($acl_type eq 'regex' ? 'badge-blocked' : 'badge-allowed') . "'>$acl_type</span></td>";
@@ -555,14 +547,14 @@ if (@monitored_acls > 0) {
             print "</td>";
             print "</tr>";
         }
-        
+
         print "</tbody></table></div>";
     } else {
         print "<div class='alert alert-info'>";
         print "ℹ️ $text{'acl_no_blocks'}";
         print "</div>";
     }
-    
+
     print "</div>";
 }
 
@@ -580,7 +572,7 @@ if (scalar(keys %blocked_domains) > 0) {
     print "<th>$text{'domain'}</th>";
     print "<th>$text{'blocks'}</th>";
     print "</tr></thead><tbody>";
-    
+
     my $count = 0;
     foreach my $domain (sort { ($blocked_domains{$b} || 0) <=> ($blocked_domains{$a} || 0) } keys %blocked_domains) {
         last if ++$count > 10;
@@ -589,7 +581,7 @@ if (scalar(keys %blocked_domains) > 0) {
         print "<td><span class='badge badge-blocked'>" . format_number($blocked_domains{$domain}) . "</span></td>";
         print "</tr>";
     }
-    
+
     print "</tbody></table></div>";
 } else {
     print "<div class='alert alert-success'>";
@@ -612,15 +604,15 @@ if (scalar(keys %clients_data) > 0) {
     print "<th style='text-align: center;'>$text{'blocked_percent'}</th>";
     print "<th style='text-align: center;'>$text{'total'}</th>";
     print "</tr></thead><tbody>";
-    
+
     my $count = 0;
-    
+
     foreach my $client (sort { ($clients_data{$b}{blocked} || 0) <=> ($clients_data{$a}{blocked} || 0) } keys %clients_data) {
         last if ++$count > 10;
         my $total = $clients_data{$client}{total} || 0;
         my $blocked = $clients_data{$client}{blocked} || 0;
         my $percent = $total > 0 ? sprintf("%.1f", ($blocked / $total) * 100) : 0;
-        
+
         print "<tr>";
         print "<td style='text-align: left;'><strong>" . h($client) . "</strong></td>";
         print "<td style='text-align: center;'><span class='badge badge-blocked'>" . format_number($blocked) . "</span></td>";
@@ -628,7 +620,7 @@ if (scalar(keys %clients_data) > 0) {
         print "<td style='text-align: center;'>" . format_number($total) . "</td>";
         print "</tr>";
     }
-    
+
     print "</tbody></table></div>";
 } else {
     print "<div class='alert alert-info'>";
@@ -704,52 +696,41 @@ print "<a href='" . h($script_url) . "' style='color: #ffffff !important; text-d
 print "</div>";
 print "</form>";
 
-# DEBUG: Show loaded ACL information
-#print "<!-- DEBUG: " . scalar(@monitored_acls) . " Monitored ACLs -->\n";
-#foreach my $acl (@monitored_acls) {
-#    print "<!-- ACL: $acl->{type} - $acl->{label} - $acl->{value} -->\n";
-#}
-
 # Process logs for client data with improved ACL detection
 foreach my $line (@log_lines) {
     next unless $line =~ /^(\d+\.\d+)\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+\S+\s+(https?:\/\/)?([^\s\/]+)([^\s]*)/;
-    
+
     my $timestamp = int($1);
     my $client = $2;
     my $action_code = $3;
     my $domain = $5;
     my $url = $5 . ($6 // '');
-    
+
     # Skip if outside time range
     next if $timestamp < $time_threshold;
-    
+
     my $is_blocked = ($action_code =~ /^TCP_DENIED/) ? 'Blocked' : 'Allowed';
-    
+
     # DEBUG: Request information
-    #$debug_info{total_requests}++;
-    #$debug_info{"$client-$is_blocked"}++;
-    
+
     # Determine which ACL matched
     my $matched_acl = 'N/A';
-    
+
     if ($is_blocked eq 'Blocked') {
         my $domain_lc = lc($domain);
-        #$debug_info{blocked_requests}++;
-        
+
         # DEBUG
-        #$debug_info{domains}{$domain_lc}++;
-        
+
         # REMOVE PORT from domain if it exists
         my $domain_only = $domain_lc;
         $domain_only =~ s/:\d+$//;  # Remove :port
-        
+
         # 1. Search for EXACT match in file ACLs
         my $found_acl = '';
         if (exists $domain_to_acl{$domain_only}) {
             $found_acl = $domain_to_acl{$domain_only};
-            #$debug_info{exact_matches}++;
         }
-        
+
         # 2. Search for a SUBDOMAIN match if an exact match was not found
         if (!$found_acl && $domain_only =~ /\./) {
             my @parts = split(/\./, $domain_only);
@@ -758,61 +739,35 @@ foreach my $line (@log_lines) {
                 my $test_domain = join('.', @parts[$i..$#parts]);
                 if (exists $domain_to_acl{$test_domain}) {
                     $found_acl = $domain_to_acl{$test_domain};
-                    #$debug_info{subdomain_matches}++;
                     last;
                 }
             }
         }
-        
+
         # 3. Search in ACLs regex if not found in files
         if (!$found_acl) {
             foreach my $acl (@regex_acls) {
                 if (safe_regex_match($url, $acl->{value})) {
                     $found_acl = $acl->{label};
-                    #$debug_info{regex_matches}++;
                     last;
                 }
             }
         }
-        
+
         $matched_acl = $found_acl || 'Unknown ACL';
-        
+
     } else {
         # For allowed requests - DO NOT count as an ACL hit
         $matched_acl = 'Allowed Traffic';
-        #$debug_info{allowed_requests}++;
     }
-    
+
     # Store ALL unfiltered statistics
         $client_acl_stats{$client}{$matched_acl}{$is_blocked}++;
         $client_acl_stats{$client}{total}{$is_blocked}++;
         push @{ $client_acl_stats{$client}{$matched_acl}{urls}{$is_blocked} }, $url;
 
         # DEBUG: Register the association
-        #$debug_info{acl_matches}{$matched_acl}++;
 }
-
-# DEBUG: Show diagnostic information
-#print "<!-- DEBUG INFO: -->\n";
-#print "<!-- Total requests: $debug_info{total_requests} -->\n";
-#print "<!-- Blocked: " . ($debug_info{blocked_requests} || 0) . " -->\n";
-#print "<!-- Allowed: " . ($debug_info{allowed_requests} || 0) . " -->\n";
-#print "<!-- Exact matches: " . ($debug_info{exact_matches} || 0) . " -->\n";
-#print "<!-- Subdomain matches: " . ($debug_info{subdomain_matches} || 0) . " -->\n";
-#print "<!-- Regex matches: " . ($debug_info{regex_matches} || 0) . " -->\n";
-
-# Show blocked domains for debugging
-#if ($debug_info{domains}) {
-#    print "<!-- Blocked domains: " . join(', ', keys %{$debug_info{domains}}) . " -->\n";
-#}
-
-# Show ACL matches for debugging
-#if ($debug_info{acl_matches}) {
-#    print "<!-- ACL Matches: -->\n";
-#    foreach my $acl (keys %{$debug_info{acl_matches}}) {
-#        print "<!--   $acl: $debug_info{acl_matches}{$acl} -->\n";
-#    }
-#}
 
 # ============================================================
 # SEARCH AND FILTERING
@@ -824,31 +779,30 @@ my $search_is_ip = 0;  # Flag to determine if the search is an IP address
 # If there is an active search
 if ($search_query && $search_query ne '') {
     $search_query = lc($search_query);  # Convert to lowercase for comparison
-    
+
     # START TIME MEASUREMENT
     my ($start_seconds, $start_microseconds) = gettimeofday();
     $search_start_time = $start_seconds + ($start_microseconds / 1000000);
-    
-    
+
     # Detect if it is an IP address (simple pattern: xxx.xxx.xxx.xxx)
     if ($search_query =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) {
         $search_is_ip = 1;
     }
-    
+
     foreach my $client (keys %client_acl_stats) {
         my $show_client = 0;
-        
+
         # Search for a match in the client's IP address.
         if ($client =~ /\Q$search_query\E/i) {
             $show_client = 1;
         }
-        
+
         # Only search URLs if it is NOT an IP address
         if (!$show_client && !$search_is_ip) {
             # Search in blocked URLs of the client
             foreach my $acl (keys %{$client_acl_stats{$client}}) {
                 next if $acl eq 'total' || $acl eq 'urls';
-                
+
                 if (exists $client_acl_stats{$client}{$acl}{urls} && exists $client_acl_stats{$client}{$acl}{urls}{Blocked}) {
                     foreach my $url (@{$client_acl_stats{$client}{$acl}{urls}{Blocked}}) {
                         if ($url =~ /\Q$search_query\E/i) {
@@ -857,15 +811,15 @@ if ($search_query && $search_query ne '') {
                         }
                     }
                 }
-                
+
                 last if $show_client;
             }
-            
+
             # Search within allowed client URLs
             if (!$show_client) {
                 foreach my $acl (keys %{$client_acl_stats{$client}}) {
                     next if $acl eq 'total' || $acl eq 'urls';
-                    
+
                     if (exists $client_acl_stats{$client}{$acl}{urls} && exists $client_acl_stats{$client}{$acl}{urls}{Allowed}) {
                         foreach my $url (@{$client_acl_stats{$client}{$acl}{urls}{Allowed}}) {
                             if ($url =~ /\Q$search_query\E/i) {
@@ -874,12 +828,12 @@ if ($search_query && $search_query ne '') {
                             }
                         }
                     }
-                    
+
                     last if $show_client;
                 }
             }
         }
-        
+
         push @clients_to_show, $client if $show_client;
     }
 } else {
@@ -893,7 +847,7 @@ if ($search_query && $search_query ne '') {
     my ($end_seconds, $end_microseconds) = gettimeofday();
     my $search_end_time = $end_seconds + ($end_microseconds / 1000000);
     $search_elapsed_ms = sprintf("%.2f", ($search_end_time - $search_start_time) * 1000);
-    
+
     my $results_count = scalar(@clients_to_show);
     my $search_type = $search_is_ip ? "IP Address" : "Domain";
     print "<div style='margin-bottom: 15px; padding: 12px; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px;'>";
@@ -901,7 +855,7 @@ if ($search_query && $search_query ne '') {
     print "Found <strong style='color: #1e40af;'>$results_count</strong> client(s) matching '<strong>".h($search_query)."</strong>' ";
     print "in <strong style='color: #1e40af;'>$search_elapsed_ms ms</strong>";
     print "</div>";
-    
+
     if ($results_count == 0) {
         print "<div style='padding: 20px; text-align: center; background: #fff5f5; border-radius: 4px; border: 1px solid #fecaca;'>";
         print "<strong style='color: #dc2626;'>No results found</strong><br>";
@@ -924,14 +878,14 @@ foreach my $client (sort @clients_to_show) {
     my $client_has_matching_data = 0;
     foreach my $acl (keys %acl_stats) {
         next if $acl eq 'total';
-        
+
         my $b = $acl_stats{$acl}{Blocked} || 0;
         my $a = $acl_stats{$acl}{Allowed} || 0;
-        
+
         # If there is no ACL filter OR if the ACL matches
         if (!$show_acl || $show_acl eq '' || $acl eq $show_acl) {
             # If there is no type filter, or if the data matches
-            if ((!$show_blocked && !$show_allowed) || 
+            if ((!$show_blocked && !$show_allowed) ||
                 ($show_blocked && !$show_allowed && $b > 0) ||
                 ($show_allowed && !$show_blocked && $a > 0) ||
                 ($show_blocked && $show_allowed && ($b > 0 || $a > 0))) {
@@ -940,7 +894,7 @@ foreach my $client (sort @clients_to_show) {
             }
         }
     }
-    
+
     # If there is no matching data, skip this client
     next unless $client_has_matching_data;
 
@@ -949,7 +903,7 @@ foreach my $client (sort @clients_to_show) {
     print "<strong>" . h($client) . "</strong> — Total: <strong>$total_requests</strong> | ";
     print "Blocked: <span style='color: #dc3545 !important;'><strong>$total_blocked</strong></span> | ";
     print "Allowed: <span style='color: #28a745 !important;'><strong>$total_allowed</strong></span>";
-    
+
     # PDF Button by IP
     print "<form method='post' action='pdf_report.cgi' target='_blank' style='display: inline; float: right;'>";
     print "<input type='hidden' name='client_ip' value='" . h($client) . "'>";
@@ -957,7 +911,7 @@ foreach my $client (sort @clients_to_show) {
     print "<input type='hidden' name='max_lines' value='" . int($max_lines) . "'>";
     print "<input type='submit' value='📄 PDF Report' style='background: #dc2626; color: #000000 !important; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-weight: bold; font-family: Arial, sans-serif !important; font-size: 12px !important; margin-left: 10px;'>";
     print "</form>";
-    
+
     print "</summary>";
 
     print "<div style='padding: 15px; background: white; color: #212529 !important;'>";
@@ -998,17 +952,17 @@ foreach my $client (sort @clients_to_show) {
         print "<td style='padding: 8px; text-align: center; color: #28a745;'><strong>$a</strong></td>";
         print "<td style='padding: 8px; text-align: center;'><strong>$t</strong></td>";
         print "</tr>";
-        
+
         # Show blocked URLs for this ACL
         if ($b > 0 && exists $acl_stats{$acl}{urls}{Blocked}) {
             my @blocked_urls = @{ $acl_stats{$acl}{urls}{Blocked} };
-            
+
             # If the search is for a DOMAIN, filter URLs
             # If the search is for an IP address, show all URLs associated with that IP address
             if ($search_query && $search_query ne '' && !$search_is_ip) {
                 @blocked_urls = grep { /\Q$search_query\E/i } @blocked_urls;
             }
-            
+
             if (@blocked_urls) {
                 print "<tr style='background: #fff5f5;'>";
                 print "<td colspan='4' style='padding: 10px; font-size: 12px;'>";
@@ -1024,17 +978,17 @@ foreach my $client (sort @clients_to_show) {
                 print "</tr>";
             }
         }
-        
+
         # Show allowed URLs for this ACL
         if ($a > 0 && exists $acl_stats{$acl}{urls}{Allowed}) {
             my @allowed_urls = @{ $acl_stats{$acl}{urls}{Allowed} };
-            
+
             # If the search is for a DOMAIN, filter URLs
             # If the search is for an IP address, show all URLs associated with that IP address
             if ($search_query && $search_query ne '' && !$search_is_ip) {
                 @allowed_urls = grep { /\Q$search_query\E/i } @allowed_urls;
             }
-            
+
             if (@allowed_urls) {
                 print "<tr style='background: #f5fff5;'>";
                 print "<td colspan='4' style='padding: 10px; font-size: 12px;'>";
@@ -1070,7 +1024,7 @@ document.querySelectorAll('.ip-row').forEach(function(row) {
     row.addEventListener('click', function() {
         var ip = row.getAttribute('data-ip');
         var details = document.getElementById('details-' + ip);
-        
+
         if (details) {
             if (details.style.display === 'none' || details.style.display === '') {
                 // Hide all other details first
@@ -1140,11 +1094,11 @@ function silentRefresh() {
         var newDoc = parser.parseFromString(html, 'text/html');
         var newContent = newDoc.querySelector('.dashboard-container');
         var oldContent = document.querySelector('.dashboard-container');
-        
+
         if (newContent && oldContent) {
             oldContent.innerHTML = newContent.innerHTML;
         }
-        
+
         startCountdown();
     })
     .catch(err => console.log('Refresh failed:', err));
@@ -1153,11 +1107,11 @@ function silentRefresh() {
 function startCountdown() {
     countdown = refreshInterval;
     countdownElement.textContent = countdown;
-    
+
     var countdownInterval = setInterval(function() {
         countdown--;
         countdownElement.textContent = countdown;
-        
+
         if (countdown <= 0) {
             clearInterval(countdownInterval);
             silentRefresh();

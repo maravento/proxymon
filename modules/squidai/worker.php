@@ -177,6 +177,15 @@ function prune_cache(string $dir, int $ttl): void {
     }
 }
 
+// Collapse every spelling of a date into one canonical YYYY-MM-DD form, so
+// equivalent requests share a cache key instead of each forcing a log scan.
+function normalizeDate(string $date): string {
+    if ($date === 'today' || $date === '') return date('Y-m-d');
+    $digits = preg_replace('/[^0-9]/', '', $date);
+    if (!preg_match('/^\d{8}$/', $digits)) return date('Y-m-d');
+    return substr($digits,0,4) . '-' . substr($digits,4,2) . '-' . substr($digits,6,2);
+}
+
 function cachedJson(string $key, int $ttl, callable $producer): void {
     $dir = CACHE_PATH;
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
@@ -254,7 +263,7 @@ try {
                 http_response_code(400);
                 echo json_encode(['error' => 'Invalid IP']); break;
             }
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("get_user_report:$ip:$date", WORKER_CACHE_TTL, fn() => getUserReport($ip, $date));
             break;
 
@@ -264,32 +273,32 @@ try {
                 http_response_code(400);
                 echo json_encode(['error' => 'Invalid IP']); break;
             }
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("check_blacklist:$ip:$date", WORKER_CACHE_TTL, fn() => checkBlacklist($ip, $date));
             break;
 
         case 'get_blocked_domains':
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("get_blocked_domains:$date", WORKER_CACHE_TTL, fn() => getBlockedByType('domains', $date));
             break;
 
         case 'get_blocked_patterns':
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("get_blocked_patterns:$date", WORKER_CACHE_TTL, fn() => getBlockedByType('patterns', $date));
             break;
 
         case 'get_blocked_tlds':
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("get_blocked_tlds:$date", WORKER_CACHE_TTL, fn() => getBlockedByType('tlds', $date));
             break;
 
         case 'get_security_incidents': // backward compatibility
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("get_blocked_domains:$date", WORKER_CACHE_TTL, fn() => getBlockedByType('domains', $date));
             break;
 
         case 'get_network_summary':
-            $date = $_GET['date'] ?? 'today';
+            $date = normalizeDate((string)($_GET['date'] ?? 'today'));
             cachedJson("get_network_summary:$date", WORKER_CACHE_TTL, fn() => getNetworkSummary($date));
             break;
 
@@ -381,7 +390,9 @@ try {
 
             // Build payload according to format
             if ($llmFormat === 'gemini') {
-                $payload = $rawInput; // passthrough — no transformation needed
+                // Passthrough, but re-apply the capped token limit
+                $decoded['generationConfig']['maxOutputTokens'] = $maxTokens;
+                $payload = json_encode($decoded, JSON_UNESCAPED_UNICODE);
             } elseif ($llmFormat === 'ollama') {
                 $payload = json_encode([
                     'model'    => $llmModel,

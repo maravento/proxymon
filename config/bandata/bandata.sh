@@ -3,28 +3,16 @@
 #
 ################################################################################
 #
-# Bandata for Squid Reports
-# Data Plan for LAN
+# bandata -- data usage limits for proxymon
 #
-# Instructions:
-# Configuration is read from /etc/proxymon/proxymon.env (generated during installation)
+# DESCRIPTION:
+# Applies the data quotas to the LAN addresses Squid reports, and blocks
+# the ones over quota. Requires root.
+#
+# USAGE:
+# sudo bash bandata.sh    Apply the quotas now
+#
 # LOG: /var/log/bandata.log
-# Default limits: max 1G day / 5G week / 20G month
-# Limits can use M, G or B suffix (e.g. 500M, 1G, 1.5G)
-# bandata excludes weekends
-#
-# NOTE on skipuser.cfg:
-# - Rebuilt on every run from mac-transparent.txt/mac-unlimited.txt plus every
-# IPv4 entry found in /etc/hosts, so the proxy host's own traffic (loopback
-# and the server itself) is never listed as a LightSquid user.
-# - The server IP MUST have an entry in /etc/hosts with its hostname. Without
-# it, the server's own proxy traffic is reported and counted against the
-# bandwidth limits like any LAN client.
-# - Manual edits to skipuser.cfg do not survive: the file is regenerated here.
-#
-# LOG: /var/log/bandata.log, written to file and screen via tee
-#      This script self-installs /etc/logrotate.d/bandata on first run,
-#      so the file never needs a manual truncate
 #
 ################################################################################
 
@@ -217,7 +205,7 @@ log "bandata start..."
 # PREFLIGHT CHECKS
 # Self-heal: remove orphaned .tmp files left by a previous run that failed
 # between the write and the mv (no -e/trap in this script to catch that).
-for stale_file in "$BLOCK_LIST_DAY.tmp" "$BLOCK_LIST_WEEK.tmp" "$BLOCK_LIST_MONTH.tmp" "$REALNAME_CFG.tmp" "$SKIPUSERS_CFG.tmp"; do
+for stale_file in "$BLOCK_LIST_DAY.tmp" "$BLOCK_LIST_WEEK.tmp" "$BLOCK_LIST_MONTH.tmp"; do
     if [ -f "$stale_file" ]; then
         log "WARNING: removing orphaned $(basename "$stale_file") -- alert"
         rm -f "$stale_file"
@@ -556,20 +544,37 @@ update_lightsquid_realname() {
     acl_out=$(process_acls include)
     skip_out=$(process_acls exclude)
 
-    local final_output skip_output
+    local final_output skip_output cfg_tmp
     final_output=$(printf "%s\n%s\n" "$hotspot_out" "$acl_out" | sed '/^$/d' | $sort_uniq)
     skip_output=$(printf "%s\n%s\n" "$skip_out" "$(process_hosts)" | sed '/^$/d' | $sort_uniq)
 
+    # Lightsquid reads both files from its own directory, which belongs to
+    # www-data. Staging through mktemp keeps this root write on a name no
+    # other user can reach, and the mv replaces the target name as a whole.
     if [ -z "$final_output" ]; then
         log "No MAC data processed for realname.cfg"
     else
-        echo "$final_output" > "${REALNAME_CFG}.tmp" && mv -f "${REALNAME_CFG}.tmp" "$REALNAME_CFG"
+        cfg_tmp=$(mktemp)
+        if echo "$final_output" > "$cfg_tmp"; then
+            chmod 644 "$cfg_tmp"
+            mv -f "$cfg_tmp" "$REALNAME_CFG"
+        else
+            rm -f "$cfg_tmp"
+            log "WARNING: cannot update realname.cfg -- alert"
+        fi
     fi
 
     if [ -z "$skip_output" ]; then
         log "No excluded data for skipuser.cfg"
     else
-        echo "$skip_output" > "${SKIPUSERS_CFG}.tmp" && mv -f "${SKIPUSERS_CFG}.tmp" "$SKIPUSERS_CFG"
+        cfg_tmp=$(mktemp)
+        if echo "$skip_output" > "$cfg_tmp"; then
+            chmod 644 "$cfg_tmp"
+            mv -f "$cfg_tmp" "$SKIPUSERS_CFG"
+        else
+            rm -f "$cfg_tmp"
+            log "WARNING: cannot update skipuser.cfg -- alert"
+        fi
     fi
 }
 

@@ -60,6 +60,12 @@ private $fp;
 	    return $text;
     }
 	
+	// Callers outside the class report errors through here, since $errno and
+	// $errstr are private and a direct assignment would be a fatal error.
+	function setError($errno,$errstr){
+		$this->errno=$errno;
+		$this->errstr=$errstr;
+	}
 	function showError(){
 		$text='<h1>SqStat error</h1>'.
 		'<h2 style="color:red">Error ('.$this->errno.'): '.$this->errstr.'</span>';

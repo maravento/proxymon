@@ -3,79 +3,20 @@
 #
 ################################################################################
 #
-# Proxy Monitor (Proxymon) -- install / update / uninstall script
+# pmsetup -- installer for proxymon
 #
-# Proxymon bundles Squid bandwidth monitoring (Bandata), LightSquid,
-# SARG, SquidAnalyzer and SquidMon behind an Apache web panel, with
-# optional Unifi Hotspot integration.
+# DESCRIPTION:
+# Installs, updates or uninstalls proxymon. Requires root, and a populated
+# modules/ and config/ tree next to this script.
 #
-# USAGE
-# ./pmsetup.sh install Fresh install. Aborts if /var/www/proxymon
-# already exists (use update or uninstall
-# first -- see below).
-# ./pmsetup.sh update Refresh code and permissions under
-# /var/www/proxymon. Stops Apache, backs up
-# the project with pmbk.sh, stages live data
-# aside, replaces code, puts live data back,
-# resets permissions, restarts Apache. Does
-# not touch Apache/PHP/SARG system config,
-# cron, ACL lists, or /etc/proxymon/proxymon.env.
-# ./pmsetup.sh uninstall Remove Proxymon: Apache sites, cron entries,
-# iptables/ipset rules, restore .bak configs.
-# Prompts before deleting /etc/proxymon and
-# /etc/acl (allowlists, MAC registrations, LLM
-# credentials). Bandata's own ACLs live under
-# /var/www/proxymon/bandata/acl and are removed
-# with the rest of /var/www/proxymon. The SquidAI
-# response cache in /var/cache/proxymon is also
-# removed.
-# ./pmsetup.sh Interactive menu with the same 3 options.
-# ./pmsetup.sh -h|--help Show usage.
+# USAGE:
+# sudo bash pmsetup.sh install      Fresh install
+# sudo bash pmsetup.sh update       Refresh code, keep live data
+# sudo bash pmsetup.sh uninstall    Remove proxymon
+# sudo bash pmsetup.sh              Interactive menu
+# sudo bash pmsetup.sh -h           Show usage
 #
-# REQUIREMENTS
-# - Run as root.
-# - Must be run from a directory containing a populated modules/
-# folder -- obtained by cloning the full repository (see check_repo()).
-# install and update both read from this local modules/ tree; the
-# script itself does not fetch or pull anything from git.
-# - System packages from check_dependencies() (squid, apache2, sarg,
-# php, zip, etc.) must already be installed.
-#
-# INSTALL vs UPDATE -- WHAT EACH TOUCHES
-# install_proxymon() writes everything from scratch: Apache vhosts and
-# Listen directives, /etc/proxymon/proxymon.env (interactive prompts),
-# ACL directories/lists (with a fresh download), SARG config and
-# usertab, SquidAnalyzer, PHP/Apache hardening (php.ini, security.conf,
-# apache2.conf, mpm_prefork.conf), cron entries, the SquidAI response
-# cache directory /var/cache/proxymon, and enables the sites.
-# Because it prompts for configuration and can overwrite an existing
-# setup, it refuses to run if /var/www/proxymon already exists.
-#
-# update_proxymon() only refreshes code and permissions under
-# /var/www/proxymon. It never touches Apache/PHP/SARG system config,
-# cron, ACL lists, or proxymon.env, and it never prompts. Sequence:
-# 1. Stop Apache (avoid serving a half-swapped tree).
-# 2. Run tools/pmbk.sh, the same project backup used everywhere else --
-# there is no separate copy here.
-# 3. Move the live data that isn't part of the modules/ repo tree
-# into a temporary staging directory.
-# 4. cp -rf modules/* into /var/www/proxymon (same method install
-# uses).
-# 5. Move the live data back from staging over the freshly-copied
-# placeholders.
-# 6. Reset permissions/ownership on /var/www/proxymon.
-# 7. Restart Apache.
-# Steps 3 and 5 are why update never touches these paths, the same as
-# any other file --update leaves alone -- they are not backed up here,
-# only staged aside and put back. Live data staged aside and put back:
-# - lightsquid/report (daily LightSquid reports)
-# - lightsquid/realname.cfg (hostname mappings)
-# - lightsquid/skipuser.cfg (excluded users)
-# - sarg/squid-reports (SARG rendered reports)
-# - squidmon/etc/config (SquidMon config file)
-# - squidanalyzer/output (SquidAnalyzer rendered reports)
-# - sqstat/config.inc.php (SQStat custom config, e.g. cachemgr credentials)
-# - bandata/acl/allowdata.txt (Bandata quota-exempt IP list)
+# LOG: pmsetup.log, in this script's directory
 #
 ################################################################################
 
@@ -339,6 +280,9 @@ check_repo() {
     if [ ! -d "modules" ] || [ -z "$(ls -A "modules" 2>/dev/null)" ]; then
         missing_flag=1
     fi
+    if [ ! -d "config" ] || [ -z "$(ls -A "config" 2>/dev/null)" ]; then
+        missing_flag=1
+    fi
     if [ "$missing_flag" -eq 1 ]; then
         echo ""
         err "repository files not found"
@@ -378,10 +322,6 @@ create_proxymon_env() {
             echo " Add them manually, or remove $env_file and re-run install to regenerate."
         fi
 
-        # RANGE used to hold a filename-matching glob (e.g. "192.168.0*"),
-        # not a network CIDR. An env file from before this change will fail
-        # this check and needs RANGE corrected manually (and REPORT_IP_GLOB
-        # added, per the check above) before Require ip will work correctly.
         local range_value
         range_value=$(grep "^RANGE=" "$env_file" | head -n1 | cut -d'=' -f2-)
         if [ -n "$range_value" ] && ! [[ "$range_value" =~ $UH_CIDR ]]; then
@@ -459,7 +399,7 @@ create_proxymon_env() {
     # (e.g. bandata.sh's "for file in $REPORT_IP_GLOB"). This is NOT a
     # network range -- it's a filename-matching pattern derived from the
     # server's own /24, since report files are named after client IPs.
-    report_glob="$(echo "$server_ip_answer" | cut -d'.' -f1-3)*"
+    report_glob="$(echo "$server_ip_answer" | cut -d'.' -f1-3).*"
 
     # Real network range (CIDR) for the LAN this server serves -- used to
     # restrict the web panel to LAN clients. Derived from the same /24
@@ -528,14 +468,14 @@ SKIPUSERS_CFG=\$LIGHTSQUID_DIR/skipuser.cfg
 ACL_PATH=/etc/acl
 ACL_MAC_PATH=\$ACL_PATH/mac
 ACL_SQUID_PATH=\$ACL_PATH/squid
-ACL_BANDATA_PATH=/var/www/proxymon/bandata/acl
+ACL_BANDATA_PATH=/etc/proxymon/bandata/acl
 ALLOW_LIST=\$ACL_BANDATA_PATH/allowdata.txt
 BLOCK_LIST_DAY=\$ACL_BANDATA_PATH/banday.txt
 BLOCK_LIST_WEEK=\$ACL_BANDATA_PATH/banweek.txt
 BLOCK_LIST_MONTH=\$ACL_BANDATA_PATH/banmonth.txt
 SQUID_LOG_DIR=/var/log/squid
 SQUID_LOG_FILE=\$SQUID_LOG_DIR/access.log
-WARNING_HTML=/var/www/proxymon/bandata/warning/warning.html
+WARNING_HTML=/var/www/proxymon/warning/warning.html
 CACHE_PATH=/var/cache/proxymon
 
 # Bandwidth limits
@@ -591,8 +531,14 @@ install_proxymon() {
     check_port tcp 18081 "warning page"
 
     check_repo
+    # modules/ is served by Apache and belongs to www-data. config/ is only
+    # read or executed by root, so it lives outside the web tree. vhost/ is
+    # not project content: Apache reads it from its own directory.
     mkdir -p /var/www/proxymon
     cp -rf modules/* /var/www/proxymon/
+
+    mkdir -p /etc/proxymon
+    cp -rf config/bandata config/tools /etc/proxymon/
 
     if [ -n "$local_user" ] && [ -f "/var/www/proxymon/sqstat/config.inc.php" ]; then
         local_user_esc=$(printf '%s' "$local_user" | sed -e 's/[\/&]/\\&/g')
@@ -601,13 +547,13 @@ install_proxymon() {
 
     info "Configuring Apache..."
 
-    if [[ -f "/var/www/proxymon/proxymon.conf" ]]; then
-        cp -f /var/www/proxymon/proxymon.conf /etc/apache2/sites-available/proxymon.conf
+    if [[ -f "config/vhost/proxymon.conf" ]]; then
+        cp -f config/vhost/proxymon.conf /etc/apache2/sites-available/proxymon.conf
         info "Proxymon virtualhost configured"
     fi
 
-    if [[ -f "/var/www/proxymon/bandata/warning/warning.conf" ]]; then
-        cp -f /var/www/proxymon/bandata/warning/warning.conf /etc/apache2/sites-available/warning.conf
+    if [[ -f "config/vhost/warning.conf" ]]; then
+        cp -f config/vhost/warning.conf /etc/apache2/sites-available/warning.conf
         info "Warning virtualhost configured"
     fi
 
@@ -668,10 +614,9 @@ install_proxymon() {
     fi
 
     # Create ACL directories
-    # ACL_BANDATA_PATH is not created here: it ships inside modules/bandata/acl/
-    # with its 4 files already present, copied by cp -rf modules/* above and
-    # given the same permissions/ownership as the rest of /var/www/proxymon
-    # by the "Setting Permissions" step below.
+    # ACL_BANDATA_PATH is not created here: it ships inside config/bandata/acl/
+    # with its 4 files already present, copied to /etc/proxymon above and
+    # given root ownership by the "Setting Permissions" step below.
     mkdir -p "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
     chmod 755 "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
     chown root:root "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
@@ -719,7 +664,7 @@ install_proxymon() {
 
     info "ACL lists step finished"
 
-    cron_d_set "/var/www/proxymon/bandata/bandata.sh" "*/5 * * * * root /var/www/proxymon/bandata/bandata.sh >> /var/log/bandata.log 2>&1"
+    cron_d_set "/etc/proxymon/bandata/bandata.sh" "*/5 * * * * root /etc/proxymon/bandata/bandata.sh"
     info "Squid Monitor cron entry added"
 
     info "Configuring SARG..."
@@ -762,12 +707,6 @@ install_proxymon() {
     cron_d_set "sarg.conf" "@daily www-data /usr/bin/sarg -f /etc/sarg/sarg.conf -l /var/log/squid/access.log"
     cron_d_set "sarg/squid-reports" '@weekly www-data find /var/www/proxymon/sarg/squid-reports -name "2*" -mtime +30 -type d -exec rm -rf {} +'
     cron_d_set "squid-analyzer" "0 2 * * * www-data cd /var/www/proxymon/squidanalyzer && perl -I. ./squid-analyzer -c etc/squidanalyzer.conf"
-
-    # legacy entries in the www-data crontab, from versions before /etc/cron.d
-    for legacy_path in lightparser.pl "sarg.conf" "squid-reports" squid-analyzer; do
-        sudo -u www-data crontab -l 2>/dev/null | { grep -vF "$legacy_path" || true; } \
-            | sudo -u www-data crontab - 2>/dev/null || true
-    done
 
     info "proxymon cron entries updated (LightSquid, SARG, SquidAnalyzer)"
 
@@ -915,16 +854,15 @@ EOF
     find /var/www/proxymon -type d -exec chmod 755 {} +
     find /var/www/proxymon -type f -exec chmod 644 {} +
     find /var/www/proxymon -type f -name "*.cgi" -exec chmod +x {} +
-    chmod +x /var/www/proxymon/bandata/bandata.sh
     chmod +x /var/www/proxymon/lightsquid/lightparser.pl
-    [ -f /var/www/proxymon/tools/pmbk.sh ] && chmod +x /var/www/proxymon/tools/pmbk.sh
     chown -R www-data:www-data /var/www/proxymon
-    # bandata.sh runs entirely as root (its own root check, invoked from
-    # root's crontab) and is the only thing that ever touches these 4 files
-    # -- no PHP/CGI under /var/www/proxymon reads or writes them. Same
-    # reasoning as realname.cfg/skipuser.cfg, which bandata.sh also owns
-    # exclusively and are root:root for the same reason.
-    chown root:root "$ACL_BANDATA_PATH"/*.txt
+
+    find /etc/proxymon/bandata /etc/proxymon/tools -type d -exec chmod 755 {} +
+    find /etc/proxymon/bandata /etc/proxymon/tools -type f -exec chmod 644 {} +
+    chmod 755 /etc/proxymon/bandata/bandata.sh
+    chmod 755 /etc/proxymon/tools/pmbk.sh
+    chmod 755 /etc/proxymon/tools/squidtool.sh
+    chown -R root:root /etc/proxymon/bandata /etc/proxymon/tools
     if getent group proxy >/dev/null; then
         usermod -aG proxy www-data
     else
@@ -989,9 +927,9 @@ EOF
     info " Check Active Apache sites:"
     a2query -s
 
-    if [ -x /var/www/proxymon/tools/pmbk.sh ]; then
+    if [ -x /etc/proxymon/tools/pmbk.sh ]; then
         info "Registering pmbk.sh monthly cron entry ..."
-        /var/www/proxymon/tools/pmbk.sh install || warn "cron entry not registered -- alert"
+        /etc/proxymon/tools/pmbk.sh install || warn "cron entry not registered -- alert"
     fi
 
     info "Proxy Monitor installed successfully"
@@ -1003,11 +941,11 @@ EOF
 # UPDATE
 # ------------------------------------------------------------------------------
 
-# Refreshes code under /var/www/proxymon only. Does NOT touch anything
-# outside that path: no Apache/PHP/SARG/cron config, no ACL lists, no
-# proxymon.env, no service restarts. Runs tools/pmbk.sh first, then
-# stages aside live data that lives inside /var/www/proxymon but isn't
-# part of the repo tree, so update never touches it.
+# Refreshes code under /var/www/proxymon and the root scripts under
+# /etc/proxymon. Does NOT touch anything else: no Apache/PHP/SARG/cron
+# config, no ACL lists, no proxymon.env, no .env. Runs pmbk.sh first,
+# then copies every file under modules/ except the live data listed
+# below, so that data is never written to.
 
 update_proxymon() {
     if [[ ! -d "/var/www/proxymon" ]]; then
@@ -1015,8 +953,9 @@ update_proxymon() {
         exit 1
     fi
 
-    # Live data that isn't part of the modules/ repo tree -- staged aside
-    # before the file swap and put back after. Never modified in place.
+    # Live data the code copy below skips. The repo ships a default or a
+    # sample version of most of these, so copying them would destroy
+    # real data. Everything else under modules/ is rewritten.
     protected_paths=(
         "lightsquid/report"
         "lightsquid/realname.cfg"
@@ -1025,63 +964,63 @@ update_proxymon() {
         "squidmon/etc/config"
         "squidanalyzer/output"
         "sqstat/config.inc.php"
-        "bandata/acl/allowdata.txt"
+        "warning/warning.html"
     )
 
     check_repo
 
     info "Stopping Apache..."
     systemctl stop apache2
+    trap 'systemctl start apache2 >/dev/null 2>&1 || true' EXIT
 
-    if [ -x /var/www/proxymon/tools/pmbk.sh ]; then
+    if [ -x /etc/proxymon/tools/pmbk.sh ]; then
         info "Creating backup with pmbk.sh ..."
-        /var/www/proxymon/tools/pmbk.sh || warn "backup failed, continuing -- alert"
+        /etc/proxymon/tools/pmbk.sh || warn "backup failed, continuing -- alert"
     else
         warn "pmbk.sh not found, no backup -- alert"
     fi
 
-    stage_dir=$(mktemp -d) || abort "cannot create staging directory -- abort"
-    trap 'rm -rf "$stage_dir"' EXIT
-
-    for rel_path in "${protected_paths[@]}"; do
-        if [ -e "/var/www/proxymon/$rel_path" ]; then
-            mkdir -p "$stage_dir/$(dirname "$rel_path")"
-            mv "/var/www/proxymon/$rel_path" "$stage_dir/$rel_path"
-        else
-            info "$rel_path not present -- skip"
-        fi
-    done
-
     info "Replacing Proxy Monitor code..."
-    cp -rf modules/* /var/www/proxymon/
-
+    skip_args=()
     for rel_path in "${protected_paths[@]}"; do
-        if [ -e "$stage_dir/$rel_path" ]; then
-            rm -rf "/var/www/proxymon/$rel_path"
-            mkdir -p "/var/www/proxymon/$(dirname "$rel_path")"
-            mv "$stage_dir/$rel_path" "/var/www/proxymon/$rel_path"
-        fi
+        skip_args+=(-path "modules/$rel_path" -o)
     done
-    rm -rf "$stage_dir"
-    trap - EXIT
+    skip_args+=(-false)
 
-    info "Live data restored"
+    while IFS= read -r -d '' src_path; do
+        rel_path="${src_path#modules/}"
+        if [ -d "$src_path" ]; then
+            mkdir -p "/var/www/proxymon/$rel_path"
+        else
+            cp -f "$src_path" "/var/www/proxymon/$rel_path"
+        fi
+    done < <(find modules -mindepth 1 \( "${skip_args[@]}" \) -prune -o -print0)
+
+    # The root scripts, copied one by one. config/bandata/acl/ is live data
+    # and config/vhost/ is Apache configuration, so neither is touched.
+    mkdir -p /etc/proxymon/bandata /etc/proxymon/tools
+    cp -f config/bandata/bandata.sh /etc/proxymon/bandata/bandata.sh
+    cp -f config/tools/pmbk.sh /etc/proxymon/tools/pmbk.sh
+    cp -f config/tools/squidtool.sh /etc/proxymon/tools/squidtool.sh
+
+    info "Live data left untouched"
     info "Setting permissions..."
     find /var/www/proxymon -type d -exec chmod 755 {} +
     find /var/www/proxymon -type f -exec chmod 644 {} +
     find /var/www/proxymon -type f -name "*.cgi" -exec chmod +x {} +
-    [ -f /var/www/proxymon/bandata/bandata.sh ] && chmod +x /var/www/proxymon/bandata/bandata.sh
     [ -f /var/www/proxymon/lightsquid/lightparser.pl ] && chmod +x /var/www/proxymon/lightsquid/lightparser.pl
-    [ -f /var/www/proxymon/tools/pmbk.sh ] && chmod +x /var/www/proxymon/tools/pmbk.sh
     chown -R www-data:www-data /var/www/proxymon
-    # bandata.sh runs entirely as root and is the only thing that touches
-    # these 4 files -- see install_proxymon() for the full reasoning.
-    # Hardcoded (not $ACL_BANDATA_PATH): update_proxymon() does not source
-    # proxymon.env by design (see header: never touches proxymon.env).
-    [ -d /var/www/proxymon/bandata/acl ] && chown root:root /var/www/proxymon/bandata/acl/*.txt 2>/dev/null
+
+    chmod 755 /etc/proxymon/bandata/bandata.sh
+    chmod 755 /etc/proxymon/tools/pmbk.sh
+    chmod 755 /etc/proxymon/tools/squidtool.sh
+    chown root:root /etc/proxymon/bandata/bandata.sh
+    chown root:root /etc/proxymon/tools/pmbk.sh
+    chown root:root /etc/proxymon/tools/squidtool.sh
     info "Permissions set"
 
     info "Starting Apache..."
+    trap - EXIT
     if systemctl start apache2; then
         info "Apache started"
     else
@@ -1097,32 +1036,16 @@ update_proxymon() {
 # ------------------------------------------------------------------------------
 
 uninstall_proxymon() {
-    warn "Run tools/pmbk.sh first if you want a backup."
+    warn "Run /etc/proxymon/tools/pmbk.sh first if you want a backup."
     info " Uninstalling Proxy Monitor..."
 
-    if [[ ! -d "/var/www/proxymon" ]]; then
-        if ! ((sudo crontab -l 2>/dev/null || true) | grep -q "/var/www/proxymon/bandata/bandata.sh") && \
-           ! ((sudo -u www-data crontab -l 2>/dev/null || true) | grep -q "lightparser.pl\|sarg\|squid-analyzer") && \
-           [[ ! -d "/etc/proxymon" ]]; then
-            info " Proxy Monitor is not installed"
-            return 0
-        fi
+    if [[ ! -d "/var/www/proxymon" ]] && [[ ! -d "/etc/proxymon" ]]; then
+        info " Proxy Monitor is not installed"
+        return 0
     fi
 
     rm -f /etc/cron.d/proxymon
     info "proxymon cron entries removed"
-
-    # legacy entries in the www-data crontab, from versions before /etc/cron.d
-    for legacy_path in lightparser.pl "sarg.conf" "squid-reports" squid-analyzer; do
-        sudo -u www-data crontab -l 2>/dev/null | { grep -vF "$legacy_path" || true; } \
-            | sudo -u www-data crontab - 2>/dev/null || true
-    done
-
-    if (crontab -l 2>/dev/null || true) | { grep -vF "/var/www/proxymon/bandata/bandata.sh" || true; } | crontab - 2>/dev/null; then
-        info "Squid Monitor legacy crontab entry removed"
-    else
-        warn "cannot update root crontab, bandata.sh entry may remain -- alert"
-    fi
 
     if command -v iptables >/dev/null 2>&1; then
         # Remove FORWARD/INPUT jumps into the Bandata chains by rule number
@@ -1206,8 +1129,8 @@ uninstall_proxymon() {
         info "Warning site disabled"
     fi
 
-    if [[ -x "/var/www/proxymon/tools/pmbk.sh" ]]; then
-        /var/www/proxymon/tools/pmbk.sh uninstall || true
+    if [[ -x "/etc/proxymon/tools/pmbk.sh" ]]; then
+        /etc/proxymon/tools/pmbk.sh uninstall || true
     fi
 
     if [[ -d "/var/www/proxymon" ]]; then
@@ -1221,10 +1144,10 @@ uninstall_proxymon() {
     fi
 
     if [[ -d "/etc/proxymon" ]]; then
-        read -p "Remove /etc/proxymon/ (contains LLM credentials)? (y/n): " -r
+        read -p "Remove /etc/proxymon/ (contains LLM credentials, root scripts and Bandata lists)? (y/n): " -r
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             rm -rf /etc/proxymon
-            info "SquidAI config directory removed"
+            info "Config directory removed"
         else
             info " /etc/proxymon kept -- remove manually if needed"
         fi
@@ -1293,7 +1216,7 @@ case "${1:-}" in
         echo ""
         echo "Options:"
         echo "install Install Proxy Monitor"
-        echo "update Update Proxy Monitor code (/var/www/proxymon only)"
+        echo "update Update Proxy Monitor code (live data preserved)"
         echo "uninstall Uninstall Proxy Monitor"
         echo "-h, --help Show this help message"
         exit 0

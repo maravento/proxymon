@@ -46,6 +46,7 @@ open FF,"<$reportpath/$year$month$day/.bigfiles" || MyDie("cant' open .bigfile")
 $N=0;
 while (<FF>) {
  ($user,$time,$size,$link)=split;
+ $link=escapeHtml($link);
 
  if ($filteruser ne "") {
    next unless ($filteruser eq $user);

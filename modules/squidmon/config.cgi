@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-our ($module_name, %text, %config, %in);
+our ($module_name, %text, %config, %in, $config_file, %config_defaults);
 
 do '/var/www/proxymon/squidmon/squidmon-standalone.pl';
 &init_config();
@@ -12,18 +12,8 @@ do '/var/www/proxymon/squidmon/squidmon-standalone.pl';
 $module_name = 'squidmon';
 &load_language($module_name);
 
-# Load current config from file
-my $config_file = '/var/www/proxymon/squidmon/etc/config';
-&read_file($config_file, \%config);
-$config{'acl_list'} =~ s/\\n/\n/g if $config{'acl_list'};
-
-# Set defaults if not configured
-$config{'squid_log'} ||= '/var/log/squid/access.log';
-$config{'max_lines'} ||= 50000;
-$config{'time_range'} ||= 24;
-$config{'acl_list'} ||= "blocktlds.txt=Blocked TLD\nblockdomains.txt=Blocked Sites\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4\nregex:(announce\\.php\\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\\.utorrent|XBT|mtc1)=Blocked Patterns";
-$config{'auto_refresh'} ||= 0;
-$config{'refresh_interval'} ||= 60;
+# Load the live config, with the factory values filling in the rest
+&load_config();
 
 my $message = '';
 my $message_type = '';
@@ -41,7 +31,7 @@ if (defined $in{'action'} && $in{'action'} eq 'save') {
     my $acl_list_value = $in{'acl_list'} || '';
     $acl_list_value =~ s/\r\n/\n/g;
 
-    my $squid_log_value = $in{'squid_log'} || '/var/log/squid/access.log';
+    my $squid_log_value = $in{'squid_log'} || $config_defaults{'squid_log'};
 
     # Validate inputs before writing them to disk — squidmon.cgi opens these
     # paths directly, so an unrestricted path here is an arbitrary file read.
@@ -56,10 +46,11 @@ if (defined $in{'action'} && $in{'action'} eq 'save') {
         $trimmed =~ s/^\s+|\s+$//g;
         next if $trimmed eq '' || $trimmed =~ /^regex:/;
         if ($trimmed =~ /^([^=]+)=(.+)$/) {
-            my $name = $1;
-            $name =~ s/^\s+|\s+$//g;
-            if ($name !~ /^[A-Za-z0-9._-]+$/) {
-                push @validation_errors, "ACL list '$name' must be a file name, not a path";
+            my $path = $1;
+            $path =~ s/^\s+|\s+$//g;
+            if ($path !~ m{^/[A-Za-z0-9._/-]+$} ||
+                $path =~ m{(?:^|/)\.\.(?:/|$)}) {
+                push @validation_errors, "ACL list '$path' must be an absolute path";
             }
         }
     }
@@ -70,13 +61,14 @@ if (defined $in{'action'} && $in{'action'} eq 'save') {
     } else {
     %config = (
         'squid_log' => $squid_log_value,
-        'max_lines' => (int($in{'max_lines'}) > 0 && int($in{'max_lines'}) <= 200000) ? int($in{'max_lines'}) : 50000,
-        'time_range' => int($in{'time_range'}) || 24,
+        'max_lines' => (int($in{'max_lines'}) > 0 && int($in{'max_lines'}) <= 200000)
+                       ? int($in{'max_lines'}) : $config_defaults{'max_lines'},
+        'time_range' => int($in{'time_range'}) || $config_defaults{'time_range'},
         'acl_list' => $acl_list_value,
         'auto_refresh' => $in{'auto_refresh'} ? 1 : 0,
-        'refresh_interval' => int($in{'refresh_interval'}) || 60
+        'refresh_interval' => int($in{'refresh_interval'}) || $config_defaults{'refresh_interval'}
     );
-    
+
     # Write config file
     if (open(my $fh, '>', $config_file)) {
         foreach my $key (sort keys %config) {
@@ -112,8 +104,8 @@ print <<'HTML_START';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Squid - Configuration</title>
     <style>
-        body { 
-            background: #f5f7fa; 
+        body {
+            background: #f5f7fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 20px;
@@ -142,18 +134,24 @@ print <<'HTML_START';
         .checkbox-group { display: flex; align-items: center; }
         .checkbox-group input[type="checkbox"] { margin-right: 10px; width: auto; }
     </style>
-    <script>
-    function resetToDefaults() {
-        if (confirm('Are you sure you want to reset all values to defaults? This cannot be undone.')) {
-            document.getElementById('squid_log').value = '/var/log/squid/access.log';
-            document.getElementById('max_lines').value = '50000';
-            document.getElementById('time_range').value = '24';
-            document.getElementById('acl_list').value = 'blocktlds.txt=Blocked TLD\nblockdomains.txt=Blocked Sites\nregex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4\nregex:(announce\\.php\\?passkey=|Azureus|BitComet|BitLord|bittorrent|BitTorrent protocol|d1:ad2:id20:|find_node|get_peers|info_hash|iptv|jndi:|magnet:|nopor|\\.onion|peer_id=|porn|psiphon|Shareaza|torrent|tracker|Transmission|ultrasurf|\\.utorrent|XBT|mtc1)=Blocked Patterns';
-            document.getElementById('auto_refresh').checked = false;
-            document.getElementById('refresh_interval').value = '60';
-        }
-    }
-    </script>
+HTML_START
+
+# The reset button restores the same factory values the CGI falls back to,
+# so they are written here from %config_defaults instead of being repeated.
+print "    <script>\n";
+print "    function resetToDefaults() {\n";
+print "        if (confirm('Are you sure you want to reset all values to defaults? This cannot be undone.')) {\n";
+foreach my $field (qw(squid_log max_lines time_range acl_list refresh_interval)) {
+    print "            document.getElementById('$field').value = '" .
+          js_quote($config_defaults{$field}) . "';\n";
+}
+print "            document.getElementById('auto_refresh').checked = " .
+      ($config_defaults{'auto_refresh'} ? 'true' : 'false') . ";\n";
+print "        }\n";
+print "    }\n";
+print "    </script>\n";
+
+print <<'HTML_HEAD_END';
 </head>
 <body>
     <div class="container">
@@ -163,7 +161,7 @@ print <<'HTML_START';
                 <a href="squidmon.cgi">← Back to Dashboard</a>
             </div>
         </div>
-HTML_START
+HTML_HEAD_END
 
 # Show message if exists
 if ($message) {
@@ -180,24 +178,24 @@ print "<input type='hidden' name='action' value='save'>\n";
 print "<div class='form-group'>\n";
 print "<label for='squid_log'>Squid Log File Path</label>\n";
 print "<input type='text' id='squid_log' name='squid_log' value='" . escape_html($config{'squid_log'}) . "'>\n";
-print "<small>Default: /var/log/squid/access.log</small>\n";
+print "<small>Default: " . escape_html($config_defaults{'squid_log'}) . "</small>\n";
 print "</div>\n";
 
 print "<div class='form-group'>\n";
 print "<label for='max_lines'>Maximum Lines to Parse</label>\n";
-print "<input type='number' id='max_lines' name='max_lines' value='" . ($config{'max_lines'} || '50000') . "' min='1000' step='1000'>\n";
+print "<input type='number' id='max_lines' name='max_lines' value='" . escape_html($config{'max_lines'}) . "' min='1000' step='1000'>\n";
 print "<small>Higher values = more data but slower parsing</small>\n";
 print "</div>\n";
 
 print "<div class='form-group'>\n";
 print "<label for='time_range'>Time Range (Hours)</label>\n";
-print "<input type='number' id='time_range' name='time_range' value='" . ($config{'time_range'} || '24') . "' min='1' step='1'>\n";
+print "<input type='number' id='time_range' name='time_range' value='" . escape_html($config{'time_range'}) . "' min='1' step='1'>\n";
 print "<small>Only show requests from last X hours</small>\n";
 print "</div>\n";
 
 print "<div class='form-group'>\n";
 print "<label for='acl_list'>ACL Files to Monitor</label>\n";
-print "<textarea id='acl_list' name='acl_list' placeholder='file.txt=Label Name&#10;regex:pattern=Label Name'>" . escape_html($config{'acl_list'}) . "</textarea>\n";
+print "<textarea id='acl_list' name='acl_list' placeholder='/path/to/acl.txt=Label Name&#10;regex:pattern=Label Name'>" . escape_html($config{'acl_list'}) . "</textarea>\n";
 print "<small>Format: One per line. File-based: /path/to/acl.txt=Label | Regex: regex:pattern=Label</small>\n";
 print "</div>\n";
 
@@ -208,7 +206,7 @@ print "</div>\n";
 
 print "<div class='form-group'>\n";
 print "<label for='refresh_interval'>Refresh Interval (Seconds)</label>\n";
-print "<input type='number' id='refresh_interval' name='refresh_interval' value='" . ($config{'refresh_interval'} || 60) . "' min='30' step='10'>\n";
+print "<input type='number' id='refresh_interval' name='refresh_interval' value='" . escape_html($config{'refresh_interval'}) . "' min='30' step='10'>\n";
 print "<small>Minimum recommended: 60 seconds</small>\n";
 print "</div>\n";
 

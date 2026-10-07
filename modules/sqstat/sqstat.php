@@ -29,14 +29,28 @@ if (file_exists($refresh_config_file)) {
     }
 }
 
+// The refresh value is global state shared by every visitor. A POST is honored
+// only when the browser says it came from this same host, which is what the
+// panel's own form always reports. A header-less client keeps working as before.
+$same_origin = true;
+$claimed_origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($claimed_origin === '' && isset($_SERVER['HTTP_REFERER'])) {
+    $claimed_origin = $_SERVER['HTTP_REFERER'];
+}
+if ($claimed_origin !== '') {
+    $claimed_host = parse_url($claimed_origin, PHP_URL_HOST);
+    $own_host     = parse_url('http://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST);
+    $same_origin  = ($claimed_host !== null && $claimed_host === $own_host);
+}
+
 // Handle refresh parameter from form
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["refresh"]) && is_numeric($_POST["refresh"])) {
+if ($same_origin && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["refresh"]) && is_numeric($_POST["refresh"])) {
     $current_refresh = clamp_refresh_sqstat($_POST["refresh"]);
     file_put_contents($refresh_config_file, $current_refresh);
 }
 
 // Handle stop button
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["stop"])) {
+if ($same_origin && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["stop"])) {
     $current_refresh = 0;
     file_put_contents($refresh_config_file, $current_refresh);
 }
@@ -57,9 +71,8 @@ if(is_file("config.inc.php")) {
 	else $config=0;
 	
 	if(!isset($squidhost[$config]) || !isset($squidport[$config])) {
-		$squidclass->errno=4;
-		$squidclass->errstr="Error in the configuration file.".
-		'Please, specify $squidhost['.$config.']/$squidport['.$config.']';
+		$squidclass->setError(4,"Error in the configuration file.".
+		'Please, specify $squidhost['.$config.']/$squidport['.$config.']');
 		$squidclass->showError();
 		exit(4);
 	}
@@ -74,18 +87,16 @@ if(is_file("config.inc.php")) {
 	if(isset($group_by[$config])) $group_by=$group_by[$config];
 	else $group_by="ip";
 	if(!preg_match('/^(host|username|ip)$/',$group_by)) {
-		$squidclass->errno=4;
-		$squidclass->errstr="Error in the configuration file.<br>".
-		'"group_by" can be only "username", "host" or "ip"';
+		$squidclass->setError(4,"Error in the configuration file.<br>".
+		'"group_by" can be only "username", "host" or "ip"');
 		$squidclass->showError();
 		exit(4);
 	}
 	
 }
 else{
-	$squidclass->errno=4;
-	$squidclass->errstr="Configuration file not found.".
-	"Please copy file <tt>config.inc.php.defauts</tt> to <tt>config.inc.php</tt> and edit configuration settings.";
+	$squidclass->setError(4,"Configuration file not found.".
+	"Please copy file <tt>config.inc.php.defauts</tt> to <tt>config.inc.php</tt> and edit configuration settings.");
 	$squidclass->showError();
 	exit(4);
 }
@@ -106,17 +117,15 @@ if(isset($hosts_file)){
 			fclose($handle);
 		}
 		else {
-			$squidclass->errno=4;
-			$squidclass->errstr="Hosts file not found.".
-			"Cant read <tt>'$hosts_file'</tt>.";
+			$squidclass->setError(4,"Hosts file not found.".
+			"Cant read <tt>'$hosts_file'</tt>.");
 			$squidclass->showError();
 			exit(4);
 		}
 	}
 	else {
-		$squidclass->errno=4;
-		$squidclass->errstr="Hosts file not found.".
-		"Cant read <tt>'$hosts_file'</tt>.";
+		$squidclass->setError(4,"Hosts file not found.".
+		"Cant read <tt>'$hosts_file'</tt>.");
 		$squidclass->showError();
 		exit(4);
 		
