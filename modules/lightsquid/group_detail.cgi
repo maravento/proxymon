@@ -160,7 +160,7 @@ foreach $grp (sort keys %hGroupByUser) {
 
 	$row++;
 	
-	$url_B="$user";
+	$url_B=escapeHtml($user);
 
 	$realname=GetRealName($daypath,$user);
   

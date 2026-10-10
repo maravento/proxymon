@@ -88,7 +88,7 @@ foreach $user (sort {$h{$b}{size}<=>$h{$a}{size}} keys 	%h) {
     $graphurl_B="##MSG_GRAPH_LINK##";
 
     $userurl_L=URLEncode("user_detail.cgi?year=$year&month=$month&user=$user&mode=$mode");
-    $userurl_B="$user";
+    $userurl_B=escapeHtml($user);
 
     $realname=GetRealName($daypath,$user);
   

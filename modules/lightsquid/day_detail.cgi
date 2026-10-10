@@ -103,7 +103,7 @@ while (<FF>) {
   $timeurl_B="##MSG_TIME_LINK##";
 
   $userurl_L=URLEncode("user_detail.cgi?year=$year&month=$month&day=$day&user=$user");
-  $userurl_B="$user";
+  $userurl_B=escapeHtml($user);
 
   $realname=GetRealName($daypath,$user);
 #  $userurl_L =~ s/#/%23/;

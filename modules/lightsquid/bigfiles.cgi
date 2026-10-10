@@ -60,7 +60,7 @@ while (<FF>) {
  $rowattr = ($N & 1)?$hTPLVARIABLE{oddattr}:$hTPLVARIABLE{evenattr};
 
  $url_L=URLEncode("user_detail.cgi?year=$year&month=$month&day=$day&user=$user");
- $url_B="$user";
+ $url_B=escapeHtml($user);
 
  $url_L =~ s/#/%23/;
 

@@ -108,13 +108,14 @@ foreach $site (sort {$h{$b}{size} <=> $h{$a}{size}} keys %h)  {
   $printsize =FineDec($size);
   
   $tmp=$hTPL{site};
-  $tmp=~s/##URL##/$site/;
+  $site_escaped=escapeHtml($site);
+  $tmp=~s/##URL##/$site_escaped/;
   for ($h=0;$h<24;$h++) {
     $size = sprintf("%.1f",$hsitetime{$site}[$h]/(1024*1024));
     $size = "." if (0 == $hsitetime{$site}[$h]);
     $tmp=~s/##T$HH##/$size/;
     $HH++;
-  }  
+  }
 
   $rowattr = (++$Color & 1)?$hTPLVARIABLE{oddattr}:$hTPLVARIABLE{evenattr};
 
@@ -145,7 +146,8 @@ if ($N > $usertimelimit) {
   $printsize =FineDec($size);
   $HH="00";
   $tmp=$hTPL{site};
-  $tmp=~s/##URL##/$site/;
+  $site_escaped=escapeHtml($site);
+  $tmp=~s/##URL##/$site_escaped/;
   for ($h=0;$h<24;$h++) {
     $size = sprintf("%.1f",$hsitetime{$site}[$h]/(1024*1024));
     $size = "." if (0 == $hsitetime{$site}[$h]);

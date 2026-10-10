@@ -1455,9 +1455,9 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 sudo /etc/proxymon/tools/squidtool.sh
 ```
 
-> Each function generates an HTML report and replaces the previous report of the same type, so only the latest result is kept. The reports are written to `/etc/proxymon/tools/reports`, outside the Apache webroot, and the panel serves them read-only under the same LAN restriction. Tool activity is logged in `/etc/proxymon/tools/squidtool.log`.
+> Each function generates an HTML report and replaces the previous report of the same type, so only the latest result is kept. The reports are written to `/etc/proxymon/tools/reports`, outside the Apache webroot, and the panel serves them read-only under the same loopback-only restriction. Tool activity is logged in `/etc/proxymon/tools/squidtool.log`.
 >
-> Cada función genera un informe HTML y reemplaza el anterior del mismo tipo; solo se conserva el resultado más reciente. Los informes se escriben en `/etc/proxymon/tools/reports`, fuera del webroot de Apache, y el panel los publica en modo lectura con la misma restricción a la red local. La herramienta registra su actividad en `/etc/proxymon/tools/squidtool.log`.
+> Cada función genera un informe HTML y reemplaza el anterior del mismo tipo; solo se conserva el resultado más reciente. Los informes se escriben en `/etc/proxymon/tools/reports`, fuera del webroot de Apache, y el panel los publica en modo lectura con la misma restricción a loopback. La herramienta registra su actividad en `/etc/proxymon/tools/squidtool.log`.
 
 ##### Traffic Report
 

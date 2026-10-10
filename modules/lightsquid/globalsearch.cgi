@@ -115,10 +115,10 @@ foreach my $line (@all_grep_results) {
     my $printdate = "$day $monthname $year";
 
     my $printsize = FineDec($size);
-    my $detail_url = "user_detail.cgi?year=" . $year .
+    my $detail_url = URLEncode("user_detail.cgi?year=" . $year .
                      "&month=" . $month .
                      "&day=" . $day .
-                     "&user=$userfile";
+                     "&user=$userfile");
 
     push @results, {
         site       => $site,
@@ -162,7 +162,7 @@ if (!@results) {
         print "<td>$r->{size}</td>";
         print "<td style='text-align: center;'>$r->{hits}</td>";
         print "<td>$r->{date}</td>";
-        print "<td><a href='$r->{url}' class='btn btn-xs btn-primary'><i class='fa fa-arrow-right'></i></a></td>";
+        print "<td><a href=\"$r->{url}\" class='btn btn-xs btn-primary'><i class='fa fa-arrow-right'></i></a></td>";
         print "</tr>";
 
         last if $rownum >= 200;

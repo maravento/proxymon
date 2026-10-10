@@ -589,28 +589,15 @@ install_proxymon() {
         for probe_port in 18080 18081; do
             sed -i -E "/^Listen [^[:space:]]*:${probe_port}\$/d; /^Listen ${probe_port}\$/d" /etc/apache2/ports.conf
         done
-        # 18080 is the app -- reachable from the LAN and from loopback
-        # (e.g. a local Cloudflare Tunnel connecting to the origin).
-        echo "Listen ${SERVER_IP}:18080" >> /etc/apache2/ports.conf
+        # 18080 is the app -- loopback only (e.g. a local Cloudflare Tunnel
+        # connecting to the origin). Not reachable from the LAN.
         echo "Listen 127.0.0.1:18080" >> /etc/apache2/ports.conf
         # 18081 is Bandata's warning page -- LAN-only, no loopback needed.
         echo "Listen ${SERVER_IP}:18081" >> /etc/apache2/ports.conf
-        info "Port 18080 bound to ${SERVER_IP} and 127.0.0.1"
+        info "Port 18080 bound to 127.0.0.1"
         info "Port 18081 bound to ${SERVER_IP}"
     else
         abort "SERVER_IP not set, cannot configure Listen -- abort"
-    fi
-
-    info "Restricting Proxymon panel to LAN..."
-    if [[ -f /etc/apache2/sites-available/proxymon.conf ]]; then
-        if [[ "$RANGE" =~ $UH_CIDR ]]; then
-            # 127.0.0.1 allowed alongside the LAN so a local tunnel/trusted
-            # proxy connecting over loopback to port 18080 still works.
-            sed -i "s|192.168.0.0/24 127.0.0.1|$RANGE 127.0.0.1|g" /etc/apache2/sites-available/proxymon.conf
-            info "Proxymon panel restricted to $RANGE and 127.0.0.1"
-        else
-            warn "RANGE='$RANGE' in $env_file_path is not a valid CIDR, keeping the default range -- fallback"
-        fi
     fi
 
     # Create ACL directories
