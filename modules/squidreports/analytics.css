@@ -1,0 +1,45 @@
+/* Squidreports analytics. Distributed under the project's GPL license. */
+:root { color-scheme: light; }
+body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; color: #263746; background: #eef3f8; }
+main { max-width: 1500px; margin: auto; }
+h1 { color: #2675b5; font-weight: 400; }
+nav, form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
+a { color: #176298; }
+nav[aria-label="Reports"] a, nav[aria-label="Reports"] button { display: inline-block; box-sizing: border-box; padding: 8px; border: 1px solid #8f8f9d; border-radius: 2px; background: #e9e9ed; color: #263746; font: inherit; line-height: normal; text-decoration: none; cursor: pointer; }
+nav[aria-label="Reports"] a:hover, nav[aria-label="Reports"] button:hover { background: #dbe4ee; }
+nav[aria-label="Reports"] a[aria-current="page"], nav[aria-label="Reports"] a[aria-current="page"]:hover { background: #2675b5; border-color: #2675b5; color: white; }
+nav[aria-label="Reports"] a:focus-visible, nav[aria-label="Reports"] button:focus-visible { outline: 2px solid #176298; outline-offset: 2px; }
+label { display: flex; flex-direction: column; gap: 4px; }
+input, select, button { padding: 8px; font: inherit; }
+input { width: 76px; }
+button { cursor: pointer; }
+.notice { padding: 12px 0; background: #fff3cd; }
+.notice summary { cursor: pointer; }
+.summary { padding: 12px; background: white; }
+.report-guide { margin-top: 32px; border-top: 1px solid #dbe4ee; }
+.scroll { overflow-x: auto; }
+.table-scroll-top { appearance: none; box-sizing: border-box; width: 100%; height: 28px; margin: 0 0 10px; padding: 0; background: #dbe4ee; border: 1px solid #8ca5bb; border-radius: 6px; cursor: pointer; }
+.table-scroll-top::-webkit-slider-runnable-track { height: 26px; background: #dbe4ee; border-radius: 5px; }
+.table-scroll-top::-webkit-slider-thumb { appearance: none; width: 64px; height: 26px; background: #176298; border: 2px solid #104970; border-radius: 5px; }
+.table-scroll-top::-moz-range-track { height: 26px; background: #dbe4ee; border-radius: 5px; }
+.table-scroll-top::-moz-range-thumb { box-sizing: border-box; width: 64px; height: 26px; background: #176298; border: 2px solid #104970; border-radius: 5px; }
+.table-scroll-top:focus-visible { outline: 2px solid #176298; outline-offset: 2px; }
+.scroll { scrollbar-color: #176298 #dbe4ee; scrollbar-width: auto; }
+.scroll::-webkit-scrollbar { height: 18px; }
+.scroll::-webkit-scrollbar-track { background: #dbe4ee; border-radius: 9px; }
+.scroll::-webkit-scrollbar-thumb { background: #176298; border: 3px solid #dbe4ee; border-radius: 9px; }
+.scroll::-webkit-scrollbar-thumb:hover { background: #104970; }
+
+.chart { display: grid; grid-template-columns: minmax(0, min(var(--label-width), 36%)) minmax(0, 1fr) max-content; align-items: center; gap: 8px 12px; padding: 12px 4px; background: white; }
+.chart-label { min-width: 0; overflow-wrap: anywhere; font: 13px monospace; }
+.chart-track { min-width: 0; }
+.chart-bar { display: block; height: 20px; background: #2675b5; print-color-adjust: exact; }
+.chart-value { white-space: nowrap; font-size: 13px; text-align: left; }
+table { border-collapse: collapse; background: white; width: 100%; }
+th, td { padding: 9px; border: 1px solid #dbe4ee; text-align: left; white-space: nowrap; }
+thead th { background: #2675b5; color: white; }
+tbody tr:nth-child(even) { background: #f7faff; }
+.object-size { white-space: nowrap; }
+td:last-child { max-width: 360px; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 600px) { body { padding: 12px; } h1 { font-size: 24px; } }
+@media print { .table-scroll-top { display: none; } nav, form, button { display: none; } body { padding: 0; background: white; } .scroll { overflow: visible; } th, td { white-space: normal; font-size: 9px; padding: 3px; } }

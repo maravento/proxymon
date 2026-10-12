@@ -1,0 +1,179 @@
+#!/usr/bin/perl
+# day_detail.cgi
+#
+# Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.
+# Original work: LightSquid Project (c) 2004-2005 Sergey Erokhin aka ESL
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# See the GNU General Public License for more details.
+
+print "Content-Type: text/html\n\n";
+
+use File::Basename;
+push (@INC,(fileparse($0))[1]);
+
+use CGI;
+require "squidreports.cfg";
+require "paths.pl";
+require "common.pl";
+
+
+$co=new CGI;
+
+#$year ="2004";
+#$month="05";
+#$day  ="01";
+#$user ="#169";
+
+$year      =$co->param('year');
+$month     =$co->param('month');
+$day       =$co->param('day');
+$oversize  =$co->param('oversize');
+
+# Validate all CGI parameters before use in filesystem paths.
+# Reject anything that could be used for path traversal.
+MyDie("invalid year")  unless defined $year  && $year  =~ /^\d{4}$/;
+MyDie("invalid month") unless defined $month && $month =~ /^\d{2}$/;
+MyDie("invalid day")   unless defined $day   && $day   =~ /^\d{2}$/;
+
+InitTPL("day_detail", scalar $co->param('tpl'));
+
+
+$daypath="$reportpath/$year$month$day";
+
+$workperiod="$day $MonthName[$month] $year";
+
+($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat("$daypath");
+($sec_,$min_,$hour_,$mday_,$mon_,$year_,$wday_,$yday_,$isdst_)=localtime($mtime);
+$mon_++;$year_+=1900;
+
+$worktmp=GetFeatures($daypath,"modification",sprintf("%02d:%02d",$hour_,$min_)." ::  $mday_ $MonthName[$mon_] $year_");
+
+#forkaround for bug in version 1.7
+$worktmp =~ m/(.*?\:\:\s+\S+)\s+(\S+)\s+(\S+)/;
+if ($3 < 1900) {
+  $preffix=$1;
+  $year_=$3+1900;$month_=$2;
+  if ($month_=~ m/MONTH(\d\d)/) {$month_=$1+1;} else {$month_=1;}
+  $worktmp ="$preffix $MonthName[$month_] $year_";
+}
+
+$workperiod .= " (##MSG_UPDATE## :: $worktmp)" ;
+
+$topsitesurl="topsites.cgi?year=$year&month=$month&day=$day";
+$bigfilesurl="bigfiles.cgi?year=$year&month=$month&day=$day";
+
+open FF,"<$daypath/.total";
+$totaluser=<FF>;chomp $totaluser;$totaluser=~s/^user: //;
+$totalsize=<FF>;chomp $totalsize;$totalsize=~s/^size: //;
+
+$totalsize=1 if ($totalsize == 0);
+
+$topsites_L="$topsitesurl";
+$topsites_B="##MSG_TOP_SITES##";
+$bigfiles_B="##MSG_BIG_FILES##";
+if (-f "$daypath/.bigfiles") {
+ $bigfiles_L="$bigfilesurl";
+}
+
+# Reports added by squidreports. Each link stays empty while its report file
+# is absent, which is the case for report folders generated before them.
+$userstat_B="##MSG_USER_STATISTIC##";
+$userstat_L="detailed.cgi?year=$year&month=$month&day=$day" if (-f StatisticsFile("$year$month$day", ".userstat"));
+
+$mime_B="##MSG_MIME_TYPES##";
+$mime_L="classify.cgi?year=$year&month=$month&day=$day&type=mime" if (-f StatisticsFile("$year$month$day", ".mime"));
+
+$ext_B="##MSG_EXTENSIONS##";
+$ext_L="classify.cgi?year=$year&month=$month&day=$day&type=ext" if (-f StatisticsFile("$year$month$day", ".ext"));
+
+$subnet_B="##MSG_SUBNETS##";
+$subnet_L="classify.cgi?year=$year&month=$month&day=$day&type=subnet" if (-f StatisticsFile("$year$month$day", ".subnet"));
+
+$denied_B="##MSG_DENIED##";
+$denied_L="denied.cgi?year=$year&month=$month&day=$day" if (-f StatisticsFile("$year$month$day", ".denied"));
+
+$overmsg="##MSG_OVERSIZE_HEAD## ".FineDec($perusertrafficlimit)." ##MSG_OVERSIZE_TAIL##";
+
+GetGroup($daypath);
+
+$N=0;
+while (<FF>) {
+  
+  $N++;
+  ($user,$size,$hit,$putpost)=split;
+
+
+  next if ($oversize && ($size < $perusertrafficlimit));
+
+  $percent     =sprintf("%2.1f",int($size*1000/$totalsize)/10);
+  $printhit    =FineDec($hit);
+  $printsize   =FineDec($size);
+  $printputpost=FineDec($putpost);
+
+  $putpostpercent=($putpost*100)/($size+1);
+#  $printputpost .= " (".sprintf("%2.2f",$putpostpercent).")";
+
+  $timeurl_L=URLEncode("user_time.cgi?year=$year&month=$month&day=$day&user=$user");
+  $timeurl_B="##MSG_TIME_LINK##";
+
+  $userurl_L=URLEncode("user_detail.cgi?year=$year&month=$month&day=$day&user=$user");
+  $userurl_B=escapeHtml($user);
+
+  $realname=GetRealName($daypath,$user);
+#  $userurl_L =~ s/#/%23/;
+  
+  #no URLEncode here! # sign in url !!
+  $usergroupurl_L="group_detail.cgi?year=$year&month=$month&day=$day#$hGroup{$user}";
+  $usergroupurl_B=(defined $hGroup{$user})?"$hGroupName{$hGroup{$user}}":"?";
+
+  $rowattr = ($N & 1)?$hTPLVARIABLE{oddattr}:$hTPLVARIABLE{evenattr};
+
+  $overputpostattr=(($showputpost) && ($putpostpercent < $putpostwarninglevel))?$hTPLVARIABLE{putpostnormalattr}:$hTPLVARIABLE{putpostwarningattr};
+
+
+
+  $tmp=$hTPL{user};
+  $tmp=~s/##USERNUM##/$N/;
+  $tmp=~s/##TIMEURL_L##/$timeurl_L/;
+  $tmp=~s/##TIMEURL_B##/$timeurl_B/;
+  $tmp=~s/##USERURL_L##/$userurl_L/;
+  $tmp=~s/##USERURL_B##/$userurl_B/;
+  $tmp=~s/##USERCONNECT##/$printhit/;
+  $tmp=~s/##USERBYTES##/$printsize/;
+  $tmp=~s/##USERPUTPOST##/$printputpost/;
+  $tmp=~s/##USERPERCENT##/$percent/;
+  $tmp=~s/##USERGROUPURL_L##/$usergroupurl_L/;
+  $tmp=~s/##USERGROUPURL_B##/$usergroupurl_B/;
+  $tmp=~s/##REALNAME##/$realname/;
+  $tmp=~s/##ROWATTR##/$rowattr/;
+  $tmp=~s/##OVERPUTPOSTATTR##/$overputpostattr/;
+
+  $tpl{user} .= $tmp;
+
+}
+
+ReplaceTPL_URL(TOPSITESURL,$topsites_L,$topsites_B);
+ReplaceTPL_URL(BIGFILESURL,$bigfiles_L,$bigfiles_B);
+ReplaceTPL_URL(USERSTATURL,$userstat_L,$userstat_B);
+ReplaceTPL_URL(MIMEURL,$mime_L,$mime_B);
+ReplaceTPL_URL(EXTURL,$ext_L,$ext_B);
+ReplaceTPL_URL(SUBNETURL,$subnet_L,$subnet_B);
+ReplaceTPL_URL(DENIEDURL,$denied_L,$denied_B);
+ReplaceTPL(DATE,$workperiod);
+ReplaceTPL(OVERMSG,$overmsg);
+
+ApplyTPL();
+HideTPL("timereport") if ($timereport    == 0);
+HideTPL("timereport");
+HideTPL("group")      if ($showgrouplink == 0);
+HideTPL("overuser")   if ($oversize      == 0);
+HideTPL("realname")   if ($userealname   == 0);
+HideTPL("putpost")    if ($showputpost   == 0);
+
+PrintTPL();
+

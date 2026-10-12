@@ -1,0 +1,3 @@
+# squidmon live configuration, written by config.cgi.
+# Leave empty: squidmon-standalone.pl supplies every factory value.
+# pmsetup.sh protects this file, so an update never overwrites it.

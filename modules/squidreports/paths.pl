@@ -1,0 +1,11 @@
+use File::Basename ();
+require (File::Basename::dirname(__FILE__).'/../ProxymonEnv.pm');
+our $proxymon_settings=ProxymonEnv::read_env();
+$cfgpath=ProxymonEnv::required($proxymon_settings,'SQUIDREPORTS_DIR');
+$tplpath="$cfgpath/tpl";
+$langpath="$cfgpath/lang";
+$ip2namepath="$cfgpath/ip2name";
+$reportpath=ProxymonEnv::required($proxymon_settings,'REPORT_PATH');
+$lockpath=$reportpath;
+$logpath=ProxymonEnv::required($proxymon_settings,'SQUID_LOG_DIR');
+1;
