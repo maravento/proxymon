@@ -1,7 +1,7 @@
 (function () {
   'use strict';
-  var theme = 'light';
-  try { if (localStorage.getItem('logview_theme') === 'dark') theme = 'dark'; } catch (e) {}
+  var theme = 'dark';
+  try { if (localStorage.getItem('logview_theme') === 'light') theme = 'light'; } catch (e) {}
 
   function sync(frame) {
     if (frame.contentWindow && frame.hasAttribute('src')) {
@@ -11,9 +11,7 @@
 
   function apply(value) {
     theme = value === 'dark' ? 'dark' : 'light';
-    if (document.body) document.body.classList.toggle('dark', theme === 'dark');
-    var style = document.getElementById('sqstatTheme');
-    if (style) style.setAttribute('href', theme === 'dark' ? 'sqstat-dark.css' : 'sqstat.css');
+    document.documentElement.classList.toggle('dark', theme === 'dark');
     var button = document.getElementById('btnTheme');
     if (button) {
       button.textContent = theme === 'dark' ? '☀️' : '🌙';
@@ -38,7 +36,7 @@
   });
   window.addEventListener('storage', function (event) {
     if (event.key === 'logview_theme' || event.key === null) {
-      apply(event.newValue === 'dark' ? 'dark' : 'light');
+      apply(event.newValue === 'light' ? 'light' : 'dark');
     }
   });
   document.addEventListener('DOMContentLoaded', function () { apply(theme); });

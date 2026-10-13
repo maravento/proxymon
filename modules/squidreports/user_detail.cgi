@@ -20,6 +20,7 @@ use CGI;
 require "squidreports.cfg";
 require "paths.pl";
 require "common.pl";
+require "WeeklyReport.pm";
 
 
 $co=new CGI;
@@ -37,9 +38,9 @@ MyDie("invalid year")  unless defined $year  && $year  =~ /^\d{4}$/;
 # resolved to an empty mask below. Any other shape is still rejected.
 MyDie("invalid month") unless defined $month && $month =~ /^(\d{2}|all)$/;
 MyDie("invalid user")  unless defined $user  && $user  =~ /^[A-Za-z0-9._\@-]+$/ && $user !~ /\.\./;
-$mode = "day" unless defined $mode && $mode =~ /^(day|month|year)$/;
+$mode = "day" unless defined $mode && $mode =~ /^(day|month|year|week)$/;
 # "all" names the whole year, so it only pairs with the yearly period
-$mode = "year" if ($month eq "all");
+$mode = "year" if ($month eq "all" && $mode ne "week");
 # Only the daily report is addressed by day. The monthly and yearly links
 # are built without one, so requiring it here rejected every one of them.
 if ($mode eq "day") {
@@ -50,7 +51,19 @@ if ($mode eq "day") {
 
 InitTPL("user_detail", scalar $co->param('tpl'));
 
-if      ($mode eq "month") {
+ReplaceTPL(WEEK_CONTROLS, "");
+my $weekly;
+if (($co->param('mode') // '') eq 'week') {
+  $weekly = eval { WeeklyReport::metro_context($co, $reportpath) };
+  MyDie("invalid weekly period") unless $weekly;
+  ReplaceTPL(WEEK_CONTROLS, $weekly->{controls});
+}
+
+
+if ($weekly) {
+  $mode="week";
+  $workperiod=$weekly->{title};
+} elsif ($mode eq "month") {
   $workperiod="##MSG_WHOLE## ##MSG_MONTH## - $year $MonthName[$month]";
   $mask = "$year$month";
 } elsif ($mode eq "year") {
@@ -62,7 +75,7 @@ if      ($mode eq "month") {
   $mode = "day"
 }
 
-@datelist=sort glob "$reportpath/$mask*";
+@datelist=$weekly ? @{$weekly->{dirs}} : sort glob "$reportpath/$mask*";
 
 $calculatedtotal=0;
 foreach $workday (sort @datelist) {

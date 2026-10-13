@@ -28,7 +28,8 @@ private $fp;
 	    '<html>'."\n".
 	    '<head>'."\n".
 	    '<meta charset="UTF-8">'."\n".
-	    '<link id="sqstatTheme" href="sqstat.css" rel="stylesheet" type="text/css">'."\n".
+	    '<link href="sqstat.css" rel="stylesheet" type="text/css">'."\n".
+        '<link href="sqstat-dark.css" rel="stylesheet" type="text/css">'."\n".
         '<script src="theme.js"></script>'."\n";
         if ($refresh) {
             $text .= '<script>

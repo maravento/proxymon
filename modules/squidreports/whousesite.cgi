@@ -20,6 +20,7 @@ use CGI;
 require "squidreports.cfg";
 require "paths.pl";
 require "common.pl";
+require "WeeklyReport.pm";
 
 
 $co=new CGI;
@@ -35,13 +36,25 @@ $mode       =$co->param('mode');
 # Validate: year=4 digits, month/day=2 digits (falls back to "day" mode's
 # own defaults below if missing); usersite must not carry HTML metachars.
 MyDie("invalid year/month/day\n") if ($year ne "" && $year !~ /^\d{4}$/);
-MyDie("invalid year/month/day\n") if ($month ne "" && $month !~ /^\d{2}$/);
+MyDie("invalid year/month/day\n") if ($month ne "" && $month !~ /^\d{2}$/ && !(($co->param('mode') // '') eq 'week' && $month eq "all"));
 MyDie("invalid year/month/day\n") if ($day ne "" && $day !~ /^\d{2}$/);
 $usersite = "" if ($usersite =~ /[<>"'&]/);
 
 InitTPL("whousesite", scalar $co->param('tpl'));
 
-if      ($mode eq "month") {
+ReplaceTPL(WEEK_CONTROLS, "");
+my $weekly;
+if (($co->param('mode') // '') eq 'week') {
+  $weekly = eval { WeeklyReport::metro_context($co, $reportpath) };
+  MyDie("invalid weekly period") unless $weekly;
+  ReplaceTPL(WEEK_CONTROLS, $weekly->{controls});
+}
+
+
+if ($weekly) {
+  $mode="week";
+  $workperiod=$weekly->{title};
+} elsif ($mode eq "month") {
   $workperiod="##MSG_WHOLE## ##MSG_MONTH## - $year $MonthName[$month]";
   $mask = "$year$month*";
 } elsif ($mode eq "year") {
@@ -56,7 +69,7 @@ if      ($mode eq "month") {
 
 
 #@days=sort glob("$reportpath/$year$month$day/*");
-@days=sort glob("$reportpath/$mask/*");
+@days=$weekly ? sort(map { glob("$_/*") } @{$weekly->{dirs}}) : sort glob("$reportpath/$mask/*");
 @days=reverse @days;
 
 foreach $userpath (@days) {

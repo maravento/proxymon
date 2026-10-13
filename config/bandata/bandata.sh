@@ -7,7 +7,7 @@
 #
 # DESCRIPTION:
 # Applies the data quotas to the LAN addresses Squid reports, and blocks
-# the ones over quota. Requires root.
+# the ones over quota. Updates Squidreports names and ACL groups. Requires root.
 #
 # USAGE:
 # sudo bash bandata.sh    Apply the quotas now
@@ -71,7 +71,7 @@ if [ ! -f "$logrotate_conf" ]; then
 EOF
     chmod 644 "$logrotate_conf"
     chown root:root "$logrotate_conf"
-    log "Created logrotate config: $logrotate_conf"
+    log "INFO: logrotate config created for $(basename "$log_file") -- fixed"
 fi
 
 # ------------------------------------------------------------------------------
@@ -118,21 +118,6 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../tools/proxymonenv.sh"
 
 # LOAD
 load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -- abort"; exit 1; }
-
-# Some values name another key instead of repeating its path. The reference is
-# expanded here, right after the read, so KEY CHECK below validates the final
-# value and not the literal "$SQUIDREPORTS_DIR/..." text.
-# Every name is read through ${VAR:-}: under 'set -u' a key missing from the
-# file would abort here, before KEY CHECK could name it. An absent key stays
-# empty and KEY CHECK rejects it below, together with every other failure.
-REPORT_PATH="${REPORT_PATH:-}";          REPORT_PATH="${REPORT_PATH//\$SQUIDREPORTS_DIR/${SQUIDREPORTS_DIR:-}}"
-REALNAME_CFG="${REALNAME_CFG:-}";        REALNAME_CFG="${REALNAME_CFG//\$SQUIDREPORTS_DIR/${SQUIDREPORTS_DIR:-}}"
-SKIPUSERS_CFG="${SKIPUSERS_CFG:-}";      SKIPUSERS_CFG="${SKIPUSERS_CFG//\$SQUIDREPORTS_DIR/${SQUIDREPORTS_DIR:-}}"
-ACL_MAC_PATH="${ACL_MAC_PATH:-}";        ACL_MAC_PATH="${ACL_MAC_PATH//\$ACL_PATH/${ACL_PATH:-}}"
-ALLOW_LIST="${ALLOW_LIST:-}";            ALLOW_LIST="${ALLOW_LIST//\$ACL_BANDATA_PATH/${ACL_BANDATA_PATH:-}}"
-BLOCK_LIST_DAY="${BLOCK_LIST_DAY:-}";    BLOCK_LIST_DAY="${BLOCK_LIST_DAY//\$ACL_BANDATA_PATH/${ACL_BANDATA_PATH:-}}"
-BLOCK_LIST_WEEK="${BLOCK_LIST_WEEK:-}";  BLOCK_LIST_WEEK="${BLOCK_LIST_WEEK//\$ACL_BANDATA_PATH/${ACL_BANDATA_PATH:-}}"
-BLOCK_LIST_MONTH="${BLOCK_LIST_MONTH:-}";BLOCK_LIST_MONTH="${BLOCK_LIST_MONTH//\$ACL_BANDATA_PATH/${ACL_BANDATA_PATH:-}}"
 
 # KEY CHECK
 # Collect every failure first, then decide -- a single abort reports them all
@@ -219,17 +204,17 @@ fi
 # BANDAY
 # ------------------------------------------------------------------------------
 
-log "Running Bandata Day..."
+log "INFO: Running Bandata Day..."
 
 # path to day report
 day_logs_dir=$REPORT_PATH/$(date +"%Y%m%d")
 # bandata day rule
 if [[ "$today_dow" -eq 6 || "$today_dow" -eq 7 ]]; then
-    log "Weekend Excluded"
+    log "INFO: Weekend Excluded"
     : > "$BLOCK_LIST_DAY"
 else
     if [ ! -d "$day_logs_dir" ]; then
-        log "Day report folder not found: $day_logs_dir"
+        log "INFO: day report folder $(basename "$day_logs_dir") not found -- skip"
         : > "$BLOCK_LIST_DAY"
     else
         tmp_day=$(mktemp)
@@ -265,10 +250,10 @@ else
 
     day_count=$(wc -l < "$BLOCK_LIST_DAY" 2>/dev/null || echo 0)
     if [ "$day_count" -gt 0 ]; then
-        log "Daily Blocked:"
+        log "INFO: Daily Blocked:"
         sed 's/^/ /' "$BLOCK_LIST_DAY" | tee -a "$log_file"
     else
-        log "No daily blocks"
+        log "INFO: No daily blocks"
     fi
 fi
 
@@ -281,17 +266,17 @@ fi
 # "+1 month -1 day"). Not portable to BSD/macOS date. This project
 # targets Linux only (already requires ipset/iptables).
 
-log "Running Bandata Week..."
+log "INFO: Running Bandata Week..."
 
 if [ "$today_dow" -eq 1 ]; then
     week_dirs=()
     for weekday_offset in {0..4}; do
-        day_dir="$REPORT_PATH/$(date -d "last monday +$weekday_offset days" +'%Y%m%d')"
+        day_dir="$REPORT_PATH/$(date -d "last week monday +$weekday_offset days" +'%Y%m%d')"
         [ -d "$day_dir" ] && week_dirs+=("$day_dir")
     done
 
     if [ ${#week_dirs[@]} -eq 0 ]; then
-        log "No weekday report folders found for last week"
+        log "INFO: No weekday report folders found for last week"
         : > "$BLOCK_LIST_WEEK"
     else
         report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB")
@@ -311,20 +296,20 @@ if [ "$today_dow" -eq 1 ]; then
 
     week_count=$(wc -l < "$BLOCK_LIST_WEEK" 2>/dev/null || echo 0)
     if [ "$week_count" -gt 0 ]; then
-        log "Weekly Blocked:"
+        log "INFO: Weekly Blocked:"
         sed 's/^/ /' "$BLOCK_LIST_WEEK" | tee -a "$log_file"
     else
-        log "No weekly blocks"
+        log "INFO: No weekly blocks"
     fi
 else
-    log "Weekly check runs on Monday only"
+    log "INFO: Weekly check runs on Monday only"
 fi
 
 # ------------------------------------------------------------------------------
-# BANDAY
+# BANMONTH
 # ------------------------------------------------------------------------------
 
-log "Running Bandata Month..."
+log "INFO: Running Bandata Month..."
 
 # Build weekday directories for current month (excluding weekends)
 month_prefix=$(date +"%Y%m")
@@ -339,7 +324,7 @@ for day_num in $(seq -w 1 "$days_in_month"); do
 done
 
 if [ ${#month_dirs[@]} -eq 0 ]; then
-    log "No weekday report folders found for current month"
+    log "INFO: No weekday report folders found for current month"
     : > "$BLOCK_LIST_MONTH"
 else
     report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB")
@@ -359,32 +344,32 @@ fi
 
 month_count=$(wc -l < "$BLOCK_LIST_MONTH" 2>/dev/null || echo 0)
 if [ "$month_count" -gt 0 ]; then
-    log "Monthly Blocked:"
+    log "INFO: Monthly Blocked:"
     sed 's/^/ /' "$BLOCK_LIST_MONTH" | tee -a "$log_file"
 else
-    log "No monthly blocks"
+    log "INFO: No monthly blocks"
 fi
 
 # ------------------------------------------------------------------------------
 # IPSET/IPTABLES FOR BANDATA
 # ------------------------------------------------------------------------------
 
-log "Running Ipset/Iptables Rules..."
+log "INFO: Running Ipset/Iptables Rules..."
 # Every preparation step decides whether the new set may be published. A
 # failed create or flush leaves bandata_new holding the previous contents,
 # and swapping that in would reinstate blocks that are no longer current.
 load_failed=0
 ipset -! create bandata hash:net family inet hashsize 1024 maxelem 65536 || {
     load_failed=1
-    log "ERROR: cannot create ipset 'bandata' -- alert"
+    log "WARNING: cannot create ipset 'bandata' -- alert"
 }
 ipset -! create bandata_new hash:net family inet hashsize 1024 maxelem 65536 || {
     load_failed=1
-    log "ERROR: cannot create ipset 'bandata_new' -- alert"
+    log "WARNING: cannot create ipset 'bandata_new' -- alert"
 }
 ipset -! flush bandata_new || {
     load_failed=1
-    log "ERROR: cannot flush ipset 'bandata_new' -- alert"
+    log "WARNING: cannot flush ipset 'bandata_new' -- alert"
 }
 
 # NAT
@@ -398,7 +383,7 @@ if [ -n "$all_bans" ]; then
         [[ "$banned_ip" =~ $UH_IPV4 ]] || { log "WARNING: not an IPv4 '$banned_ip' -- alert"; continue; }
         ipset -exist add bandata_new "$banned_ip" || {
             load_failed=1
-            log "ERROR: cannot add '$banned_ip' to bandata_new -- abort swap"
+            log "WARNING: cannot add '$banned_ip' to bandata_new -- alert"
         }
     done
 fi
@@ -407,7 +392,7 @@ fi
 # A half-loaded set must never be published: swapping it in would silently
 # unblock every address that failed to load, so the active set is kept.
 if [ "$load_failed" -ne 0 ]; then
-    log "ERROR: bandata_new not trustworthy, active blocks left untouched -- alert"
+    log "WARNING: bandata_new not trustworthy, active blocks left untouched -- alert"
     ipset destroy bandata_new 2>/dev/null || true
 elif ipset swap bandata_new bandata; then
     ipset destroy bandata_new
@@ -416,7 +401,7 @@ else
 fi
 
 if [ -n "$all_bans" ]; then
-    log "FINAL BAN SUMMARY:"
+    log "INFO: FINAL BAN SUMMARY:"
     ipset list bandata 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | $sort_ips | while IFS= read -r banned_ip; do
         # Check which category this IP belongs to
         if grep -qxF "$banned_ip" "$BLOCK_LIST_DAY" 2>/dev/null; then
@@ -428,13 +413,13 @@ if [ -n "$all_bans" ]; then
         else
             ban_period="UNKNOWN"
         fi
-        log "$banned_ip [$ban_period]"
+        log "INFO: $banned_ip [$ban_period]"
     done
 else
-    log "There are no IPs in bandata"
+    log "INFO: There are no IPs in bandata"
 fi
 
-log "Applying Iptables Rules..."
+log "INFO: Applying Iptables Rules..."
 
 # Add a rule only when it is not there yet, and remember any failure. Without
 # this the script reported "bandata done" and exit zero even when no rule
@@ -444,7 +429,7 @@ iptables_rule() {
     iptables -C "$@" 2>/dev/null && return 0
     if ! iptables -A "$@"; then
         rules_failed=1
-        log "ERROR: cannot apply rule: iptables -A $* -- alert"
+        log "WARNING: cannot apply rule: iptables -A $* -- alert"
     fi
 }
 
@@ -459,7 +444,7 @@ iptables_insert() {
     # shellcheck disable=SC2086
     if ! iptables $table -I "$chain" 1 "$@"; then
         rules_failed=1
-        log "ERROR: cannot apply rule: iptables $table -I $chain 1 $* -- alert"
+        log "WARNING: cannot apply rule: iptables $table -I $chain 1 $* -- alert"
     fi
 }
 
@@ -468,7 +453,7 @@ iptables_insert() {
 for bandata_chain in BANDATA_FWD BANDATA_IN; do
     iptables -L "$bandata_chain" -n >/dev/null 2>&1 ||         iptables -N "$bandata_chain" || {
             rules_failed=1
-            log "ERROR: cannot create chain $bandata_chain -- alert"
+            log "WARNING: cannot create chain $bandata_chain -- alert"
         }
 done
 
@@ -584,7 +569,7 @@ update_squidreports_realname() {
     # www-data. Staging through mktemp keeps this root write on a name no
     # other user can reach, and the mv replaces the target name as a whole.
     if [ -z "$final_output" ]; then
-        log "No MAC data processed for realname.cfg"
+        log "INFO: No MAC data processed for realname.cfg"
     else
         cfg_tmp=$(mktemp)
         if echo "$final_output" > "$cfg_tmp"; then
@@ -597,7 +582,7 @@ update_squidreports_realname() {
     fi
 
     if [ -z "$skip_output" ]; then
-        log "No excluded data for skipuser.cfg"
+        log "INFO: No excluded data for skipuser.cfg"
     else
         cfg_tmp=$(mktemp)
         if echo "$skip_output" > "$cfg_tmp"; then
@@ -610,12 +595,55 @@ update_squidreports_realname() {
     fi
 }
 
+update_squidreports_groups() {
+    local limited_acl="$ACL_MAC_PATH/mac-limited.txt"
+    local hotspot_acl="$HOTSPOT_PATH/acl/uhm-auth.txt"
+    local group_cfg="$SQUIDREPORTS_DIR/group.cfg"
+    local cfg_tmp acl_file group_id group_name
+
+    cfg_tmp=$(mktemp) || {
+        log "WARNING: cannot stage group.cfg -- alert"
+        return 1
+    }
+    for group_id in 01 02; do
+        if [ "$group_id" = 01 ]; then
+            acl_file="$limited_acl"
+            group_name=limited
+        else
+            [ "$BANDATA_HOTSPOT" = true ] || continue
+            acl_file="$hotspot_acl"
+            group_name=hotspot
+        fi
+        if [ ! -f "$acl_file" ]; then
+            log "WARNING: $(basename "$acl_file") not found -- alert"
+            continue
+        fi
+        if ! awk -F';' -v re="${UH_IPV4//\\./\\\\.}" \
+            -v id="$group_id" -v name="$group_name" \
+            '$1 == "a" && NF >= 4 && $3 ~ re {print $3, id, name}' \
+            "$acl_file" >> "$cfg_tmp"; then
+            rm -f -- "$cfg_tmp"
+            log "WARNING: cannot read groups from $(basename "$acl_file") -- alert"
+            return 1
+        fi
+    done
+    if sort -u -o "$cfg_tmp" "$cfg_tmp" && chmod 644 "$cfg_tmp" \
+        && mv -f -- "$cfg_tmp" "$group_cfg"; then
+        log "INFO: group.cfg updated"
+    else
+        rm -f -- "$cfg_tmp"
+        log "WARNING: cannot update group.cfg -- alert"
+        return 1
+    fi
+}
+
 # ------------------------------------------------------------------------------
 # UPDATE
 # ------------------------------------------------------------------------------
 
 if [[ "${UPDATE_REALNAME:-false}" == "true" ]]; then
     update_squidreports_realname
+    update_squidreports_groups
 fi
 
 # ------------------------------------------------------------------------------
@@ -625,7 +653,7 @@ fi
 # A run that could not publish the set or apply its rules did not do its
 # job, and must not look like one that did.
 if [ "${load_failed:-0}" -ne 0 ] || [ "${rules_failed:-0}" -ne 0 ]; then
-    log "ERROR: bandata finished with failures, quotas not enforced -- abort"
+    log "ERROR: cannot apply data quotas -- abort"
     exit 1
 fi
 

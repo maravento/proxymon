@@ -18,45 +18,45 @@ body{
   transition:background .2s,color .2s;
 }
 /* ── Dark mode ────────────────────────────────────────────────── */
-body.dark{background:#0f1117;color:#e2e8f0}
-body.dark .statsbar{background:#141721;color:#546e7a}
-body.dark .statsbar b{color:#e2e8f0}
-body.dark .logpath{color:#37474f}
-body.dark .table-wrap{background:#0f1117}
-body.dark tbody tr{border-bottom-color:#1a1f2e}
-body.dark tbody tr:hover{background:#1a1d2e}
-body.dark thead th{background:#1a1d2e;color:#607d8b;border-bottom-color:#0f1117}
-body.dark .col-ts{color:#546e7a}
-body.dark .col-client{color:#63b3ed}
-body.dark .col-method{color:#f6ad55}
-body.dark .col-url{color:#90a4ae}
-body.dark .col-bytes{color:#607d8b}
-body.dark .col-elapsed{color:#546e7a}
-body.dark .col-user{color:#b794f4}
-body.dark .h2{color:#68d391}
-body.dark .h3{color:#f6e05e}
-body.dark .h4{color:#fc8181}
-body.dark .h5{color:#feb2b2}
-body.dark .hx{color:#718096}
-body.dark .hl{background:#744210;color:#fefcbf}
-body.dark .empty-msg{color:#4a5568}
-body.dark .error-msg{background:#2d1515;color:#fc8181;border-color:#fc8181}
-body.dark .table-wrap::-webkit-scrollbar-track{background:#0f1117}
-body.dark .table-wrap::-webkit-scrollbar-thumb{background:#2d3748}
-body.dark .TCP_HIT{background:#1a3a1a;color:#68d391;border-color:#276749}
-body.dark .TCP_MISS{background:#2d1f40;color:#d6bcfa;border-color:#553c9a}
-body.dark .TCP_DENIED{background:#2d1515;color:#fc8181;border-color:#742a2a}
-body.dark .TCP_TUNNEL{background:#1a2a3a;color:#90cdf4;border-color:#2b6cb0}
-body.dark .TCP_MEM_HIT{background:#1a3a1a;color:#9ae6b4;border-color:#276749}
-body.dark .TCP_REFRESH_HIT{background:#2d2500;color:#f6e05e;border-color:#744210}
-body.dark .TCP_REFRESH_MISS{background:#2d1a26;color:#fbb6ce;border-color:#702459}
-body.dark .TCP_MISS_ABORTED{background:#2d1a1a;color:#fca5a5;border-color:#7f1d1d}
-body.dark .TCP_REFRESH_UNMODIFIED{background:#1a2d1a;color:#86efac;border-color:#166534}
-body.dark .TCP_REFRESH_MODIFIED{background:#1a1a2d;color:#93c5fd;border-color:#1e3a5f}
-body.dark .NONE_NONE{background:#1a1a1a;color:#6b7280;border-color:#374151}
-body.dark .pill-other{background:#1a1d2e;color:#718096;border-color:#2d3748}
-body.dark .grep-banner{background:#1a2a3a;border-color:#2b6cb0;color:#90cdf4}
-body.dark .grep-banner b{color:#63b3ed}
+html.dark body{background:#0f1117;color:#e2e8f0}
+html.dark body .statsbar{background:#141721;color:#546e7a}
+html.dark body .statsbar b{color:#e2e8f0}
+html.dark body .logpath{color:#37474f}
+html.dark body .table-wrap{background:#0f1117}
+html.dark body tbody tr{border-bottom-color:#1a1f2e}
+html.dark body tbody tr:hover{background:#1a1d2e}
+html.dark body thead th{background:#1a1d2e;color:#607d8b;border-bottom-color:#0f1117}
+html.dark body .col-ts{color:#546e7a}
+html.dark body .col-client{color:#63b3ed}
+html.dark body .col-method{color:#f6ad55}
+html.dark body .col-url{color:#90a4ae}
+html.dark body .col-bytes{color:#607d8b}
+html.dark body .col-elapsed{color:#546e7a}
+html.dark body .col-user{color:#b794f4}
+html.dark body .h2{color:#68d391}
+html.dark body .h3{color:#f6e05e}
+html.dark body .h4{color:#fc8181}
+html.dark body .h5{color:#feb2b2}
+html.dark body .hx{color:#718096}
+html.dark body .hl{background:#744210;color:#fefcbf}
+html.dark body .empty-msg{color:#4a5568}
+html.dark body .error-msg{background:#2d1515;color:#fc8181;border-color:#fc8181}
+html.dark body .table-wrap::-webkit-scrollbar-track{background:#0f1117}
+html.dark body .table-wrap::-webkit-scrollbar-thumb{background:#2d3748}
+html.dark body .TCP_HIT{background:#1a3a1a;color:#68d391;border-color:#276749}
+html.dark body .TCP_MISS{background:#2d1f40;color:#d6bcfa;border-color:#553c9a}
+html.dark body .TCP_DENIED{background:#2d1515;color:#fc8181;border-color:#742a2a}
+html.dark body .TCP_TUNNEL{background:#1a2a3a;color:#90cdf4;border-color:#2b6cb0}
+html.dark body .TCP_MEM_HIT{background:#1a3a1a;color:#9ae6b4;border-color:#276749}
+html.dark body .TCP_REFRESH_HIT{background:#2d2500;color:#f6e05e;border-color:#744210}
+html.dark body .TCP_REFRESH_MISS{background:#2d1a26;color:#fbb6ce;border-color:#702459}
+html.dark body .TCP_MISS_ABORTED{background:#2d1a1a;color:#fca5a5;border-color:#7f1d1d}
+html.dark body .TCP_REFRESH_UNMODIFIED{background:#1a2d1a;color:#86efac;border-color:#166534}
+html.dark body .TCP_REFRESH_MODIFIED{background:#1a1a2d;color:#93c5fd;border-color:#1e3a5f}
+html.dark body .NONE_NONE{background:#1a1a1a;color:#6b7280;border-color:#374151}
+html.dark body .pill-other{background:#1a1d2e;color:#718096;border-color:#2d3748}
+html.dark body .grep-banner{background:#1a2a3a;border-color:#2b6cb0;color:#90cdf4}
+html.dark body .grep-banner b{color:#63b3ed}
 
 /* ── Toolbar ──────────────────────────────────────────────────── */
 .toolbar{
@@ -308,9 +308,9 @@ tbody td{
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
+<script src="theme.js"></script>
 </head>
 <body>
-<script src="theme.js"></script>
 
 <!-- ── Toolbar ──────────────────────────────────────────────────────── -->
 <div class="toolbar">

@@ -10,31 +10,42 @@ our ($reportpath);
 require 'squidreports.cfg';
 require "paths.pl";
 require 'ReportAnalytics.pm';
+require 'WeeklyReport.pm';
 
 my $q = CGI->new;
 my $year = $q->param('year') // '';
 my $month = $q->param('month') // 'all';
 my $day = $q->param('day') // '';
 my $week = $q->param('week') // '';
+$week=sprintf('%02d',$week) if $week =~ /^\d{1,2}$/;
+my $scope=$q->param('scope') // 'full';
+my @weekdates;
+
 my $user = $q->param('user') // '';
 my $view = $q->param('view') // '';
 print "Content-Type: text/html; charset=UTF-8\nCache-Control: no-store\n\n";
+fail('Invalid week scope') unless $scope eq 'full' || $scope eq 'bandata';
 sub fail { print '<p>'.escapeHTML($_[0]).'</p>'; exit; }
 fail('Invalid user') if $user ne '' && ($user !~ /^[A-Za-z0-9_\@][A-Za-z0-9._\@-]*$/ || $user =~ /\.\./);
 my %dates;
 my $valid=eval {
+    @weekdates=WeeklyReport::dates($year,$week,$scope) if $week ne '';
     for my $root ($reportpath, ReportAnalytics::statistics_root($reportpath)) {
         $dates{basename($_)}=1 for ReportAnalytics::select_days($root,$year,$month,$day,$week);
     }
     1;
 };
 fail('Invalid calendar date or ISO week') unless $valid;
+if ($week ne '') {
+    my %allowed=map {$_=>1} @weekdates;
+    delete $dates{$_} for grep {!$allowed{$_}} keys %dates;
+}
 my @days = map { "$reportpath/$_" } sort keys %dates;
 my $period = $week ne '' ? "$year-W$week" : $year . ($month eq 'all' ? '' : "-$month") . ($day eq '' ? '' : "-$day");
 sub report_link {
     my ($who, $which) = @_;
     return 'detailed.cgi?year='.$year.'&amp;month='.$month.($day ne '' ? '&amp;day='.$day : '')
-        .($week ne '' ? '&amp;week='.$week : '')
+        .($week ne '' ? '&amp;week='.$week.'&amp;scope='.$scope : '')
         .($who ne '' ? '&amp;user='.escape($who) : '').($which ne '' ? '&amp;view='.$which : '');
 }
 sub number { return sprintf('%.2f', $_[0]); }
@@ -60,6 +71,14 @@ sub readrows {
 print '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Detailed Report</title><style>';
 print 'body{font:14px system-ui,sans-serif;background:#eef3f8;color:#263746;margin:0;padding:24px}main{max-width:1500px;margin:auto}h1{color:#3598dc;font-weight:400}nav{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}a{color:#2675b5}nav a,nav button{display:inline-block;box-sizing:border-box;padding:8px;border:1px solid #8f8f9d;border-radius:2px;background:#e9e9ed;color:#263746;font:inherit;line-height:normal;text-decoration:none;cursor:pointer}nav a:hover,nav button:hover{background:#dbe4ee}nav a[aria-current="page"],nav a[aria-current="page"]:hover{background:#2675b5;border-color:#2675b5;color:white}nav a:focus-visible,nav button:focus-visible{outline:2px solid #176298;outline-offset:2px}table{border-collapse:collapse;background:white;width:100%}th,td{padding:9px;border:1px solid #dbe4ee;text-align:right}th{background:#3598dc;color:white}td:first-child,th:first-child{text-align:left}tbody tr:nth-child(even){background:#f7faff}.metrics{font-size:13px}.metrics th,.metrics td{padding:6px 4px}.metrics th:nth-child(4),.metrics th:nth-child(7),.metrics th:nth-child(8),.metrics th:nth-child(11){white-space:nowrap}.metrics th:nth-child(n+2):nth-child(-n+12),.metrics td:nth-child(n+2):nth-child(-n+12){width:1%}.metrics td:nth-child(n+2):nth-child(-n+12){white-space:nowrap}.metrics td:first-child,.metrics td:nth-child(13){overflow-wrap:anywhere}.metrics.users th:first-child,.metrics.users td:first-child{width:1%;white-space:nowrap;overflow-wrap:normal}.metrics td:nth-child(13){text-align:left}.object-size{white-space:nowrap}.scroll{overflow:auto}.notice{background:#fff3cd;padding:12px 0}.notice summary{cursor:pointer}.report-guide{margin-top:32px;border-top:1px solid #dbe4ee}button{padding:8px;cursor:pointer}@media print{nav,button{display:none}body{padding:0}}';
 print '</style></head><body><main><h1>Detailed Report</h1><p>'.escapeHTML($period).($user ne '' ? ' · '.escapeHTML($user) : '').'</p><nav><a href="index.cgi?year='.$year.'&amp;month='.$month.'">Back to Reports</a><a'.($view ne 'denied'?' aria-current="page"':'').' href="'.report_link('','').'">Users</a><a'.($view eq 'denied'?' aria-current="page"':'').' href="'.report_link($user,'denied').'">Denied Accesses</a><a href="analytics.cgi?year='.$year.'&amp;month='.$month.($day ne ''?'&amp;day='.$day:'').($week ne ''?'&amp;week='.$week:'').'">Analyze</a><button onclick="window.print()">Print</button></nav>';
+if ($week ne '') {
+    print WeeklyReport::form($year,$week,$scope,$view,$user);
+    print '<p>'.escapeHTML("$weekdates[0]–$weekdates[-1]").'</p>';
+    my @missing=grep {!-f "$reportpath/$_/.total"} @weekdates;
+    print '<details class="notice"><summary>Incomplete reports: '.scalar(@missing).' '.(@missing == 1 ? 'day' : 'days').' missing.</summary><p>Unavailable dates: '.escapeHTML(join(', ',map { substr($_,0,4)."-".substr($_,4,2)."-".substr($_,6,2) } @missing)).'.</p><p>Totals cover available reports only.</p></details>' if @missing;
+    print '<p>Bandata evaluates Monday–Friday of the previous week on Monday. Consumption is shown without inferring historical blocking status.</p>' if $scope eq 'bandata';
+    print WeeklyReport::daily_totals($reportpath,\@weekdates,$user) unless $view eq 'denied';
+}
 if ($view eq 'denied') {
     print '<div class="scroll"><table><thead><tr><th>Date</th><th>User</th><th>Time</th><th>Code</th><th>URL</th></tr></thead><tbody>';
     my $count = 0;

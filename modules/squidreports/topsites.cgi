@@ -20,6 +20,7 @@ use CGI;
 require "squidreports.cfg";
 require "paths.pl";
 require "common.pl";
+require "WeeklyReport.pm";
 
 
 $co=new CGI;
@@ -32,15 +33,27 @@ $sortorder ||='size';
 
 # Validate: year=4 digits, month/day=2 digits (empty allowed, matches prior behavior)
 MyDie("invalid year/month/day\n") if ($year ne "" && $year !~ /^\d{4}$/);
-MyDie("invalid year/month/day\n") if ($month ne "" && $month !~ /^\d{2}$/);
+MyDie("invalid year/month/day\n") if ($month ne "" && $month !~ /^\d{2}$/ && !(($co->param('mode') // '') eq 'week' && $month eq "all"));
 MyDie("invalid year/month/day\n") if ($day ne "" && $day !~ /^\d{2}$/);
 
 InitTPL("topsites", scalar $co->param('tpl'));
 
+ReplaceTPL(WEEK_CONTROLS, "");
+my $weekly;
+if (($co->param('mode') // '') eq 'week') {
+  $weekly = eval { WeeklyReport::metro_context($co, $reportpath) };
+  MyDie("invalid weekly period") unless $weekly;
+  ReplaceTPL(WEEK_CONTROLS, $weekly->{controls});
+}
+
+
 
 $mode =$co->param('mode');
 
-if      ($mode eq "month") {
+if ($weekly) {
+  $mode="week";
+  $workperiod=$weekly->{title};
+} elsif ($mode eq "month") {
   $workperiod="##MSG_WHOLE## ##MSG_MONTH## - $year $MonthName[$month]";
   $mask = "$year$month*";
 } elsif ($mode eq "year") {
@@ -59,6 +72,7 @@ $printdotflag=0;
 
 $sorturl  ="topsites.cgi?year=$year&month=$month&day=$day";
 $sorturl .="&mode=$mode" if ($mode ne "day");
+$sorturl .= $weekly->{query} if $weekly;
 $sorturl .="&order";
 
 $sortconnecturl_L = "$sorturl=hits";
@@ -69,7 +83,7 @@ $sortbytesurl_B   = "##MSG_BYTES##";
 $sortconnectattr = ($sortorder eq "hits")?"$hTPLVARIABLE{selectedattr}":"";
 $sortbytesattr   = ($sortorder eq "size")?"$hTPLVARIABLE{selectedattr}":"";
 
-@days=sort glob("$reportpath/$mask/*");
+@days=$weekly ? sort(map { glob("$_/*") } @{$weekly->{dirs}}) : sort glob("$reportpath/$mask/*");
 @days=reverse @days;
 
 foreach $userpath (@days) {
@@ -91,6 +105,7 @@ foreach $userpath (@days) {
 
 $whourl = "whousesite.cgi?year=$year&month=$month&day=$day";
 $whourl .="&mode=$mode" if ($mode ne "day");
+$whourl .= $weekly->{query} if $weekly;
 $whourl .="&usersite";
 
 $N=0;

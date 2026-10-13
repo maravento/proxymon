@@ -22,6 +22,7 @@ use CGI;
 require "squidreports.cfg";
 require "paths.pl";
 require "common.pl";
+require "WeeklyReport.pm";
 
 
 $co=new CGI;
@@ -34,7 +35,20 @@ MyDie("invalid year/month\n") if ($year ne "" && $year !~ /^\d{4}$/);
 MyDie("invalid year/month\n") if ($month ne "" && $month ne "all" && $month !~ /^\d{2}$/);
 InitTPL("month_detail", scalar $co->param('tpl'));
 
-if ($month ne "all") {
+ReplaceTPL(WEEK_CONTROLS, "");
+my $weekly;
+if (($co->param('mode') // '') eq 'week') {
+  $weekly = eval { WeeklyReport::metro_context($co, $reportpath) };
+  MyDie("invalid weekly period") unless $weekly;
+  ReplaceTPL(WEEK_CONTROLS, $weekly->{controls});
+}
+
+
+if ($weekly) {
+  $mode="week";
+  $modename="WEEK";
+  $workperiod=$weekly->{title};
+} elsif ($month ne "all") {
   $workperiod="$MonthName[$month] $year";
   $filter="$year$month";
   $mode="month";
@@ -46,7 +60,7 @@ if ($month ne "all") {
   $modename="##MSG_YEAR##";
 }
 
-@daylist=glob("$reportpath/$filter*");
+@daylist=$weekly ? @{$weekly->{dirs}} : glob("$reportpath/$filter*");
 
 foreach $daypath (sort @daylist) {
   open FF,"<$daypath/.total";
@@ -90,7 +104,7 @@ foreach $user (sort {$h{$b}{size}<=>$h{$a}{size}} keys 	%h) {
     $graphurl_L=URLEncode("graph.cgi?year=$year&month=$month&mode=user&user=$user");
     $graphurl_B="##MSG_GRAPH_LINK##";
 
-    $userurl_L=URLEncode("user_detail.cgi?year=$year&month=$month&user=$user&mode=$mode");
+    $userurl_L=URLEncode("user_detail.cgi?year=$year&month=$month&user=$user&mode=$mode" . ($weekly ? $weekly->{query} : ""));
     $userurl_B=escapeHtml($user);
 
     $realname=GetRealName($daypath,$user);
@@ -123,7 +137,7 @@ ReplaceTPL(DATE,$workperiod);
 ReplaceTPL(WHOLEPERIOD,$modename);
 
 ApplyTPL();
-HideTPL("timereport")  if ($timereport == 0);
+HideTPL("timereport")  if ($timereport == 0 || $mode eq "week");
 HideTPL("graphreport") if (($graphreport == 0) || ($mode ne "month"));
 HideTPL("monthreport") if ($mode ne "month");
 HideTPL("realname")       if ($userealname == 0);

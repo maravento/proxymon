@@ -36,6 +36,10 @@
         <link rel="shortcut icon" href="assets/global/img/favicon.png" type="image/png" />
         
         <style>
+            .ranking-box .portlet-body { padding: 8px 10px; }
+            .ranking-box table { margin-bottom: 0; }
+            .ranking-box .table td { padding: 5px 6px; }
+            .ranking-box .portlet-title { min-height: 36px; }
             .dataTables_filter {
                 display: none;
             }
@@ -152,7 +156,7 @@
                                            
                                     <div class="col-md-4 pull-right">
                                                 <!-- BEGIN BORDERED TABLE PORTLET-->
-                                                <div class="portlet box blue">
+                                                <div class="portlet box blue ranking-box">
                                                     <div class="portlet-title">
                                                         <div class="caption">
                                                             <b><i class="fa fa-line-chart"></i>  Ranking</b> <a href="##ANALYTICS##" class="btn btn-xs btn-default">Analyze</a></div>
@@ -185,6 +189,12 @@
                                                                         <td style="text-align: center;"><a href="##DETAILED_MONTH##">##MSG_MONTH##</a></td>
                                                                     </tr>
                                                                     <!-- HIDE monthtop end -->
+                                                                    <tr align="center" valign="middle">
+                                                                        <td style="text-align:center"><a href="##TOP_WEEK##">WEEK</a></td>
+                                                                        <td style="text-align:center"><a href="##TOTAL_WEEK##">WEEK</a></td>
+                                                                        <td style="text-align:center"><a href="##GROUP_WEEK##">WEEK</a></td>
+                                                                        <td style="text-align:center"><a href="##DETAILED_WEEK##">WEEK</a></td>
+                                                                    </tr>
                                                                 </tbody>
                                                             </table>
                                                     </div>

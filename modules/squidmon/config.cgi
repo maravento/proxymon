@@ -19,7 +19,7 @@ $module_name = 'squidmon';
 my $message = '';
 my $message_type = '';
 
-# Handle form submission - FIX: Check if action is defined
+# Handle form submission
 if (defined $in{'action'} && $in{'action'} eq 'save') {
     my $origin = $ENV{'HTTP_ORIGIN'} || $ENV{'HTTP_REFERER'} || '';
     my $host   = $ENV{'HTTP_HOST'} || '';

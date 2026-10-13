@@ -194,9 +194,9 @@ get_acl() {
     http_code=$(curl -k -s -o /dev/null -w '%{http_code}' -I -L --connect-timeout 5 --max-time 15 --retry 1 "$source_url")
     case "$http_code" in
         2*|405) ;;
-        000) log "TIMEOUT: $source_url"; return 1 ;;
-        5*)  log "BUSY: $source_url"; return 1 ;;
-        *)   log "BROKEN: $source_url"; return 1 ;;
+        000) log "INFO: $(basename "$source_url") timeout -- retry"; return 1 ;;
+        5*)  log "INFO: $(basename "$source_url") server busy -- retry"; return 1 ;;
+        *)   log "INFO: $(basename "$source_url") http $http_code -- retry"; return 1 ;;
     esac
     # wget has no timeout of its own -- if curl's HEAD check succeeds but
     # the actual transfer stalls (dead connection, slow/black-holed route),
@@ -204,10 +204,10 @@ get_acl() {
     # bounds each read/connect phase and --tries=1 stops it from silently
     # retrying on top of retry_cmd's own retry loop.
     if ! timeout 30 wget -q -c -N --timeout=15 --tries=1 "$source_url" -O "$target_file"; then
-        log "PARTIAL: $source_url"
+        log "INFO: $(basename "$source_url") download incomplete -- retry"
         return 1
     fi
-    log "SAVED: $(basename "$source_url")"
+    log "INFO: $(basename "$source_url") saved"
 }
 
 retry_cmd() {
@@ -232,13 +232,11 @@ check_apache_config() {
     if command -v php >/dev/null 2>&1; then
         php_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null)
     else
-        echo "PHP is not installed"
-        exit 1
+        abort "php not installed -- abort"
     fi
 
     if [[ ! "$php_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-        echo "Could not determine PHP version (got '$php_version'). Is PHP working correctly?"
-        exit 1
+        abort "cannot read php version: '$php_version' -- abort"
     fi
 
     config_errors=""
@@ -285,8 +283,10 @@ check_apache_config() {
     fi
 
     if [[ -n "$config_errors" ]]; then
-        echo -e "$config_errors"
-        exit 1
+        while IFS= read -r config_error; do
+            [ -n "$config_error" ] && warn "$config_error -- alert"
+        done < <(echo -e "$config_errors")
+        abort "invalid apache or php configuration -- abort"
     else
         info "Apache and PHP configuration is valid"
     fi
@@ -298,8 +298,7 @@ check_squid_traffic() {
     fi
     local squid_log_file="${SQUID_LOG_FILE:-/var/log/squid/access.log}"
     if [ ! -f "$squid_log_file" ]; then
-        echo "$squid_log_file not found"
-        exit 1
+        abort "$(basename "$squid_log_file") not found -- abort"
     fi
 
     log_lines=$(wc -l < "$squid_log_file" 2>/dev/null || echo 0)
@@ -496,9 +495,9 @@ create_proxymon_env() {
     fi
     echo "Unifi Hotspot in Bandata: $hotspot_enabled"
 
-    # Auto-update Squidreports realname
+    # Auto-update Squidreports names and groups
     update_realname_flag=true
-    echo "Update hostnames in Squidreports: $update_realname_flag (default)"
+    echo "Update hostnames and groups in Squidreports: $update_realname_flag (default)"
 
     cat > "$env_file" << ENVEOF
 # =============================================================================
@@ -599,9 +598,7 @@ cron_d_set() {
 install_proxymon() {
     configure_locations
     if [[ -d "$WEB_ROOT" ]]; then
-        info "Proxy Monitor is already installed ($WEB_ROOT exists)."
-        info "Use '$0 update' to update it, or '$0 uninstall' to remove it first."
-        exit 1
+        abort "proxymon already installed -- abort"
     fi
 
     check_port tcp "$PANEL_PORT" "web interface"
@@ -636,8 +633,11 @@ install_proxymon() {
     info "Configuring Squid Monitor..."
 
     info "Configuring Squidreports..."
-    "$WEB_ROOT/squidreports/squidreports.pl" today || true
-    info "Initial Squidreports report generated"
+    if "$WEB_ROOT/squidreports/squidreports.pl" today; then
+        info "initial squidreports report generated"
+    else
+        warn "cannot generate initial squidreports -- alert"
+    fi
 
     configure_apache_locations
 
@@ -878,13 +878,11 @@ EOF
     chmod 755 "$CONFIG_DIR/tools/pmbk.sh"
     chmod 755 "$CONFIG_DIR/tools/squidtool.sh"
     chown -R root:root "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools"
-    if getent group proxy >/dev/null; then
-        usermod -aG proxy www-data
-    else
-        err "group 'proxy' not found, expected from the squid package -- abort"
-        info "Ensure squid is installed before running this step."
-        exit 1
+    if ! getent group proxy >/dev/null; then
+        groupadd proxy || abort "cannot create group 'proxy' -- abort"
+        info "group 'proxy' created -- fixed"
     fi
+    usermod -aG proxy www-data
     chown root:root /etc/squid/squid.conf
     chmod 644 /etc/squid/squid.conf
 
@@ -921,8 +919,8 @@ EOF
     done
 
     info " Enabling Apache Sites..."
-    a2ensite proxymon.conf || { echo "Failed to enable proxymon.conf"; exit 1; }
-    a2ensite warning.conf || { echo "Failed to enable warning.conf"; exit 1; }
+    a2ensite proxymon.conf || abort "cannot enable proxymon.conf -- abort"
+    a2ensite warning.conf || abort "cannot enable warning.conf -- abort"
 
     info " Restarting Cron..."
     systemctl restart cron
@@ -930,9 +928,9 @@ EOF
     info " Restarting Apache2..."
     systemctl daemon-reload
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
-        err "Apache configuration test failed, disabling sites just enabled"
         a2dissite proxymon.conf 2>/dev/null || true
         a2dissite warning.conf 2>/dev/null || true
+        err "Apache configuration test failed, sites just enabled disabled"
         err "fix the configuration, then re-run install -- abort"
         exit 1
     fi
@@ -1028,8 +1026,7 @@ secure_web_code() (
 update_proxymon() {
     configure_locations
     if [[ ! -d "$WEB_ROOT" ]]; then
-        info "Proxy Monitor is not installed. Run '$0 install' first."
-        exit 1
+        abort "proxymon not installed -- abort"
     fi
 
     local configured_port old_ports
@@ -1054,6 +1051,7 @@ update_proxymon() {
 
     info "Replacing Proxy Monitor code..."
     secure_web_code "$WEB_ROOT" 1 || abort "cannot update web code -- abort"
+    rm -f -- "$WEB_ROOT/squidreports/weekly.cgi"
     rm -f -- "$WEB_ROOT/squidreports/ip2name/ip2name.dhcp"
 
     # The root scripts, copied one by one. config/bandata/acl/ is live data
@@ -1106,7 +1104,7 @@ update_proxymon() {
 
 uninstall_proxymon() {
     configure_locations
-    warn "Run $CONFIG_DIR/tools/pmbk.sh first if you want a backup."
+    info "for a backup, run $CONFIG_DIR/tools/pmbk.sh first"
     info " Uninstalling Proxy Monitor..."
 
     if [[ ! -d "$WEB_ROOT" ]] && [[ ! -d "$CONFIG_DIR" ]]; then

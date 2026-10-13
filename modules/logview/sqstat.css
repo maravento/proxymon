@@ -1,52 +1,52 @@
 /* "connections" table */
-TABLE.result{
+html:not(.dark) TABLE.result {
 	border:1px solid #ccccdd;border-collapse:collapse;
 }
-TABLE.result TH{
+html:not(.dark) TABLE.result TH {
 	font-family: Verdana;font-size:14px;
 }
-TABLE.result TD{
+html:not(.dark) TABLE.result TD {
 	font-family: Verdana;font-size:11px;border:1px solid #c0c0c0;padding:2px;
 }
-TABLE.result TR.total TD{
+html:not(.dark) TABLE.result TR.total TD {
 	background-color:#DCDAD5;
 }
 
-TABLE.result TH{
+html:not(.dark) TABLE.result TH {
 	background-color:#ccccdd;
 	white-space: nowrap; padding: 0px 2px;
 }
 
-TABLE.result tr.odd td        {
+html:not(.dark) TABLE.result tr.odd td {
 	background-color: #eef;
 }
-TABLE.result tr.odd td#white  {
+html:not(.dark) TABLE.result tr.odd td#white {
 	background-color: #fff;
 }
-TABLE.result td#highlight     {
+html:not(.dark) TABLE.result td#highlight {
 	background-color: #e9e9e9;
 }
 
 
 /* top header */
-DIV.header{
+html:not(.dark) DIV.header {
 	border:3px solid #ccccdd;margin-bottom:10px;padding:3px;
 	font-family: Verdana;font-size:12pt;
 }
-.copyleft,SELECT{
+html:not(.dark) .copyleft, html:not(.dark) SELECT {
 	font-family: Verdana;font-size:10px;
 }
-.copyleft A{
+html:not(.dark) .copyleft A {
 	text-decoration:none
 }
-.copyleft A:HOVER{
+html:not(.dark) .copyleft A:HOVER {
 	text-decoration:underline
 }
-FORM{
+html:not(.dark) FORM {
 	margin:0;padding:0;
 }
 
-#dhtmltooltip{
+html:not(.dark) #dhtmltooltip {
 	position: absolute;
 	/* width: 350px; */
 	border: 2px solid black;
@@ -58,13 +58,13 @@ FORM{
 }
 
 
-#dhtmlpointer{
+html:not(.dark) #dhtmlpointer {
 	position:absolute;
 	left: -300px;
 	z-index: 101;
 	visibility: hidden;
 }
 
-.live-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.live-group { margin-left: auto; white-space: nowrap; }
-@media (max-width: 640px) { .live-group { margin-left: 0; } }
+html:not(.dark) .live-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+html:not(.dark) .live-group { margin-left: auto; white-space: nowrap; }
+@media (max-width: 640px) { html:not(.dark) .live-group { margin-left: 0; } }

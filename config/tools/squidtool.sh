@@ -116,16 +116,6 @@ traffic_html="$report_dir/squid_traffic.html"
 search_html="$report_dir/squid_search.html"
 panel_port="${PANEL_PORT:-}"
 
-# SQUID_LOG_FILE names SQUID_LOG_DIR instead of repeating its path. The
-# reference is expanded here, right after the read, so KEY CHECK below
-# validates the final value and not the literal text.
-# Both names are read through ${VAR:-}: under 'set -u' a key missing from the
-# file would abort here, before KEY CHECK could name it. An absent key stays
-# empty and KEY CHECK rejects it below.
-SQUID_LOG_FILE="${SQUID_LOG_FILE:-}"
-SQUID_LOG_FILE="${SQUID_LOG_FILE//\$SQUID_LOG_DIR/${SQUID_LOG_DIR:-}}"
-SQUID_LOG_FILE="${SQUID_LOG_FILE//\$\{SQUID_LOG_DIR\}/${SQUID_LOG_DIR:-}}"
-
 # KEY CHECK
 # Collect every failure first, then decide -- a single abort reports them all
 key_errors=()
