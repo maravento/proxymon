@@ -712,15 +712,11 @@ foreach my $line (@log_lines) {
 
     my $is_blocked = ($action_code =~ /^TCP_DENIED/) ? 'Blocked' : 'Allowed';
 
-    # DEBUG: Request information
-
     # Determine which ACL matched
     my $matched_acl = 'N/A';
 
     if ($is_blocked eq 'Blocked') {
         my $domain_lc = lc($domain);
-
-        # DEBUG
 
         # REMOVE PORT from domain if it exists
         my $domain_only = $domain_lc;
@@ -766,8 +762,6 @@ foreach my $line (@log_lines) {
         $client_acl_stats{$client}{$matched_acl}{$is_blocked}++;
         $client_acl_stats{$client}{total}{$is_blocked}++;
         push @{ $client_acl_stats{$client}{$matched_acl}{urls}{$is_blocked} }, $url;
-
-        # DEBUG: Register the association
 }
 
 # ============================================================

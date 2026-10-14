@@ -39,10 +39,10 @@ Tested on Ubuntu 24.04/26.04 LTS. Use on other versions or distributions is at y
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>Install Squid, Apache, PHP and the supporting packages before running <code>pmsetup.sh</code>. The installer installs <code>libjson-xs-perl</code> automatically if missing. It checks the remaining dependencies and stops at the first missing package.</p>
+      <p>• <code>pmsetup.sh</code> installs Apache, PHP and <code>libjson-xs-perl</code> when they are missing. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases.<br><br>• Install the supporting packages below before running <code>pmsetup.sh</code>. It checks them and stops at the first missing package.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>Instale Squid, Apache, PHP y los paquetes auxiliares antes de ejecutar <code>pmsetup.sh</code>. El instalador instala automáticamente <code>libjson-xs-perl</code> si falta. Comprueba las demás dependencias y se detiene al encontrar el primer paquete ausente.</p>
+      <p>• <code>pmsetup.sh</code> instala Apache, PHP y <code>libjson-xs-perl</code> cuando faltan. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos.<br><br>• Instale los paquetes auxiliares de abajo antes de ejecutar <code>pmsetup.sh</code>. Los comprueba y se detiene al encontrar el primer paquete ausente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
     </td>
   </tr>
 </table>
@@ -72,7 +72,7 @@ squid -z
 cp -f /etc/logrotate.d/squid{,.bak} &>/dev/null
 sed -i '/sharedscripts/a \    create 0644 proxy proxy' /etc/logrotate.d/squid
 sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
-sed -i 's/^	daily$/	monthly/' /etc/logrotate.d/squid
+sed -i -E 's/^	(daily|monthly)$/	weekly/' /etc/logrotate.d/squid
 
 # php
 apt install -y php libapache2-mod-php php-cli php-curl
@@ -146,6 +146,7 @@ proxymon/
 │   │   ├── pmbk.sh               # Backup tool
 │   │   ├── proxymonenv.sh        # Shared configuration reader; sourced, not executed
 │   │   └── squidtool.sh          # Log search and traffic reports
+│   ├── squid/                    # squid.conf template, deployed only on a fresh Squid
 │   └── vhost/                    # Apache vhosts, installed to sites-available
 └── pmsetup.sh                  # Installer: install, update, uninstall
 ```
@@ -180,9 +181,9 @@ sudo bash pmsetup.sh
 | Command | Description | Descripción |
 | --- | --- | --- |
 | `sudo ./pmsetup.sh` | Opens the interactive menu with options to install, update, uninstall or exit. | Abre el menú interactivo con opciones para instalar, actualizar, desinstalar o salir. |
-| `sudo ./pmsetup.sh install` | Installs and configures Proxy Monitor, including Apache rules, `proxymon.env`, ACL lists, Apache and PHP settings, and scheduled tasks. Stops if the configured `WEB_ROOT` already exists; use `update` or `uninstall` in that case. | Instala y configura Proxy Monitor, incluidas las reglas de Apache, `proxymon.env`, las listas ACL, los ajustes de Apache y PHP y las tareas programadas. Se detiene si el directorio configurado en `WEB_ROOT` ya existe; en ese caso, use `update` o `uninstall`. |
-| `sudo ./pmsetup.sh update` | Updates code and permissions without prompting for input. Preserves configuration and operational data. | Actualiza el código y los permisos sin solicitar datos. Conserva la configuración y los datos de operación. |
-| `sudo ./pmsetup.sh uninstall` | Requests confirmation before uninstalling Proxy Monitor. | Solicita confirmación antes de desinstalar Proxy Monitor. |
+| `sudo ./pmsetup.sh --install` | Installs and configures Proxy Monitor, including Apache rules, `proxymon.env`, ACL lists, Apache and PHP settings, and scheduled tasks. Stops if the configured `WEB_ROOT` already exists; use `--update` or `--uninstall` in that case. | Instala y configura Proxy Monitor, incluidas las reglas de Apache, `proxymon.env`, las listas ACL, los ajustes de Apache y PHP y las tareas programadas. Se detiene si el directorio configurado en `WEB_ROOT` ya existe; en ese caso, use `--update` o `--uninstall`. |
+| `sudo ./pmsetup.sh --update` | Updates code and permissions without prompting for input. Preserves configuration and operational data. | Actualiza el código y los permisos sin solicitar datos. Conserva la configuración y los datos de operación. |
+| `sudo ./pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. | Solicita confirmación antes de desinstalar Proxy Monitor. |
 | `sudo ./pmsetup.sh -h` / `sudo ./pmsetup.sh --help` | Displays help with the available installer options. | Muestra la ayuda con las opciones disponibles del instalador. |
 
 #### ⚠️ Warning
@@ -251,7 +252,7 @@ sudo bash pmsetup.sh
 | `TOOL_REPORT_DIR` | `pmsetup.sh`, `squidtool.sh`, `pmbk.sh` | Directory for generated traffic and log-search HTML reports, served through Apache's Squidtool alias. | Directorio de informes HTML de tráfico y búsqueda, publicado mediante el alias Squidtool de Apache. |
 | `SQUIDMON_CONFIG` | `pmsetup.sh`, Squidmon, `pmbk.sh` | Squidmon settings file. Its log source comes from `SQUID_LOG_FILE`. | Archivo de configuración de Squidmon. Su registro de origen proviene de `SQUID_LOG_FILE`. |
 | `LLM_ENV_FILE` | `pmsetup.sh`, `worker.php`, `pmbk.sh` | SquidAI credential file. Default: `/etc/proxymon/.env`. | Archivo de credenciales de SquidAI. Valor inicial: `/etc/proxymon/.env`. |
-| `REPORT_STATS_PATH` | `pmsetup.sh`, Squidreports, `pmbk.sh` | Additional Detail and Analyze statistics. Default: the original report directory followed by `stats`. Remains separate from Bandata's original reports. | Estadísticas adicionales de Detail y Analyze. Valor inicial: directorio de informes originales seguido de `stats`. Permanece separado de los informes originales utilizados por Bandata. |
+| `REPORT_STATS_PATH` | `pmsetup.sh`, Squidreports, SquidAI, `pmbk.sh` | Additional Detail and Analyze statistics. Default: the original report directory followed by `stats`. Remains separate from Bandata's original reports. | Estadísticas adicionales de Detail y Analyze. Valor inicial: directorio de informes originales seguido de `stats`. Permanece separado de los informes originales utilizados por Bandata. |
 | `LAN` | `bandata.sh` | LAN interface the quota rules apply to | Interfaz LAN a la que se aplican las reglas de cuota |
 | `SERVER_IP` | `pmsetup.sh`, `worker.php` | Server's own IPv4; excluded from the reports | IPv4 del servidor; se excluye de los informes |
 | `RANGE` | `pmsetup.sh`, `squidreports.pl`, `analytics.cgi` | LAN network in CIDR notation. Used by Analyze and regenerated subnet statistics. Unmatched addresses remain individual. Missing, empty or invalid values stop these consumers. Does not configure Apache access. | Red LAN en formato CIDR. La utilizan Analyze y las estadísticas por subred regeneradas. Las direcciones sin coincidencia permanecen individuales. Un valor ausente, vacío o inválido detiene estos consumidores. No configura el acceso de Apache. |
@@ -276,7 +277,7 @@ sudo bash pmsetup.sh
 
 | Description | Descripción |
 | --- | --- |
-| • The installer establishes paths and ports in `proxymon.env`. Runtime modules read these settings; legacy paths in preserved `squidreports.cfg` files no longer override them. Configure Squidmon's log source through `SQUID_LOG_FILE`; its form displays this value read-only.<br><br>• Run `pmsetup.sh update` after changing ports to apply Apache's configuration. Changing a data path does not move existing files: relocate the data and retain its permissions before using the new path. `pmbk.sh` backs up the configured original reports and additional statistics.<br><br>• `/etc/proxymon/proxymon.env` remains the fixed configuration entry point. Installation defaults are declared by the installer. Project-relative library paths and operating-system paths remain independent of environment settings. | • El instalador establece las rutas y los puertos en `proxymon.env`. Los módulos leen estos valores; las rutas antiguas de archivos `squidreports.cfg` preservados ya no los reemplazan. Configure el registro de Squidmon mediante `SQUID_LOG_FILE`; su formulario muestra este valor sin permitir editarlo.<br><br>• Ejecute `pmsetup.sh update` después de cambiar puertos para aplicar la configuración de Apache. Cambiar una ruta de datos no mueve los archivos existentes: traslade los datos y conserve sus permisos antes de utilizar la nueva ruta. `pmbk.sh` respalda los informes originales y las estadísticas adicionales configurados.<br><br>• `/etc/proxymon/proxymon.env` permanece como punto fijo de entrada a la configuración. El instalador declara los valores iniciales de instalación. Las rutas relativas de bibliotecas y las rutas del sistema operativo permanecen independientes de la configuración del entorno. |
+| • The installer establishes paths and ports in `proxymon.env`. Runtime modules read these settings; legacy paths in preserved `squidreports.cfg` files no longer override them. Configure Squidmon's log source through `SQUID_LOG_FILE`; its form displays this value read-only.<br><br>• Run `pmsetup.sh --update` after changing ports to apply Apache's configuration. Changing a data path does not move existing files: relocate the data and retain its permissions before using the new path. `pmbk.sh` backs up the configured original reports and additional statistics.<br><br>• `/etc/proxymon/proxymon.env` remains the fixed configuration entry point. Installation defaults are declared by the installer. Project-relative library paths and operating-system paths remain independent of environment settings. | • El instalador establece las rutas y los puertos en `proxymon.env`. Los módulos leen estos valores; las rutas antiguas de archivos `squidreports.cfg` preservados ya no los reemplazan. Configure el registro de Squidmon mediante `SQUID_LOG_FILE`; su formulario muestra este valor sin permitir editarlo.<br><br>• Ejecute `pmsetup.sh --update` después de cambiar puertos para aplicar la configuración de Apache. Cambiar una ruta de datos no mueve los archivos existentes: traslade los datos y conserve sus permisos antes de utilizar la nueva ruta. `pmbk.sh` respalda los informes originales y las estadísticas adicionales configurados.<br><br>• `/etc/proxymon/proxymon.env` permanece como punto fijo de entrada a la configuración. El instalador declara los valores iniciales de instalación. Las rutas relativas de bibliotecas y las rutas del sistema operativo permanecen independientes de la configuración del entorno. |
 
 > `LLM_ENV_FILE` points to a second file, `.env` by default, with the SquidAI credentials `LLM_URL`, `LLM_API_KEY`, `LLM_MODEL` and `LLM_RESPONSE_FORMAT`. The installer creates this file only if absent, using a template embedded in `pmsetup.sh`. Existing content is preserved. See API Configuration.
 >
@@ -517,10 +518,10 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?=Block IPv4
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>• Squidmon reads only the current <code>access.log</code>; it does not process rotated files.<br><br>• Disable Squid's internal rotation with <code>logfile_rotate 0</code>, then configure <code>logrotate</code> to rotate the file at a frequency that suits your network, such as weekly or monthly.<br><br>• In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.</p>
+      <p>• Squidmon reads only the current <code>access.log</code>; it does not process rotated files. The same applies to Logview and SquidAI.<br><br>• Rotation in Proxymon is weekly. A rotation leaves <code>access.log</code> empty, so the modules lose the hours that moved to the rotated file. Weekly limits that gap to one day out of seven.<br><br>• Rotation always happens at 00:00, imposed by the <code>logrotate</code> timer. Do not configure <code>size</code> or <code>maxsize</code>: those split the current day, and Squidreports rebuilds each day from a single file.<br><br>• The installer also adds a <code>prerotate</code> hook to <code>/etc/logrotate.d/squid</code>. It closes the previous day's report before <code>access.log</code> is rotated. When that file already defines its own <code>prerotate</code>, the installer warns and leaves it untouched.<br><br>• Disable Squid's internal rotation with <code>logfile_rotate 0</code>.<br><br>• In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>• Squidmon solo lee el <code>access.log</code> actual; no procesa los archivos rotados.<br><br>• Desactive la rotación interna de Squid con <code>logfile_rotate 0</code> y configure <code>logrotate</code> para rotar el archivo con una frecuencia adecuada para su red, por ejemplo semanal o mensual.<br><br>• En <code>/etc/logrotate.d/squid</code>, puede conservar siete rotaciones con <code>rotate 7</code>.</p>
+      <p>• Squidmon solo lee el <code>access.log</code> actual; no procesa los archivos rotados. Lo mismo ocurre con Logview y SquidAI.<br><br>• La rotación en Proxymon es semanal. Una rotación deja vacío el <code>access.log</code>, por lo que los módulos pierden las horas que pasaron al archivo rotado. La frecuencia semanal limita ese hueco a un día de cada siete.<br><br>• La rotación ocurre siempre a las 00:00, impuesta por el temporizador de <code>logrotate</code>. No configure <code>size</code> ni <code>maxsize</code>: parten el día en curso, y Squidreports reconstruye cada día a partir de un solo archivo.<br><br>• El instalador añade además un bloque <code>prerotate</code> a <code>/etc/logrotate.d/squid</code>. Cierra el informe del día anterior antes de rotar <code>access.log</code>. Si ese archivo ya define su propio <code>prerotate</code>, el instalador advierte y no lo modifica.<br><br>• Desactive la rotación interna de Squid con <code>logfile_rotate 0</code>.<br><br>• En <code>/etc/logrotate.d/squid</code>, puede conservar siete rotaciones con <code>rotate 7</code>.</p>
     </td>
   </tr>
 </table>
@@ -531,10 +532,8 @@ sudo nano /etc/squid/squid.conf
 #  TAG: logfile_rotate
 logfile_rotate 0
 
-# Logrotate
-sudo sed -i 's/^	daily$/	weekly/' /etc/logrotate.d/squid
-# or
-sudo sed -i 's/^	daily$/	monthly/' /etc/logrotate.d/squid
+# Logrotate (pmsetup.sh already sets weekly; this only restores it)
+sudo sed -i -E 's/^	(daily|monthly)$/	weekly/' /etc/logrotate.d/squid
 # Optional:
 sudo sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
 ```
@@ -610,10 +609,10 @@ sudo /var/www/proxymon/squidreports/squidreports.pl today
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     The installer schedules Squidreports report generation every 10 minutes. To change the frequency, edit its entry in <code>/etc/cron.d/proxymon</code>.
+     The installer schedules Squidreports report generation every 10 minutes. To change the frequency, edit its entry in <code>/etc/cron.d/proxymon</code>. A second entry runs <code>yesterday</code> at 00:05, because <code>today</code> stops selecting the previous day at midnight. Its <code>--wait-lock</code> waits for the generator still running instead of giving up.
     </td>
     <td style="width: 50%; vertical-align: top;">
-     El instalador programa la generación de informes de Squidreports cada 10 minutos. Para cambiar la frecuencia, edite su tarea en <code>/etc/cron.d/proxymon</code>.
+     El instalador programa la generación de informes de Squidreports cada 10 minutos. Para cambiar la frecuencia, edite su tarea en <code>/etc/cron.d/proxymon</code>. Una segunda tarea ejecuta <code>yesterday</code> a las 00:05, porque <code>today</code> deja de seleccionar el día anterior a medianoche. Su opción <code>--wait-lock</code> espera al generador que siga activo en lugar de abandonar.
     </td>
   </tr>
 </table>
@@ -621,6 +620,7 @@ sudo /var/www/proxymon/squidreports/squidreports.pl today
 ```bash
 sudo nano /etc/cron.d/proxymon
 */10 * * * * www-data /var/www/proxymon/squidreports/squidreports.pl today
+5 0 * * * www-data /var/www/proxymon/squidreports/squidreports.pl yesterday --wait-lock
 ```
 
 #### Add Users
@@ -890,6 +890,24 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 > Bandata calculates usage from available Squidreports reports. If reports are missing or incomplete, calculated usage may be lower than actual usage.
 >
 > Bandata calcula el consumo con los informes disponibles de Squidreports. Si faltan informes o están incompletos, el consumo calculado puede ser inferior al real.
+
+> A failure never penalizes a client. When Bandata cannot read its reports, cannot build a list, or cannot publish its rules, it clears the affected blocks and logs a `WARNING: ... -- alert`. The client regains access and the administrator investigates the cause. Missing report folders are not a failure: that case is reported as `INFO` and the quota is simply calculated over the days that exist.
+>
+> Una falla nunca penaliza al cliente. Cuando Bandata no puede leer sus informes, construir una lista o publicar sus reglas, vacía los bloqueos afectados y registra un `WARNING: ... -- alert`. El cliente recupera el acceso y el administrador investiga la causa. La ausencia de carpetas de informes no es una falla: ese caso se informa como `INFO` y la cuota se calcula sobre los días que existen.
+
+```text
+# The day reports cannot be read
+WARNING: cannot read day reports, day cleared -- alert
+
+# A block list cannot be built from the reports
+WARNING: cannot build daily list, day cleared -- alert
+WARNING: cannot build weekly list, week cleared -- alert
+WARNING: cannot build monthly list, month cleared -- alert
+
+# The kernel set is incomplete or cannot be put in service
+WARNING: block set half loaded, all blocks cleared -- alert
+WARNING: cannot activate new set, all blocks cleared -- alert
+```
 
 ```bash
 # Bandata - Monitor bandwidth usage and enforce data limits (every 5 minutes)
@@ -1401,22 +1419,24 @@ sudo /etc/proxymon/tools/squidtool.sh
       <ul>
         <li>The project install tree, <code>/var/www/proxymon</code>, and <code>/etc/proxymon</code>.</li>
         <li>The MAC and Squid ACL lists.</li>
+        <li>The Bandata ACL directory and its quota lists.</li>
         <li>The Apache vhosts and the Apache and PHP hardening files.</li>
         <li>The <code>bandata</code> logrotate configuration.</li>
         <li>The project's <code>/etc/cron.d/proxymon</code> entry and the <code>php.ini</code> in use.</li>
       </ul>
-      Paths that do not exist are skipped. <code>pmsetup.sh update</code> runs this backup before updating project files.
+      Paths that do not exist are skipped. <code>pmsetup.sh --update</code> runs this backup before updating project files.
     </td>
     <td style="width: 50%; vertical-align: top;">
       <code>pmbk.sh</code> crea un archivo ZIP con la instalación y configuración de Proxy Monitor, incluidas las rutas que se enumeran a continuación:
       <ul>
         <li>El árbol de instalación del proyecto, <code>/var/www/proxymon</code>, y <code>/etc/proxymon</code>.</li>
         <li>Las listas ACL de MAC y de Squid.</li>
+        <li>El directorio ACL de Bandata y sus listas de cuota.</li>
         <li>Los hosts virtuales de Apache y los archivos de protección de Apache y PHP.</li>
         <li>La configuración de logrotate de <code>bandata</code>.</li>
         <li>La entrada <code>/etc/cron.d/proxymon</code> del proyecto y el <code>php.ini</code> en uso.</li>
       </ul>
-      Las rutas que no existan se omiten. <code>pmsetup.sh update</code> ejecuta esta copia de seguridad antes de actualizar los archivos del proyecto.
+      Las rutas que no existan se omiten. <code>pmsetup.sh --update</code> ejecuta esta copia de seguridad antes de actualizar los archivos del proyecto.
     </td>
   </tr>
 </table>
@@ -1427,9 +1447,9 @@ sudo /etc/proxymon/tools/squidtool.sh
 | `sudo bash pmbk.sh install` | Register the `@monthly` cron entry | Registrar la entrada mensual en cron |
 | `sudo bash pmbk.sh uninstall` | Remove the cron entry, keeping the archives | Quitar la entrada de cron, conservando los archivos ZIP |
 
-> Backs up Proxymon into `BACKUP_DIR/pmbk_<YYYYMMDD_HHMMSS>.zip` (`BACKUP_DIR=/etc/bak/proxymon` by default), keeping up to 3 archives. `pmsetup.sh install` registers the monthly cron entry automatically; `pmsetup.sh uninstall` removes it before removing the project. Restore with `sudo unzip -X ARCHIVE.zip -d /` to recover the stored Unix ownership and permissions. Validate the archive in an isolated directory before restoring.
+> Backs up Proxymon into `BACKUP_DIR/pmbk_<YYYYMMDD_HHMMSS>.zip` (`BACKUP_DIR=/etc/bak/proxymon` by default), keeping up to 3 archives. `pmsetup.sh --install` registers the monthly cron entry automatically; `pmsetup.sh --uninstall` removes it before removing the project. Restore with `sudo unzip -X ARCHIVE.zip -d /` to recover the stored Unix ownership and permissions. Validate the archive in an isolated directory before restoring.
 >
-> Respalda Proxymon en `BACKUP_DIR/pmbk_<YYYYMMDD_HHMMSS>.zip` (`BACKUP_DIR=/etc/bak/proxymon` por defecto), conservando hasta tres archivos ZIP. `pmsetup.sh install` registra la entrada mensual de cron automáticamente; `pmsetup.sh uninstall` la elimina antes de quitar el proyecto. Restaure con `sudo unzip -X ARCHIVO.zip -d /` para recuperar propietarios y permisos Unix almacenados. Valide el archivo en un directorio aislado antes de restaurar.
+> Respalda Proxymon en `BACKUP_DIR/pmbk_<YYYYMMDD_HHMMSS>.zip` (`BACKUP_DIR=/etc/bak/proxymon` por defecto), conservando hasta tres archivos ZIP. `pmsetup.sh --install` registra la entrada mensual de cron automáticamente; `pmsetup.sh --uninstall` la elimina antes de quitar el proyecto. Restaure con `sudo unzip -X ARCHIVO.zip -d /` para recuperar propietarios y permisos Unix almacenados. Valide el archivo en un directorio aislado antes de restaurar.
 
 ### PROXYMON LOGS
 
@@ -1494,6 +1514,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
       <ul>
         <li>May include third-party components.</li>
         <li>Does not accept Pull Requests. Changes must be proposed via Issues.</li>
+        <li>This project does not support backward compatibility. New versions may require configuration changes or reinstallation.</li>
       </ul>
     </td>
     <td style="width: 50%; vertical-align: top;">
@@ -1501,6 +1522,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
       <ul>
         <li>Puede incluir componentes de terceros.</li>
         <li>No acepta Pull Requests. Los cambios deben proponerse mediante Issues.</li>
+        <li>Este proyecto no soporta retrocompatibilidad. Las nuevas versiones pueden requerir cambios de configuración o una reinstalación.</li>
       </ul>
     </td>
   </tr>

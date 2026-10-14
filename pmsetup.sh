@@ -10,11 +10,11 @@
 # modules/ and config/ tree next to this script.
 #
 # USAGE:
-# sudo bash pmsetup.sh install      Fresh install
-# sudo bash pmsetup.sh update       Refresh code, keep live data
-# sudo bash pmsetup.sh uninstall    Remove proxymon
-# sudo bash pmsetup.sh              Interactive menu
-# sudo bash pmsetup.sh -h           Show usage
+# sudo bash pmsetup.sh --install      Fresh install
+# sudo bash pmsetup.sh --update       Refresh code, keep live data
+# sudo bash pmsetup.sh --uninstall    Remove proxymon
+# sudo bash pmsetup.sh                Interactive menu
+# sudo bash pmsetup.sh -h             Show usage
 #
 # LOG: pmsetup.log, in this script's directory
 #
@@ -140,7 +140,7 @@ configure_apache_locations() {
 
 # dependencies
 check_dependencies() {
-    for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils php libapache2-mod-php php-cli php-curl fonts-lato fonts-liberation fonts-dejavu apache2 apache2-bin apache2-data apache2-doc apache2-utils perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate; do
+    for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate; do
         if ! dpkg -s "$dep_pkg" &>/dev/null; then
             if [ "$dep_pkg" = libjson-xs-perl ]; then
                 info "Installing missing dependency: $dep_pkg"
@@ -151,11 +151,96 @@ check_dependencies() {
         fi
     done
 
-    # dependencies (squid or squid-openssl)
-    if ! dpkg -s squid &>/dev/null && ! dpkg -s squid-openssl &>/dev/null; then
-        abort "'squid' or 'squid-openssl' is not installed -- abort"
+}
+
+# Installs Apache and PHP. Unlike check_dependencies, these are installed
+# instead of merely verified: they are proxymon's own serving layer, not a
+# tool it calls.
+install_apache2() {
+    local dep_pkg missing_pkgs=()
+
+    for dep_pkg in apache2 apache2-bin apache2-data apache2-doc apache2-utils \
+                   php libapache2-mod-php php-cli php-curl; do
+        dpkg -s "$dep_pkg" &>/dev/null || missing_pkgs+=("$dep_pkg")
+    done
+    if (( ${#missing_pkgs[@]} == 0 )); then
+        info "apache2 and php already present"
+        return 0
+    fi
+
+    DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
+        || { err "cannot install ${missing_pkgs[*]}"; abort "install them with apt, then re-run -- abort"; }
+    systemctl enable apache2 &>/dev/null || true
+    info "Installed: ${missing_pkgs[*]}"
+}
+
+# Installs squid-openssl, the flavour that also supports SSL bump. An existing
+# squid or squid-openssl is left untouched, including its squid.conf: the
+# administrator's own proxy configuration is never replaced.
+install_squid() {
+    if dpkg -s squid &>/dev/null || dpkg -s squid-openssl &>/dev/null; then
+        info "squid already present, its configuration is kept"
+        squid_preexisting=1
+        return 0
+    fi
+
+    DEBIAN_FRONTEND=noninteractive apt-get -qq install -y squid-openssl squid-langpack squid-common \
+        || { err "cannot install squid-openssl"; abort "install it with apt, then re-run -- abort"; }
+    systemctl enable squid &>/dev/null || true
+    squid_preexisting=0
+    info "Installed: squid-openssl squid-langpack squid-common"
+}
+
+# Deploys proxymon's squid.conf and replaces its placeholders with the answers
+# given during installation. Runs only when install_squid() installed squid: an
+# existing squid.conf belongs to the administrator.
+deploy_squid_template() {
+    if (( squid_preexisting == 1 )); then
+        info "squid.conf kept as is, template not deployed"
+        return 0
+    fi
+    [ -f config/squid/squid.conf ] || abort "config/squid/squid.conf not found -- abort"
+    cp -f /etc/squid/squid.conf{,.bak} &>/dev/null || true
+    cp -f config/squid/squid.conf /etc/squid/squid.conf \
+        || abort "cannot write /etc/squid/squid.conf -- abort"
+    sed -i "s:192.168.0.0/24:$RANGE:g; s:192.168.0.10:$SERVER_IP:g" /etc/squid/squid.conf
+    info "squid.conf deployed with RANGE=$RANGE and SERVER_IP=$SERVER_IP"
+}
+
+# Squidmon, Logview and SquidAI read only the current access.log. A rotation
+# leaves it empty, so they lose the hours moved to the rotated file. Weekly
+# limits that gap to one day out of seven.
+set_squid_logrotate() {
+    local rotate_file=/etc/logrotate.d/squid
+    local hook="runuser -u www-data -- $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
+
+    if [ ! -f "$rotate_file" ]; then
+        warn "$rotate_file not found, rotation left unchanged -- alert"
+        return 0
+    fi
+    cp -f "$rotate_file"{,.bak} &>/dev/null || true
+    sed -i -E 's/^([[:space:]]*)(daily|monthly)$/\1weekly/' "$rotate_file"
+    if grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
+        info "squid log rotation set to weekly"
+    else
+        warn "cannot set weekly rotation in $rotate_file -- alert"
+    fi
+    if grep -qE '^[[:space:]]*(size|maxsize)[[:space:]]' "$rotate_file"; then
+        warn "$rotate_file sets size or maxsize, which splits the current day -- alert"
+    fi
+    if grep -qE "^[[:space:]]*$hook$" "$rotate_file"; then
+        info "squid rotation already closes the previous day"
+    elif grep -qE '^[[:space:]]*prerotate' "$rotate_file"; then
+        warn "$rotate_file already defines prerotate, closing not added -- alert"
+    elif ! grep -qE '^[[:space:]]*sharedscripts' "$rotate_file"; then
+        warn "$rotate_file has no sharedscripts, closing not added -- alert"
+    else
+        sed -i "/^[[:space:]]*sharedscripts/a \\    prerotate\n        $hook\n    endscript" "$rotate_file"
+        info "squid rotation now closes the previous day first"
     fi
 }
+
+squid_preexisting=1
 check_dependencies
 
 # conflicting packages
@@ -505,7 +590,7 @@ create_proxymon_env() {
 # /etc/proxymon/proxymon.env
 # =============================================================================
 # Generated by pmsetup.sh on $(date '+%Y-%m-%d %H:%M:%S')
-# Edit manually if needed. Re-run pmsetup.sh install to regenerate.
+# Edit manually if needed. Re-run pmsetup.sh --install to regenerate.
 
 # General
 WEB_ROOT=${WEB_ROOT}
@@ -595,7 +680,10 @@ cron_d_set() {
     rm -f "$cron_tmp"
 }
 
-install_proxymon() {
+do_install() {
+    install_apache2
+    install_squid
+    run_initial_checks
     configure_locations
     if [[ -d "$WEB_ROOT" ]]; then
         abort "proxymon already installed -- abort"
@@ -716,7 +804,8 @@ install_proxymon() {
 
     # Squidreports runs as www-data. In /etc/cron.d the user is a field of
     # the line, so it lives in the project's own file.
-    cron_d_set "squidreports.pl" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
+    cron_d_set "squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
+    cron_d_set "squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
 
     info "proxymon cron entry updated (Squidreports)"
 
@@ -883,6 +972,8 @@ EOF
         info "group 'proxy' created -- fixed"
     fi
     usermod -aG proxy www-data
+    deploy_squid_template
+    set_squid_logrotate
     chown root:root /etc/squid/squid.conf
     chmod 644 /etc/squid/squid.conf
 
@@ -1023,7 +1114,7 @@ secure_web_code() (
 # location/port keys, applies Apache paths/ports and refreshes module cron
 # entries. Copies every file under modules/ except web_preserved_paths.
 
-update_proxymon() {
+do_update() {
     configure_locations
     if [[ ! -d "$WEB_ROOT" ]]; then
         abort "proxymon not installed -- abort"
@@ -1042,26 +1133,33 @@ update_proxymon() {
 
     check_repo
 
-    info "Stopping Apache..."
     systemctl stop apache2
+    info "apache2 stopped for update"
     trap 'systemctl start apache2 >/dev/null 2>&1 || true' EXIT
 
-    info "Creating backup with pmbk.sh ..."
-    bash "$script_dir/config/tools/pmbk.sh" || warn "backup failed, continuing -- alert"
+    if bash "$script_dir/config/tools/pmbk.sh"; then
+        info "backup taken with pmbk.sh"
+    else
+        warn "backup failed, continuing -- alert"
+    fi
 
-    info "Replacing Proxy Monitor code..."
     secure_web_code "$WEB_ROOT" 1 || abort "cannot update web code -- abort"
     rm -f -- "$WEB_ROOT/squidreports/weekly.cgi"
     rm -f -- "$WEB_ROOT/squidreports/ip2name/ip2name.dhcp"
+    info "updated web code in $WEB_ROOT"
 
     # The root scripts, copied one by one. config/bandata/acl/ is live data
     # and config/vhost/ is Apache configuration, so neither is touched.
     mkdir -p "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools"
     cp -f config/bandata/bandata.sh "$CONFIG_DIR/bandata/bandata.sh"
+    info "updated bandata/bandata.sh"
     cp -f config/tools/pmbk.sh "$CONFIG_DIR/tools/pmbk.sh"
+    info "updated tools/pmbk.sh"
     install -m 644 -o root -g root config/tools/proxymonenv.sh "$CONFIG_DIR/tools/proxymonenv.sh"
+    info "updated tools/proxymonenv.sh"
     rm -f -- "$CONFIG_DIR/tools/proxymon-env.sh"
     cp -f config/tools/squidtool.sh "$CONFIG_DIR/tools/squidtool.sh"
+    info "updated tools/squidtool.sh"
 
     for data_dir in "$REPORT_PATH" "$REPORT_STATS_PATH"; do
         [ -d "$data_dir" ] || install -d -m 755 -o www-data -g www-data "$data_dir"
@@ -1070,7 +1168,6 @@ update_proxymon() {
     [ -d "$TOOL_REPORT_DIR" ] || install -d -m 755 -o root -g root "$TOOL_REPORT_DIR"
 
     info "Live data left untouched"
-    info "Setting permissions..."
 
     chmod 755 "$CONFIG_DIR/bandata/bandata.sh"
     chmod 755 "$CONFIG_DIR/tools/pmbk.sh"
@@ -1081,15 +1178,16 @@ update_proxymon() {
     info "Permissions set"
 
     configure_apache_locations
-    cron_d_set "squidreports.pl" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
+    set_squid_logrotate
+    cron_d_set "squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
+    cron_d_set "squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
     cron_d_set "bandata.sh" "*/5 * * * * root $CONFIG_DIR/bandata/bandata.sh"
     cron_d_set "pmbk.sh" "@monthly root $CONFIG_DIR/tools/pmbk.sh"
     apache2ctl configtest || abort "Apache configuration invalid -- abort"
 
-    info "Starting Apache..."
     trap - EXIT
     if systemctl start apache2; then
-        info "Apache started"
+        info "apache2 started"
     else
         err "Apache failed to start -- abort"
         exit 1
@@ -1102,7 +1200,12 @@ update_proxymon() {
 # UNINSTALL
 # ------------------------------------------------------------------------------
 
-uninstall_proxymon() {
+do_uninstall() {
+    read -p "Are you sure you want to uninstall? (y/n): " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        info "uninstall cancelled -- skip"
+        return 0
+    fi
     configure_locations
     info "for a backup, run $CONFIG_DIR/tools/pmbk.sh first"
     info " Uninstalling Proxy Monitor..."
@@ -1247,104 +1350,59 @@ uninstall_proxymon() {
 }
 
 # ------------------------------------------------------------------------------
-# MAIN
+# MENU
 # ------------------------------------------------------------------------------
 
+# Interactive menu shown when the script runs without arguments
+show_menu() {
+    while true; do
+        echo ""
+        echo "proxymon installer"
+        echo "------------------"
+        echo "1) Install"
+        echo "2) Update"
+        echo "3) Uninstall"
+        echo "4) Exit"
+        echo ""
+        read -p "Select option [4]: " menu_option
+        menu_option="${menu_option:-4}"
+        case "$menu_option" in
+            1) do_install; break ;;
+            2) do_update; break ;;
+            3) do_uninstall; break ;;
+            4) exit 0 ;;
+            *) info "invalid option -- retry" ;;
+        esac
+    done
+}
+
+usage() {
+    cat <<USAGE_END
+Usage: $(basename "$0") [--install|--update|--uninstall]
+
+  --install      Fresh install
+  --update       Refresh code, keep live data
+  --uninstall    Remove proxymon, after confirmation
+  -h, --help     Show this message
+
+Without arguments it opens the interactive menu.
+USAGE_END
+}
+
+# ------------------------------------------------------------------------------
+# ACTIONS
+# ------------------------------------------------------------------------------
+
+# Run the action given on the command line, or fall back to the menu
 case "${1:-}" in
-    install)
-        run_initial_checks
-        install_proxymon
-        exit 0
-        ;;
-    update)
-        update_proxymon
-        exit 0
-        ;;
-    uninstall)
-        read -p "Are you sure you want to uninstall? (y/n): " -r
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            uninstall_proxymon
-        else
-            echo "Uninstall cancelled"
-            exit 0
-        fi
-        exit 0
-        ;;
-    -h|--help)
-        echo "Proxy Monitor Installation/Uninstallation Script"
-        echo ""
-        echo "Usage: $0 [OPTIONS]"
-        echo ""
-        echo "Options:"
-        echo "install Install Proxy Monitor"
-        echo "update Update Proxy Monitor code (live data preserved)"
-        echo "uninstall Uninstall Proxy Monitor"
-        echo "-h, --help Show this help message"
-        exit 0
-        ;;
-    "")
-        show_menu() {
-            clear
-            echo "----------------------------------------"
-            echo " Proxy Monitor Installer"
-            echo "----------------------------------------"
-            echo ""
-            echo "1 - Install Proxy Monitor"
-            echo "2 - Update Proxy Monitor"
-            echo "3 - Uninstall Proxy Monitor"
-            echo "4 - Exit"
-            echo ""
-            echo "----------------------------------------"
-            echo -n "Select an option: "
-        }
-
-        while true; do
-            show_menu
-            read -r menu_option
-
-            case "$menu_option" in
-                1)
-                    echo ""
-                    run_initial_checks
-                    install_proxymon
-                    echo ""
-                    echo -n "Press Enter to continue..."
-                    read -r
-                    ;;
-                2)
-                    echo ""
-                    update_proxymon
-                    echo ""
-                    echo -n "Press Enter to continue..."
-                    read -r
-                    ;;
-                3)
-                    echo ""
-                    read -p "Are you sure you want to uninstall? (y/n): " -r
-                    echo ""
-                    if [[ $REPLY =~ ^[Yy]$ ]]; then
-                        uninstall_proxymon
-                    else
-                        echo "Uninstall cancelled"
-                    fi
-                    echo ""
-                    echo -n "Press Enter to continue..."
-                    read -r
-                    ;;
-                4)
-                    echo "Goodbye!"
-                    exit 0
-                    ;;
-                *)
-                    echo "Invalid option. Please select 1, 2, 3 or 4"
-                    sleep 2
-                    ;;
-            esac
-        done
-        ;;
+    --install) do_install ;;
+    --update) do_update ;;
+    --uninstall) do_uninstall ;;
+    "") show_menu ;;
+    -h|--help) usage ;;
     *)
-        echo "Unknown option: $1"
-        echo "Use: $0 -h for help"
+        err "unknown option $1 -- abort"
+        usage
         exit 1
         ;;
 esac

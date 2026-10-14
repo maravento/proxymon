@@ -20,6 +20,7 @@
 #	yesterday				 - yesterday
 #	data in format YYYYMMDD	 - parse day
 #	access.log.{\d}.{gz|bz2} - parse file (for process archived)
+#	--wait-lock				 - wait for another generator instead of exiting
 
 # function prototypes
 sub MakeReport();
@@ -41,6 +42,8 @@ require "ReportAnalytics.pm";
 use JSON::PP;
 use File::Path qw(make_path);
 use File::Copy ();
+use File::Temp ();
+use Fcntl qw(:flock);
 my $analytics = {};
 my $network_rules=ReportAnalytics::network_rules($main::proxymon_settings,$analytics_networks // []);
 
@@ -50,14 +53,12 @@ require "ip2name/ip2name.$ip2name";
 $SIG{INT} = \&LOCKREMOVER;	# traps keyboard interrupt
 my $lockfilepath	  ="$lockpath/lockfile";
 
-# An abort between taking the lock and releasing it used to leave the file
-# behind, and every later run then refused to start until maxlocktime had
-# passed. The lock is now released by this block on every exit path, and
-# only by the process that actually took it.
-my $lockowner = 0;
+my $waitlock = grep { $_ eq "--wait-lock" } @ARGV;
+
+my $tempsource = "";
 END {
-  if ($lockowner && defined $lockfilepath && -f $lockfilepath) {
-	unlink $lockfilepath;
+  if ($tempsource ne "" && -f $tempsource) {
+	unlink $tempsource;
   }
 }
 
@@ -66,6 +67,7 @@ my $skip4xxcntr		  = 0;
 my $skipfilterdatecntr= 0;
 
 my $firstrun	= 1;
+my %closedday	= ();
 my $totallines	= 0;
 my $parsedlines = 0;
 my $daylines	= 0;
@@ -76,8 +78,7 @@ $logpath = File::Basename::dirname($proxymon_settings->{SQUID_LOG_FILE});
 
 undef $workday;
 
-exit unless (LockLSQ()); #Lock LSQ (block multiple instance)
-$lockowner = 1;
+exit($waitlock ? 1 : 0) unless (LockLSQ()); #Lock LSQ (block multiple instance)
 
 if ($skipurl eq "") {
    $skipurl = "skipurl MUST be defined!!!";
@@ -136,7 +137,40 @@ unless (-f "$logpath/$filename" && -r _) {
    print STDERR "ERROR: can't read log file '$logpath/$filename'\n";
    exit 1;
 }
-open FF, "$catname $logpath/$filename|" || die "can't access log file\n";
+my $readsource = "$logpath/$filename";
+my $readcat    = $catname;
+
+# Without a date filter the source can hold several days, and MakeReport()
+# publishes each one as soon as the next appears. A reader that failed after
+# that point would leave an existing day already overwritten with a partial
+# total. The source is decompressed to a temporary file first, so the parser
+# only ever sees content that was read in full. 'today', 'yesterday' and an
+# explicit YYYYMMDD set $filterdate, so the cron does not take this path.
+unless ($filterdate) {
+   my $temp_fh;
+   ($temp_fh,$tempsource) = File::Temp::tempfile("squidreports-XXXXXX", TMPDIR => 1);
+   unless (open SRC, "$catname $logpath/$filename|") {
+	  print STDERR "ERROR: can't read log file '$logpath/$filename'\n";
+	  exit 1;
+   }
+   while (<SRC>) {
+	  unless (print $temp_fh $_) {
+		 print STDERR "ERROR: can't write a temporary copy of '$logpath/$filename': $!\n";
+		 exit 1;
+	  }
+   }
+   unless (close SRC) {
+	  print STDERR "ERROR: '$catname $logpath/$filename' failed, report not written\n";
+	  exit 1;
+   }
+   unless (close $temp_fh) {
+	  print STDERR "ERROR: can't write a temporary copy of '$logpath/$filename': $!\n";
+	  exit 1;
+   }
+   $readsource = $tempsource;
+   $readcat	= "cat";
+}
+open FF, "$readcat $readsource|" || die "can't access log file\n";
 
 InitSkipUser();
 
@@ -250,11 +284,20 @@ while (<FF>) {
 	$parsedlines++;
 	
 	if ($date ne $workday) { # close prev day, prepare for new
+	  # A date already closed in this run must not be published again:
+	  # MakeReport replaces the day, it does not add to it. Reaching here
+	  # means the source interleaves dates, so the run stops before that
+	  # day is overwritten with a partial total.
+	  if (defined $closedday{$date}) {
+		 print STDERR "ERROR: date '$date' reappears after being closed; source '$filename' is out of order\n";
+		 exit 1;
+	  }
 	  if ($firstrun) {
 		undef $firstrun;
 		$workday=$date;
 	  } else {
 		MakeReport();
+		$closedday{$workday}=1;
 		$analytics = {};
 		undef %totalsize; undef %sitesize; undef %sitehit;undef %totalhit;undef %totalputpost;
 	undef %hashhost;undef %hashname;
@@ -272,14 +315,6 @@ while (<FF>) {
 	  }
 	}
 	$daylines++;
-
-	# Counted after the day rollover above, not before it. Accumulating here
-	# keeps the first request of a new day out of the day being closed.
-	if ($Ltype =~ m/HIT/) {
-	  $CacheHIT+=$Lsize;
-	} else {
-	  $CacheMISS+=$Lsize;
-	}
 
 	$user=lc $Luser;
  
@@ -323,12 +358,18 @@ while (<FF>) {
 	$sitetimesize {$user}{$site}[$hour]+=$Lsize;
 
 	#.userstat support: per user cache, duration and largest object
+	# The day totals in .features are accumulated here too, so they cover the
+	# same clients as .total: a user listed in skipuser.cfg never reaches this
+	# point. The day rollover above has already run, so the first request of a
+	# new day stays out of the day being closed.
 	if ($Ltype =~ m/HIT/) {
 		$usercachehit  {$user}+=$Lsize;
 		$sitecachehit {$user}{$site}+=$Lsize;
+		$CacheHIT+=$Lsize;
 	} else {
 		$usercachemiss {$user}+=$Lsize;
 		$sitecachemiss {$user}{$site}+=$Lsize;
+		$CacheMISS+=$Lsize;
 	}
 	$userelapsed {$user}+=$Lelapsed;
 	$siteelapsed {$user}{$site}+=$Lelapsed;
@@ -533,7 +574,7 @@ sub MakeReport() {
 	  CloseAtomic($repfh,$reptmp,"$reppath/$tuser");
 	}
 
-	$CacheMISS=1 if ($CacheMISS == 0);
+	my $cacheall = $CacheHIT + $CacheMISS;
 
 	print $totalfh "user: $tmpuser\n";
 	print $totalfh "size: $tmpsize\n";
@@ -545,10 +586,10 @@ sub MakeReport() {
 
 	my ($featfh,$feattmp)=OpenAtomic("$reppath/.features");
 	print $featfh "overuser: $tmpoveruser\n";
-	print $featfh "cachehit%: ".sprintf("%3.2f",($CacheHIT*100)/($CacheHIT+$CacheMISS))."\n";
+	print $featfh "cachehit%: ".sprintf("%3.2f",$cacheall ? 100*$CacheHIT/$cacheall : 0)."\n";
 	print $featfh "cachehit: $CacheHIT\n";
 	print $featfh "cachemiss: $CacheMISS\n";
-	print $featfh "cacheall: ".($CacheHIT+$CacheMISS)."\n";
+	print $featfh "cacheall: $cacheall\n";
 	print $featfh "modification: $moddate\n";
 	CloseAtomic($featfh,$feattmp,"$reppath/.features");
 
@@ -631,42 +672,28 @@ sub InitSkipUser() {
  close F;
 }
 # Lock support
+# The kernel holds the lock while this process lives, so a slow run keeps it
+# and a killed run releases it at once. The file is never removed: unlinking it
+# while another process holds the lock would let a third one create a new file
+# and run as well.
 sub LockLSQ() {
-   if (-f "$lockfilepath") {
-	  #read data from `lockfile`
-	  print STDERR "Warning, `$lockfilepath` exist, maybe anoter process running !\n";
-	  open FF,"<","$lockfilepath" or die "can't read lock file `$lockfilepath`\n";
-	  $pid=<FF>;chomp $pid;$pid =~ s/PID: //;
-	  $ts =<FF>;chomp $ts ;$ts	=~ s/Timestamp: //;
-	  close FF;
-	  #check timedelta
-	  $tsdelta=time - $ts;
-	  print STDERR "LockPID : $pid\n" ;
-	  print STDERR "tsdelta : $tsdelta second(s) (maxlocktime: $maxlocktime)\n";
+   open LOCK,">>",$lockfilepath
+	  or die "ERROR: cannot open '$lockfilepath': $!\n";
 
-	  return 0 if ($tsdelta<$maxlocktime);
-
-	  print STDERR "OLD lock file ignored and removed!\n";
-	  UnLockLSQ();
-   } 
-
-   open FF,">","$lockfilepath" or die "can't create lock file `$lockfilepath`\n";
-   print FF "PID: $$\n";
-   $ts=time;
-   print FF "Timestamp: $ts\n";
-   print FF "Creation time: ".localtime($ts)."\n";
-   close FF;
-
+   unless (flock LOCK, ($waitlock ? LOCK_EX : (LOCK_EX | LOCK_NB))) {
+	  print STDERR "ERROR: cannot lock '$lockfilepath': $!\n";
+	  close LOCK;
+	  return 0;
+   }
    return 1;
 }
 
 sub UnLockLSQ() {
-  unlink $lockfilepath or die "can't remove lock file `$lockfilepath`\n";
+  close LOCK;
 }
 
 sub LOCKREMOVER() {
-   print "INT happents, remove LOCK\n";
-   UnLockLSQ();
+   print "INT happents, exit\n";
    exit;
 }
 

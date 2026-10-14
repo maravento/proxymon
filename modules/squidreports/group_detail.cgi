@@ -87,44 +87,36 @@ if ($mode eq "day") {
 
 $totalsize=0;
 foreach $workday (sort @datelist) {
+    undef %hUserGroup;
     GetGroupFile($workday);
     GetRealName($workday,"?");
-    
+
     open FF,"<$workday/.total" or MyDie("can't open file $workday/.total<br>");
     $user=<FF>;#chomp $user;$user=~s/^user: //;
     $size=<FF>;#chomp $size;$size=~s/^size: //;
-    
+
     while (<FF>) {
 	$N++;
 	($user,$size,$hit)=split;
 	$hUserTotal{$user}+=$size;
-	$hUserTotalHit{$user}+=$hit;
 	$totalsize+=$size;
+	@grps=keys %{$hUserGroup{$user}};
+	@grps=($NotInGroupID) unless (@grps);
+	foreach $grp (@grps) {
+	    $hGroupUserSize{$grp}{$user}+=$size;
+	    $hGroupUserHit {$grp}{$user}+=$hit;
+	    $hGroupTotalSize{$grp}+=$size;
+	}
     }
     close FF
 }
 
 #----------------------------------------------------------------------------------
-#numerate user position in all list & add NOT IN GROUP
+#numerate user position in all list
 $N=0;
 foreach $user (sort {$hUserTotal{$b} <=> $hUserTotal{$a}} keys %hUserTotal) {
     $N++;
     $hUserPosition{$user}=$N;
-    unless (exists $hUserGroup{$user}) {
-        #GetGroupFile - not clear
-	$hGroupByUser{$NotInGroupID}{$user}=1;
-	$hUserGroup  {$user}{$NotInGroupID}=$NotInGroupID;  
-    }
-}
-
-#----------------------------------------------------------------------------------
-#calculate TotalSize by group (all user in group sum)
-
-foreach $grp (sort keys %hGroupByUser) {
-    foreach $user (sort keys %{$hGroupByUser{$grp}}) {
-        next unless (defined $hUserTotal{$user}); #skip if user not use internet
-        $hGroupTotalSize{$grp}+=$hUserTotal{$user};
-    }
 }
 
 #-----------------------------------------------------------------------------------
@@ -155,8 +147,7 @@ foreach $grp (sort {$hGroupTotalSize{$b}<=>$hGroupTotalSize{$a}} keys %hGroupNam
 }
 
 $row=0;
-#foreach $grp (sort {$hGroupTotalSize{$b}<=>$hGroupTotalSize{$a}} keys %hGroupByUser) {
-foreach $grp (sort keys %hGroupByUser) {
+foreach $grp (sort keys %hGroupUserSize) {
     next if (0 == $hGroupTotalSize{$grp});
 #    print "$grp -> $hGroupName{$grp} -> $hGroupTotalSize{$grp}\n";
 
@@ -169,7 +160,7 @@ foreach $grp (sort keys %hGroupByUser) {
     $tmp=~s/##GROUPSTARTURL_B##/$groupstarturl_B/;
     $tpl{user} .= $tmp;    
     
-    foreach $user (sort {$hUserTotal{$b} <=> $hUserTotal{$a}} keys %{$hGroupByUser{$grp}}) {
+    foreach $user (sort {$hGroupUserSize{$grp}{$b} <=> $hGroupUserSize{$grp}{$a}} keys %{$hGroupUserSize{$grp}}) {
         next unless (defined $hUserTotal{$user}); #skip if user not use internet
 #	print "\t$hUserPosition{$user}. $user\t$hUserTotal{$user}\n";
 
@@ -191,8 +182,8 @@ foreach $grp (sort keys %hGroupByUser) {
 	}
 	$url_L = URLEncode($url_L);
 
-        $size     =$hUserTotal{$user};
-	$printhit =FineDec($hUserTotalHit{$user});
+        $size     =$hGroupUserSize{$grp}{$user};
+	$printhit =FineDec($hGroupUserHit{$grp}{$user});
         $printsize=FineDec($size);
 	$percent  =sprintf("%2.1f",int($size*1000/$totalsize)/10);
 	$N        =$hUserPosition{$user};

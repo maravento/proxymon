@@ -85,6 +85,7 @@ function readEnvFile(string $path): array {
         $line = trim($line);
         if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) continue;
         [$key, $val] = explode('=', $line, 2);
+        $key = trim($key);
         $val = trim($val);
         // Strip matching surrounding quotes, e.g. KEY="value" or KEY='value'
         if (strlen($val) >= 2) {
@@ -97,15 +98,17 @@ function readEnvFile(string $path): array {
         // Expand $VAR / ${VAR} references against keys already parsed above,
         // the same way bash resolves them when this file is sourced by
         // bandata.sh or the installer (e.g. REPORT_PATH=$SQUIDREPORTS_DIR/report).
-        $val = preg_replace_callback(
-            '/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/',
-            function ($m) use (&$vars) {
-                $name = $m[1] !== '' ? $m[1] : $m[2];
-                return $vars[$name] ?? $m[0];
-            },
-            $val
-        );
-        $vars[trim($key)] = $val;
+        if (!preg_match('/_(?:PASSWD|API_KEY)$/', $key)) {
+            $val = preg_replace_callback(
+                '/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/',
+                function ($m) use (&$vars) {
+                    $name = $m[1] !== '' ? $m[1] : $m[2];
+                    return $vars[$name] ?? $m[0];
+                },
+                $val
+            );
+        }
+        $vars[$key] = $val;
     }
     return $vars;
 }
@@ -119,6 +122,7 @@ $aclSquidPath = $proxymonEnv['ACL_SQUID_PATH'] ?? throw new RuntimeException('AC
 define('REALNAME_CFG',    $proxymonEnv['REALNAME_CFG']  ?? throw new RuntimeException('REALNAME_CFG missing in proxymon.env'));
 define('SKIPUSERS_CFG',   $proxymonEnv['SKIPUSERS_CFG'] ?? throw new RuntimeException('SKIPUSERS_CFG missing in proxymon.env'));
 define('SQUIDREPORTS_DIR',  $proxymonEnv['REPORT_PATH']   ?? throw new RuntimeException('REPORT_PATH missing in proxymon.env'));
+define('REPORT_STATS_DIR',  $proxymonEnv['REPORT_STATS_PATH'] ?? throw new RuntimeException('REPORT_STATS_PATH missing in proxymon.env'));
 define('BLOCKDOMAINS',    $aclSquidPath . '/blockdomains.txt');
 define('BLOCKTLDS',       $aclSquidPath . '/blocktlds.txt');
 define('BLOCKPATTERNS',   $aclSquidPath . '/blockpatterns.txt');
@@ -237,6 +241,11 @@ function cachedJson(string $key, int $ttl, callable $producer): void {
     echo json_encode($producer());
 }
 
+
+// Thrown when a log reader fails or times out. A query that could not read
+// its sources must not answer "no incidents": that is a security conclusion
+// drawn from incomplete data.
+class IncompleteLogRead extends \RuntimeException {}
 
 try {
     switch ($action) {
@@ -503,9 +512,11 @@ try {
 } catch (\Throwable $e) {
     http_response_code(500);
     error_log('SquidAI worker error: ' . $e->getMessage());
-    echo json_encode(['error' => $e instanceof \OverflowException
-        ? 'Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.'
-        : 'Internal error']);
+    echo json_encode(['error' => match (true) {
+        $e instanceof \OverflowException => 'Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.',
+        $e instanceof IncompleteLogRead  => 'A log source could not be read, so the result would be incomplete. Check the log permissions and retry.',
+        default                          => 'Internal error',
+    }]);
 }
 
 // ── FUNCTIONS ──────────────────────────────────────────────────────
@@ -689,8 +700,13 @@ function getDeniedDirectIps(string $ip, string $date): array {
         if (!file_exists($logFile)) continue;
 
         $logFileEsc = escapeshellarg($logFile);
-        $handle = popen("timeout 30 grep -Fa {$ipEsc} {$logFileEsc} | timeout 30 grep 'TCP_DENIED'", 'r');
-        if (!$handle) continue;
+        // PIPESTATUS, not pipefail: pipefail reports the rightmost non-zero
+        // status, so the second grep's legitimate "no match" would mask a
+        // read error in the first one. Exit 2 only when a reader truly failed.
+        $command = "timeout 30 grep -Fa {$ipEsc} {$logFileEsc} | timeout 30 grep 'TCP_DENIED'"
+            . '; s=("${PIPESTATUS[@]}"); exit $(( s[0] > 1 || s[1] > 1 ? 2 : 0 ))';
+        $handle = popen('/bin/bash -c ' . escapeshellarg($command), 'r');
+        if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
 
         $lineCount = 0;
         while (($line = fgets($handle)) !== false) {
@@ -712,7 +728,9 @@ function getDeniedDirectIps(string $ip, string $date): array {
             $target = preg_replace('#^https?://#', '', $url);
             $ipTargets[$target] = ($ipTargets[$target] ?? 0) + 1;
         }
-        pclose($handle);
+        if (pclose($handle) !== 0) {
+            throw new IncompleteLogRead('Incomplete read of ' . $logFile);
+        }
     }
 
     if ($hits === 0) return ['hits' => 0, 'severity' => null];
@@ -832,7 +850,7 @@ function parseAccessLog(string $ip, string $date): array {
         if (!file_exists($logFile)) continue;
 
         $fh = @fopen($logFile, 'r');
-        if (!$fh) continue;
+        if (!$fh) throw new IncompleteLogRead('Cannot read ' . $logFile);
 
         // For large files, read in chunks
         $lineCount = 0;
@@ -1054,7 +1072,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         if (!file_exists($logFile)) continue;
 
         $handle = popen("timeout 30 grep -a 'TCP_DENIED' " . escapeshellarg($logFile), 'r');
-        if (!$handle) continue;
+        if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
 
         $lineCount = 0;
         while (($line = fgets($handle)) !== false) {
@@ -1162,7 +1180,11 @@ function getBlockedByType(string $type, string $date = 'today'): array {
             $totalBytes += $bytes;
         }
 
-        pclose($handle);
+        // grep exits 1 when the file holds no denied request, which is a
+        // complete answer. Anything above that is a read error or a timeout.
+        if (pclose($handle) > 1) {
+            throw new IncompleteLogRead('Incomplete read of ' . $logFile);
+        }
     }
 
     $results = array_values($incidentMap);
@@ -1279,17 +1301,20 @@ function getNetworkSummary(string $date = 'today'): array {
 }
 
 /**
- * Read the per-day aggregation files that squidreports.pl writes beside the
- * per-user reports: .userstat, .mime, .ext, .subnet and .denied.
+ * Read the per-day aggregation files that squidreports.pl writes under
+ * REPORT_STATS_PATH: .userstat, .mime, .ext, .subnet and .denied.
  *
- * These files are additive. Any of them may be missing — an older report
- * directory predates them, and .denied only exists when the day had denied
- * requests. A missing file yields an empty list, never an error, so the rest
- * of the worker keeps answering exactly as before.
+ * These files are additive. Any of them may be missing, because an older
+ * report directory predates them. A day without denied requests still gets
+ * its .denied file, written empty. A missing file yields an empty list,
+ * never an error, so the rest of the worker keeps answering as before.
+ *
+ * Availability is reported per file instead of with is_dir: the directory
+ * can exist while holding none of these metrics.
  */
 function getTrafficStats(string $date = 'today'): array {
     $dateFormatted = str_replace('-', '', normalizeDate($date));
-    $reportBase    = SQUIDREPORTS_DIR . '/' . $dateFormatted;
+    $statsBase     = REPORT_STATS_DIR . '/' . $dateFormatted;
 
     // Tab separated columns, in the order squidreports.pl writes them
     $layout = [
@@ -1301,12 +1326,13 @@ function getTrafficStats(string $date = 'today'): array {
     ];
     $numeric = ['cache_hit', 'cache_miss', 'elapsed', 'max_size', 'bytes', 'hits'];
 
-    $out = ['date' => normalizeDate($date), 'available' => is_dir($reportBase)];
+    $out = ['date' => normalizeDate($date), 'available' => false];
 
     foreach ($layout as $key => [$file, $columns]) {
         $out[$key] = [];
-        $path = $reportBase . '/' . $file;
+        $path = $statsBase . '/' . $file;
         if (!is_file($path)) continue;
+        $out['available'] = true;
 
         foreach (readLinesLocked($path) as $line) {
             $line = rtrim($line, "\r\n");

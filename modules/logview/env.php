@@ -6,6 +6,7 @@ function readEnvFile(string $path): array {
         $line = trim($line);
         if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) continue;
         [$key, $val] = explode('=', $line, 2);
+        $key = trim($key);
         $val = trim($val);
         // Strip matching surrounding quotes, e.g. KEY="value" or KEY='value'
         if (strlen($val) >= 2) {
@@ -18,15 +19,17 @@ function readEnvFile(string $path): array {
         // Expand $VAR / ${VAR} references against keys already parsed above,
         // the same way bash resolves them when this file is sourced by
         // bandata.sh or the installer (e.g. SQUID_LOG_FILE=$SQUID_LOG_DIR/access.log).
-        $val = preg_replace_callback(
-            '/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/',
-            function ($m) use (&$vars) {
-                $name = $m[1] !== '' ? $m[1] : $m[2];
-                return $vars[$name] ?? $m[0];
-            },
-            $val
-        );
-        $vars[trim($key)] = $val;
+        if (!preg_match('/_(?:PASSWD|API_KEY)$/', $key)) {
+            $val = preg_replace_callback(
+                '/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/',
+                function ($m) use (&$vars) {
+                    $name = $m[1] !== '' ? $m[1] : $m[2];
+                    return $vars[$name] ?? $m[0];
+                },
+                $val
+            );
+        }
+        $vars[$key] = $val;
     }
     return $vars;
 }

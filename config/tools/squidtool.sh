@@ -291,7 +291,7 @@ report_traffic() {
     log "INFO: traffic report -- ip=${target_ip:-all} cutoff=$cutoff"
     echo "Analyzing, please wait..."
 
-    rows=$(zcat -f "$squid_log_file"* 2>/dev/null | awk -v cutoff="$cutoff" -v ip="$target_ip" '
+    if ! rows=$(zcat -f "$squid_log_file"* | awk -v cutoff="$cutoff" -v ip="$target_ip" '
         $1 > cutoff {
             if (ip != "" && $3 != ip) next
             if (match($7, /https?:\/\/[^\/]+/)) {
@@ -300,7 +300,10 @@ report_traffic() {
                 if (host != "") { print $3, host }
             }
             else if ($7 ~ /^[^\/]+:[0-9]+$/) { host = $7; sub(/:[0-9]+$/, "", host); print $3, host }
-        }' | sort | uniq -c | sort -nr)
+        }' | sort | uniq -c | sort -nr); then
+        log "ERROR: cannot analyze access logs -- abort"
+        exit 1
+    fi
 
     if [ -n "$target_ip" ]; then
         rows=$(printf '%s\n' "$rows" | awk 'NF >= 3')
@@ -352,16 +355,32 @@ report_search() {
     log "INFO: search '$search_term' -- ip=${target_ip:-all} cutoff=$cutoff"
     echo "Searching, please wait..."
 
-    access_hits=$(zcat -f "$squid_log_file"* 2>/dev/null \
-        | awk -v cutoff="$cutoff" -v ip="$target_ip" '$1 > cutoff { if (ip == "" || $3 == ip) print }' \
-        | grep -a -i -F -- "$search_term" \
-        | perl -pe 's/^(\d+\.\d+)/localtime($1)/e')
+    if ! access_hits=$(
+        zcat -f "$squid_log_file"* \
+            | awk -v cutoff="$cutoff" -v ip="$target_ip" '$1 > cutoff { if (ip == "" || $3 == ip) print }' \
+            | grep -a -i -F -- "$search_term" \
+            | perl -pe 's/^(\d+\.\d+)/localtime($1)/e'
+        pipe_status=("${PIPESTATUS[@]}")
+        (( pipe_status[0] == 0 && pipe_status[1] == 0 &&
+           pipe_status[2] <= 1 && pipe_status[3] == 0 ))
+    ); then
+        log "ERROR: cannot search access logs -- abort"
+        exit 1
+    fi
 
     # cache.log carries no client IP, so the IP filter does not apply to it
-    cache_hits=$(zcat -f "$cache_log_file"* 2>/dev/null \
-        | gawk -v cutoff="$cutoff" '{ ts = $1 " " $2; gsub(/[\/:]/, " ", ts); t = mktime(ts); if (t < 0 || t >= cutoff) print }' \
-        | grep -a -i -F -- "$search_term" \
-        | perl -pe 's/^(\d+\.\d+)/localtime($1)/e')
+    if ! cache_hits=$(
+        zcat -f "$cache_log_file"* \
+            | gawk -v cutoff="$cutoff" '{ ts = $1 " " $2; gsub(/[\/:]/, " ", ts); t = mktime(ts); if (t < 0 || t >= cutoff) print }' \
+            | grep -a -i -F -- "$search_term" \
+            | perl -pe 's/^(\d+\.\d+)/localtime($1)/e'
+        pipe_status=("${PIPESTATUS[@]}")
+        (( pipe_status[0] == 0 && pipe_status[1] == 0 &&
+           pipe_status[2] <= 1 && pipe_status[3] == 0 ))
+    ); then
+        log "ERROR: cannot search cache log -- abort"
+        exit 1
+    fi
 
     access_count=$(printf '%s' "$access_hits" | grep -c . || true)
     cache_count=$(printf '%s' "$cache_hits" | grep -c . || true)

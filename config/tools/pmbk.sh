@@ -164,6 +164,11 @@ for backup_item in \
     "$LLM_ENV_FILE" \
     "$ACL_MAC_PATH" \
     "$ACL_SQUID_PATH" \
+    "$ACL_BANDATA_PATH" \
+    "$ALLOW_LIST" \
+    "$BLOCK_LIST_DAY" \
+    "$BLOCK_LIST_WEEK" \
+    "$BLOCK_LIST_MONTH" \
     /etc/apache2/sites-available/proxymon.conf \
     /etc/apache2/sites-available/warning.conf \
     /etc/apache2/ports.conf \

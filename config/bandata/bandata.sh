@@ -239,11 +239,13 @@ else
             if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
                 mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"
             else
-                log "WARNING: cannot build daily block list -- fallback"
+                log "WARNING: cannot build daily list, day cleared -- alert"
                 rm -f "${BLOCK_LIST_DAY}.tmp"
+                : > "$BLOCK_LIST_DAY"
             fi
         else
-            log "WARNING: subshell failed for $day_logs_dir -- fallback"
+            log "WARNING: cannot read day reports, day cleared -- alert"
+            : > "$BLOCK_LIST_DAY"
         fi
         rm -f "$tmp_day"
     fi
@@ -279,7 +281,8 @@ if [ "$today_dow" -eq 1 ]; then
         log "INFO: No weekday report folders found for last week"
         : > "$BLOCK_LIST_WEEK"
     else
-        report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB")
+        report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB") \
+            || log "WARNING: cannot read weekly reports -- alert"
         user_totals=$(echo "$report_files" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
         over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
         echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
@@ -289,8 +292,9 @@ if [ "$today_dow" -eq 1 ]; then
            && [ "${pipe_status[4]}" -eq 0 ]; then
             mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"
         else
-            log "WARNING: cannot build weekly block list -- fallback"
+            log "WARNING: cannot build weekly list, week cleared -- alert"
             rm -f "${BLOCK_LIST_WEEK}.tmp"
+            : > "$BLOCK_LIST_WEEK"
         fi
     fi
 
@@ -327,7 +331,8 @@ if [ ${#month_dirs[@]} -eq 0 ]; then
     log "INFO: No weekday report folders found for current month"
     : > "$BLOCK_LIST_MONTH"
 else
-    report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB")
+    report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB") \
+        || log "WARNING: cannot read monthly reports -- alert"
     user_totals=$(echo "$report_files" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
     over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
     echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
@@ -337,8 +342,9 @@ else
        && [ "${pipe_status[4]}" -eq 0 ]; then
         mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"
     else
-        log "WARNING: cannot build monthly block list -- fallback"
+        log "WARNING: cannot build monthly list, month cleared -- alert"
         rm -f "${BLOCK_LIST_MONTH}.tmp"
+        : > "$BLOCK_LIST_MONTH"
     fi
 fi
 
@@ -389,15 +395,18 @@ if [ -n "$all_bans" ]; then
 fi
 
 # Atomic swap: bandata_new replaces bandata with no window of empty set.
-# A half-loaded set must never be published: swapping it in would silently
-# unblock every address that failed to load, so the active set is kept.
+# A client must not stay blocked because of a script or kernel failure.
+# When the new set cannot be published, every block is cleared instead.
 if [ "$load_failed" -ne 0 ]; then
-    log "WARNING: bandata_new not trustworthy, active blocks left untouched -- alert"
+    log "WARNING: block set half loaded, all blocks cleared -- alert"
+    ipset flush bandata 2>/dev/null || true
     ipset destroy bandata_new 2>/dev/null || true
 elif ipset swap bandata_new bandata; then
     ipset destroy bandata_new
 else
-    log "WARNING: ipset swap failed, bandata not updated -- alert"
+    log "WARNING: cannot activate new set, all blocks cleared -- alert"
+    ipset flush bandata 2>/dev/null || true
+    ipset destroy bandata_new 2>/dev/null || true
 fi
 
 if [ -n "$all_bans" ]; then

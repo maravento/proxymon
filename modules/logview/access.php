@@ -438,6 +438,7 @@ tbody td{
 var ALL = [];
 var CUR = [];
 var fileOffset = 0;
+var fileId = '';
 var liveOn = true;
 var pollTimer = null;
 var sortKey = 'ts';
@@ -508,7 +509,7 @@ function reload() {
   closeGrep(true);
   isLoading = true;
   clearPoll();
-  ALL = []; CUR = []; fileOffset = 0;
+  ALL = []; CUR = []; fileOffset = 0; fileId = '';
   newRowCount = 0;
   document.getElementById('tbody').innerHTML =
     '<tr><td colspan="9" style="text-align:center;padding:40px;color:#90a4ae">Loading...</td></tr>';
@@ -524,6 +525,7 @@ function reload() {
 
       ALL = buildIndex(data.rows || []);
       fileOffset = data.offset || 0;
+      fileId = data.file_id || '';
 
       var elapsed = (performance.now() - t0).toFixed(0);
       document.getElementById('sTime').textContent = elapsed + ' ms';
@@ -638,16 +640,23 @@ function poll() {
   var tableWrap = document.getElementById('tableWrap');
   var scrollPos = tableWrap.scrollTop;
 
-  fetch('api.php?since=' + fileOffset)
+  fetch('api.php?since=' + fileOffset + '&fileid=' + encodeURIComponent(fileId))
     .then(function(r){ return r.json(); })
     .then(function(data) {
       if (typeof data.offset === 'number') fileOffset = data.offset;
+      if (data.file_id) fileId = data.file_id;
+
+      // Rotation is handled before the empty-rows exit: a rotated file that
+      // holds no complete line yet still invalidates every row on screen.
+      if (data.rotated) {
+        ALL = [];
+        newRowCount = 0;
+        applyFilters(0);
+      }
 
       if (!data.rows || data.rows.length === 0) return;
 
       var newRows = buildIndex(data.rows);
-
-      if (data.rotated) ALL = [];
 
       newRows.reverse();
 

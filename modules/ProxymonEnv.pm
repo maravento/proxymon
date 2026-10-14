@@ -12,7 +12,7 @@ sub read_env {
         die "Invalid proxymon.env line\n" unless /^([A-Z][A-Z0-9_]*)=(.*)$/;
         my ($key,$value)=($1,$2);
         $value=$2 if $value =~ /^(['"])(.*)\1$/;
-        $value =~ s{\$\{([A-Z][A-Z0-9_]*)\}|\$([A-Z][A-Z0-9_]*)}{my $ref=defined($1) ? $1 : $2; exists $env{$ref} ? $env{$ref} : die "Unknown environment reference\n"}ge;
+        $value =~ s{\$\{([A-Z][A-Z0-9_]*)\}|\$([A-Z][A-Z0-9_]*)}{my $ref=defined($1) ? $1 : $2; exists $env{$ref} ? $env{$ref} : die "Unknown environment reference\n"}ge unless $key =~ /_(?:PASSWD|API_KEY)$/;
         $env{$key}=$value;
     }
     close $fh or die "Cannot finish reading proxymon.env\n";

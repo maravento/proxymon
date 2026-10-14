@@ -106,6 +106,9 @@ if (!is_readable(LOG_FILE)) {
 }
 
 $file_size = filesize(LOG_FILE);
+// Identity of the file behind LOG_FILE. A mv-style rotation replaces the file,
+// so the inode changes and every byte offset held by a client became stale.
+$file_id = (string)fileinode(LOG_FILE);
 
 // ── Mode: info only (polling size check) ─────────────────────────────────────
 
@@ -171,8 +174,16 @@ if (isset($_GET['since'])) {
         $since = 0;
         $rotated = true;
     }
+    // A mv-style rotation whose new file already grew past the old offset is
+    // invisible to the size check above. The identity the client carries does
+    // see it: a mismatch means its offset belongs to a file no longer here.
+    $client_id = isset($_GET['fileid']) ? (string)$_GET['fileid'] : '';
+    if ($client_id !== $file_id) {
+        $since = 0;
+        $rotated = true;
+    }
     if ($file_size === 0) {
-        echo json_encode(['rows' => [], 'offset' => 0, 'rotated' => true]);
+        echo json_encode(['rows' => [], 'offset' => 0, 'rotated' => true, 'file_id' => $file_id]);
         exit;
     }
     $fh = fopen(LOG_FILE, 'rb');
@@ -202,7 +213,12 @@ if (isset($_GET['since'])) {
         $r = parse_line($line);
         if ($r) $rows[] = $r;
     }
-    echo json_encode(['rows' => $rows, 'offset' => $offset, 'rotated' => isset($rotated)]);
+    echo json_encode([
+        'rows'    => $rows,
+        'offset'  => $offset,
+        'rotated' => isset($rotated),
+        'file_id' => $file_id,
+    ]);
     exit;
 }
 
@@ -261,4 +277,5 @@ echo json_encode([
     'offset'    => $initial_offset,
     'log_file'  => LOG_FILE,
     'total_rows'=> count($rows),
+    'file_id'   => $file_id,
 ]);
