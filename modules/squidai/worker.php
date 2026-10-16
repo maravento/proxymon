@@ -187,6 +187,9 @@ function prune_cache(string $dir, int $ttl): void {
 // equivalent requests share a cache key instead of each forcing a log scan.
 function normalizeDate(string $date): string {
     if ($date === 'today' || $date === '') return date('Y-m-d');
+    if (preg_match('~^(\d{2})/(\d{2})/(\d{4})$~', $date, $m) && checkdate((int)$m[2], (int)$m[1], (int)$m[3])) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
     $digits = preg_replace('/[^0-9]/', '', $date);
     if (!preg_match('/^\d{8}$/', $digits)) return date('Y-m-d');
     return substr($digits,0,4) . '-' . substr($digits,4,2) . '-' . substr($digits,6,2);
@@ -700,9 +703,6 @@ function getDeniedDirectIps(string $ip, string $date): array {
         if (!file_exists($logFile)) continue;
 
         $logFileEsc = escapeshellarg($logFile);
-        // PIPESTATUS, not pipefail: pipefail reports the rightmost non-zero
-        // status, so the second grep's legitimate "no match" would mask a
-        // read error in the first one. Exit 2 only when a reader truly failed.
         $command = "timeout 30 grep -Fa {$ipEsc} {$logFileEsc} | timeout 30 grep 'TCP_DENIED'"
             . '; s=("${PIPESTATUS[@]}"); exit $(( s[0] > 1 || s[1] > 1 ? 2 : 0 ))';
         $handle = popen('/bin/bash -c ' . escapeshellarg($command), 'r');
@@ -715,6 +715,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
 
             $parts = preg_split('/\s+/', trim($line));
             if (count($parts) < 7) continue;
+            if (stripos($parts[3] ?? '', 'DENIED') === false) continue;
 
             if (($parts[2] ?? '') !== $ip) continue;
 
@@ -722,7 +723,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
             if ($ts < $startTs || $ts >= $endTs) continue;
 
             $url = $parts[6] ?? '';
-            if (!preg_match('/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/', $url)) continue;
+            if (!preg_match('/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?=[:\/?#]|$)/', $url)) continue;
 
             $hits++;
             $target = preg_replace('#^https?://#', '', $url);
@@ -1013,7 +1014,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
     // PATTERNS
     if ($type === 'patterns') {
         // Direct IPv4 ALWAYS
-        $patterns[] = ['/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/', 'Direct IPv4'];
+        $patterns[] = ['/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?=[:\/?#]|$)/', 'Direct IPv4'];
 
         if (file_exists(BLOCKPATTERNS)) {
             foreach (readLinesLocked(BLOCKPATTERNS) as $line) {
@@ -1081,6 +1082,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
 
             $parts = preg_split('/\s+/', trim($line));
             if (count($parts) < 7) continue;
+            if (stripos($parts[3] ?? '', 'DENIED') === false) continue;
 
             $ts = (float)$parts[0];
             if (date('Y-m-d', (int)$ts) !== $hoy) continue;

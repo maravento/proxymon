@@ -447,8 +447,7 @@ var pendingNew = [];
 var newRowCount = 0;
 var isLoading = false;
 var grepMode = false;
-
-
+var viewVersion = 0;
 
 var POLL_INTERVAL = 1000;
 var MAX_ROWS = 5000;
@@ -466,7 +465,9 @@ function esc(s) {
 function hl(text, q) {
   if (!q) return esc(text);
   var re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
-  return esc(text).replace(re, '<span class="hl">$1</span>');
+  return String(text).split(re).map(function(part, index) {
+    return index % 2 ? '<span class="hl">' + esc(part) + '</span>' : esc(part);
+  }).join('');
 }
 
 function pillClass(c) {
@@ -504,9 +505,8 @@ function buildIndex(rows) {
 // ── Initial load ──────────────────────────────────────────────────────
 function reload() {
   if (isLoading) return;
-  // The Reload button and the line selector both land here, and in the
-  // active view the thing to refresh is the connection list
   closeGrep(true);
+  viewVersion++;
   isLoading = true;
   clearPoll();
   ALL = []; CUR = []; fileOffset = 0; fileId = '';
@@ -555,6 +555,7 @@ function grepSearch() {
   if (!q) { reload(); return; }
 
   if (isLoading) return;
+  viewVersion++;
   isLoading = true;
   clearPoll();
   ALL = []; CUR = [];
@@ -573,7 +574,7 @@ function grepSearch() {
   fetch('api.php?grep=' + encodeURIComponent(q))
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if (data.error) { showError(data.error); isLoading = false; resetGrepBtn(); return; }
+      if (data.error) { showError(data.error); isLoading = false; closeGrep(true); return; }
 
       ALL = buildIndex(data.rows || []);
       fileOffset = data.offset || 0;
@@ -596,8 +597,7 @@ function grepSearch() {
     .catch(function(e) {
       showError('Cannot reach api.php — ' + e.message);
       isLoading = false;
-      resetGrepBtn();
-      grepMode = false;
+      closeGrep(true);
     });
 }
 
@@ -636,6 +636,7 @@ var pollInFlight = false;
 function poll() {
   if (!liveOn || grepMode || pollInFlight) return;
   pollInFlight = true;
+  var pollVersion = viewVersion;
 
   var tableWrap = document.getElementById('tableWrap');
   var scrollPos = tableWrap.scrollTop;
@@ -643,11 +644,10 @@ function poll() {
   fetch('api.php?since=' + fileOffset + '&fileid=' + encodeURIComponent(fileId))
     .then(function(r){ return r.json(); })
     .then(function(data) {
+      if (pollVersion !== viewVersion) return;
       if (typeof data.offset === 'number') fileOffset = data.offset;
       if (data.file_id) fileId = data.file_id;
 
-      // Rotation is handled before the empty-rows exit: a rotated file that
-      // holds no complete line yet still invalidates every row on screen.
       if (data.rotated) {
         ALL = [];
         newRowCount = 0;
@@ -711,7 +711,7 @@ function applyFilters(newCount) {
   document.getElementById('sTime').textContent = elapsed + ' ms';
 
   updateStats();
-  renderTable(grepMode ? q : q, (q || fc || fh) ? 0 : (newCount || 0));
+  renderTable(q, (q || fc || fh) ? 0 : (newCount || 0));
 }
 
 function updateStats() {

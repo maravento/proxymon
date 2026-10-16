@@ -115,7 +115,7 @@ our %config_defaults = (
     'acl_list'         =>
         ProxymonEnv::required($proxymon_settings,'ACL_SQUID_PATH')."/blocktlds.txt=Blocked TLD\n" .
         ProxymonEnv::required($proxymon_settings,'ACL_SQUID_PATH')."/blockdomains.txt=Blocked Sites\n" .
-        "regex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?=Block IPv4\n" .
+        "regex:^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}(:\\d+)?(?=[/?#]|\$)=Block IPv4\n" .
         "regex:(adlinkfly|announce\\.php\\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\\.onion|peer_id=|porn|psiphon|torrent|ultrasurf)=Blocked Patterns",
 );
 

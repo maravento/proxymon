@@ -78,6 +78,7 @@ sub CheckLogType($) {
     my $NativeFormat2   = 0;
     my $TestedLine      = 0;
 	my $ret				= 0;
+    $detected = -1;
 
 	my @LogName;
 	$LogName[0]			="Native";
@@ -98,7 +99,7 @@ sub CheckLogType($) {
 
 			@a = split /\s+/, $line;
 
-			$NativeFormat1++ if ( ( $a[0]   = ~ m/\d+\.\d+/ ) and ( $a[1] =~ m/\d+/ ) and ( $a[4] =~ m/\d+/ ) );
+			$NativeFormat1++ if ( ( $a[0]   =~ m/\d+\.\d+/ ) and ( $a[1] =~ m/\d+/ ) and ( $a[4] =~ m/\d+/ ) );
 			#      0         1          2        3           4   5
 			#970313965.619 1249    denis.local TCP_MISS/200 2598 GET    http://www.emalecentral.com/tasha/thm_4374x013.jpg -     DIRECT/www.emalecentral.com image/jpeg
 			# timestamp    elapsed host        type         size method url                                                  user  hierarechy                    type
@@ -110,7 +111,7 @@ sub CheckLogType($) {
 			#      0      1 2       3                 4      5
 			#192.168.3.40 - - [15/Apr/2005:11:46:35 +0300] "GET http://mail.yandex.ru/mboxjscript? HTTP/1.0" 200 2262 TCP_MISS :DIRECT
 
-			$EmulatedFormat1++ if ( ( $a[3] = ~ m/\[\d{1,2}\// ) and ( $a[4] =~ m/\d{1,4}\]/ ) and ( $a[5] =~ m/\"/ ) );
+			$EmulatedFormat1++ if ( ( $a[3] =~ m/\[\d{1,2}\// ) and ( $a[4] =~ m/\d{1,4}\]/ ) and ( $a[5] =~ m/\"/ ) );
 #                                                   192.168.3.40           -     -     [15      /Apr     /2005  :11      :46      :35        +0300]       "GET http://mail.yandex.ru/mboxjscript? HTTP/1.0" 200 2262 TCP_MISS :DIRECT
 			$EmulatedFormat2++ if ( $line =~ m/^(\d{1,3}\.){3}\d{1,3}\s+\S+\s+\S+\s\[\d{1,2}\/\S{1,3}\/\d{4}\:\d{1,2}\:\d{1,2}\:\d{1,2}\s[+-]\d{1,4}\] \".*\S+\:\S+$/);
 		}

@@ -23,17 +23,9 @@ set -uo pipefail
 # REQUIREMENTS
 # ------------------------------------------------------------------------------
 
-# logging
-script_dir="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
-log_file="$script_dir/squidtool.log"
-{ > "$log_file"; } 2>/dev/null || true
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$log_file" 2>/dev/null || true
-}
-
 # root check
 if [ "$(id -u)" != "0" ]; then
-    log "ERROR: This script must be run as root -- abort"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -- abort" >&2
     exit 1
 fi
 
@@ -42,20 +34,39 @@ script_lock="/var/lock/$(basename "$0" .sh).lock"
 (umask 077; : >> "$script_lock")
 exec 200>"$script_lock"
 if ! flock -n 200; then
-    log "ERROR: script $(basename "$0") is already running -- abort"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: script $(basename "$0") is already running -- abort" >&2
     exit 1
 fi
 
+# logging
+script_dir="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+log_file="$script_dir/squidtool.log"
+{ > "$log_file"; } 2>/dev/null || true
+log() {
+    local log_msg="$(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo "$log_msg" >> "$log_file" 2>/dev/null || true
+    if [[ "$1" == ERROR:* ]]; then
+        echo "$log_msg" >&2
+    else
+        echo "$log_msg"
+    fi
+}
+
+# Function: Report whether a package is installed, not merely residual
+package_installed() {
+    [ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = installed ]
+}
+
 # dependencies
 for dep_pkg in perl gawk gzip grep coreutils util-linux; do
-    if ! dpkg -s "$dep_pkg" &>/dev/null; then
+    if ! package_installed "$dep_pkg"; then
         log "ERROR: dependency '$dep_pkg' is not installed -- abort"
         exit 1
     fi
 done
 
 # dependencies (squid or squid-openssl)
-if ! dpkg -s squid &>/dev/null && ! dpkg -s squid-openssl &>/dev/null; then
+if ! package_installed squid && ! package_installed squid-openssl; then
     log "ERROR: 'squid' or 'squid-openssl' is not installed -- abort"
     exit 1
 fi
@@ -157,8 +168,10 @@ if ! mkdir -p "$report_dir"; then
     log "ERROR: cannot create $report_dir -- abort"
     exit 1
 fi
-chown root:root "$report_dir"
-chmod 755 "$report_dir"
+if ! chown root:root "$report_dir" || ! chmod 755 "$report_dir"; then
+    log "ERROR: cannot set permissions on $report_dir -- abort"
+    exit 1
+fi
 
 # KEY GUARD
 # Every report below reads this file, so a path that no longer matches the
@@ -176,7 +189,7 @@ ask_ip() {
     local ip_answer
     read -r -p "IP address (enter for all): " ip_answer
     if [ -n "$ip_answer" ] && ! [[ "$ip_answer" =~ $UH_IPV4 ]]; then
-        log "INFO: invalid IP '$ip_answer' -- skip"
+        log "INFO: invalid IP '$ip_answer' -- skip" >&2
         return 1
     fi
     printf '%s' "$ip_answer"
@@ -185,7 +198,7 @@ ask_ip() {
 # Prints the epoch before which entries are ignored, or 0 for no limit.
 # $1 is the default shown to the user: a number of hours, or "all".
 ask_cutoff() {
-    local default_hours="$1" hours_answer
+    local default_hours="$1" hours_answer now_epoch
     if [ "$default_hours" = "all" ]; then
         read -r -p "Hours to analyze, e.g. 24, 48, 72 (enter for all history): " hours_answer
         [ -z "$hours_answer" ] && { printf '0'; return 0; }
@@ -193,22 +206,39 @@ ask_cutoff() {
         read -r -p "Hours to analyze, e.g. 24, 48, 72 (enter for $default_hours): " hours_answer
         hours_answer="${hours_answer:-$default_hours}"
     fi
-    if ! [[ "$hours_answer" =~ $UH_UINT ]] || [ "$hours_answer" -lt 1 ]; then
+    # The length test runs first so [ cannot overflow on a long digit string.
+    # 876000 hours are one hundred years, far beyond any Squid log.
+    if ! [[ "$hours_answer" =~ $UH_UINT ]] || [ "${#hours_answer}" -gt 7 ] \
+        || [ "$hours_answer" -lt 1 ] || [ "$hours_answer" -gt 876000 ]; then
         # Callers read this function through $(...), so stdout must carry the
         # timestamp alone. The notice goes to stderr and still reaches the log.
         log "WARNING: invalid hours '$hours_answer' -- fallback" >&2
         hours_answer=72
     fi
-    printf '%s' "$(( $(date +%s) - hours_answer * 3600 ))"
+    # The epoch is read in an assignment, because arithmetic would turn a
+    # failing date into a zero and yield a negative cutoff with success.
+    now_epoch=$(date +%s) || return 1
+    printf '%s' "$(( now_epoch - hours_answer * 3600 ))"
 }
 
 cutoff_label() {
-    local cutoff="$1"
+    local cutoff="$1" cutoff_date
     if [ "$cutoff" -eq 0 ]; then
         printf 'all history'
     else
-        printf 'since %s' "$(date -d "@$cutoff" '+%Y-%m-%d %H:%M')"
+        cutoff_date=$(date -d "@$cutoff" '+%Y-%m-%d %H:%M') || return 1
+        printf 'since %s' "$cutoff_date"
     fi
+}
+
+# Counts the non-empty lines read from stdin. grep exits 1 when nothing
+# matched, which is a count of zero, so only a higher status is an error.
+count_lines() {
+    local line_count grep_rc
+    line_count=$(grep -c .)
+    grep_rc=$?
+    [ "$grep_rc" -le 1 ] || return 1
+    printf '%s' "$line_count"
 }
 
 html_escape() {
@@ -216,13 +246,17 @@ html_escape() {
 }
 
 # Marks the searched text inside already escaped lines. The term is escaped
-# twice: as HTML, so it matches what the line now holds, and as a regular
-# expression, so a literal search stays literal.
+# as HTML, so it matches what the line now holds. The \Q of Perl keeps the
+# search literal. The term is tried first, so a term holding & or < still
+# matches. The second branch leaves any remaining HTML entity untouched.
 highlight_term() {
     local term_escaped
-    term_escaped=$(printf '%s' "$1" | html_escape | sed -e 's/[][\.*^$/\\?+(){}|]/\\&/g')
+    term_escaped=$(printf '%s' "$1" | html_escape) || return 1
     [ -z "$term_escaped" ] && { cat; return 0; }
-    sed -E "s/($term_escaped)/<mark>\1<\/mark>/Ig"
+    perl -pe '
+        BEGIN { $term = shift @ARGV; }
+        s{(\Q$term\E)|(&(?:amp|lt|gt);)}{ defined($1) ? "<mark>$1</mark>" : $2 }gei;
+    ' -- "$term_escaped"
 }
 
 html_open() {
@@ -262,8 +296,10 @@ EOF
 }
 
 html_close() {
+    local generated_at
+    generated_at=$(date '+%Y-%m-%d %H:%M:%S') || return 1
     cat <<EOF
-<p class='timestamp'>Generated on $(date '+%Y-%m-%d %H:%M:%S')</p>
+<p class='timestamp'>Generated on $generated_at</p>
 </div>
 </body>
 </html>
@@ -273,8 +309,10 @@ EOF
 # Leaves the report readable by the panel and prints where to open it
 publish_report() {
     local report_file="$1" server_ip
-    chown root:root "$report_file"
-    chmod 644 "$report_file"
+    if ! chown root:root "$report_file" || ! chmod 644 "$report_file"; then
+        log "ERROR: cannot set permissions on $(basename "$report_file") -- abort"
+        exit 1
+    fi
     server_ip=$(grep -oP "^Listen \K[0-9.]+(?=:${panel_port})" /etc/apache2/ports.conf 2>/dev/null | head -1)
     server_ip="${server_ip:-localhost}"
     echo "Report: http://${server_ip}:${panel_port}/proxymon/squidtool/$(basename "$report_file")"
@@ -284,9 +322,12 @@ publish_report() {
 # TRAFFIC
 # Requests per IP and domain over the period, most active first
 report_traffic() {
-    local target_ip cutoff rows row_count alert_count
+    local target_ip cutoff rows row_count alert_count filter_rc block_rc
     target_ip=$(ask_ip) || return
-    cutoff=$(ask_cutoff 72)
+    if ! cutoff=$(ask_cutoff 72); then
+        log "ERROR: cannot resolve traffic period -- abort"
+        exit 1
+    fi
 
     log "INFO: traffic report -- ip=${target_ip:-all} cutoff=$cutoff"
     echo "Analyzing, please wait..."
@@ -310,22 +351,41 @@ report_traffic() {
     else
         rows=$(printf '%s\n' "$rows" | awk -v min="$min_hits" 'NF >= 3 && $1 + 0 >= min')
     fi
+    # fi carries the status of the branch that ran, so one test covers both.
+    filter_rc=$?
+    if [ "$filter_rc" -ne 0 ]; then
+        log "ERROR: cannot filter traffic rows -- abort"
+        exit 1
+    fi
 
-    row_count=$(printf '%s' "$rows" | grep -c . || true)
-    alert_count=$(printf '%s\n' "$rows" | awk -v th="$alert_threshold" 'NF >= 3 && $1 + 0 >= th' | grep -c . || true)
+    if ! row_count=$(printf '%s' "$rows" | count_lines); then
+        log "ERROR: cannot count traffic rows -- abort"
+        exit 1
+    fi
+    if ! alert_count=$(printf '%s\n' "$rows" |
+        awk -v th="$alert_threshold" 'NF >= 3 && $1 + 0 >= th' | count_lines); then
+        log "ERROR: cannot count traffic alerts -- abort"
+        exit 1
+    fi
 
-    {
+    # The subshell carries set -e, so any failing write or helper ends it. The
+    # status is read on the next line, because bash would disable set -e if the
+    # subshell hung from a || list. The period is resolved before the block,
+    # since set -e ignores a failing substitution used as an argument.
+    (
+        set -e
+        period_label=$(cutoff_label "$cutoff")
         html_open "Squid Traffic Report"
         echo "<div class='stat-card'>"
         echo "<div class='metric'><span class='metric-name'>IP address</span><span class='metric-value'>${target_ip:-all}</span></div>"
-        echo "<div class='metric'><span class='metric-name'>Period</span><span class='metric-value'>$(cutoff_label "$cutoff")</span></div>"
+        echo "<div class='metric'><span class='metric-name'>Period</span><span class='metric-value'>${period_label}</span></div>"
         echo "<div class='metric'><span class='metric-name'>Rows</span><span class='metric-value'>${row_count}</span></div>"
         if [ "$alert_count" -gt 0 ]; then
             echo "<div class='metric'><span class='metric-name'>Above ${alert_threshold} requests</span><span class='metric-value alert'>${alert_count}</span></div>"
         fi
         echo "</div>"
         if [ "$row_count" -eq 0 ]; then
-            echo "<p>No requests found for the selected period.</p>"
+            echo "<p>No requests found for selected period.</p>"
         else
             echo "<table><tr><th>Requests</th><th>IP</th><th>Domain</th></tr>"
             printf '%s\n' "$rows" | html_escape | awk -v th="$alert_threshold" 'NF >= 3 {
@@ -334,7 +394,12 @@ report_traffic() {
             echo "</table>"
         fi
         html_close
-    } > "$traffic_html"
+    ) > "$traffic_html"
+    block_rc=$?
+    if [ "$block_rc" -ne 0 ]; then
+        log "ERROR: cannot write $(basename "$traffic_html") -- abort"
+        exit 1
+    fi
 
     log "INFO: traffic rows=$row_count alerts=$alert_count"
     publish_report "$traffic_html"
@@ -343,14 +408,18 @@ report_traffic() {
 # SEARCH
 # Occurrences of a term in access.log and cache.log, rotated files included
 report_search() {
-    local search_term target_ip cutoff access_hits cache_hits access_count cache_count
+    local search_term target_ip cutoff access_hits cache_hits access_count
+    local cache_count block_rc
     read -r -p "Enter the text to search (e.g. google): " search_term
     if [ -z "$search_term" ]; then
         log "INFO: no search term given -- skip"
         return
     fi
     target_ip=$(ask_ip) || return
-    cutoff=$(ask_cutoff all)
+    if ! cutoff=$(ask_cutoff all); then
+        log "ERROR: cannot resolve search period -- abort"
+        exit 1
+    fi
 
     log "INFO: search '$search_term' -- ip=${target_ip:-all} cutoff=$cutoff"
     echo "Searching, please wait..."
@@ -382,15 +451,28 @@ report_search() {
         exit 1
     fi
 
-    access_count=$(printf '%s' "$access_hits" | grep -c . || true)
-    cache_count=$(printf '%s' "$cache_hits" | grep -c . || true)
+    if ! access_count=$(printf '%s' "$access_hits" | count_lines); then
+        log "ERROR: cannot count access log matches -- abort"
+        exit 1
+    fi
+    if ! cache_count=$(printf '%s' "$cache_hits" | count_lines); then
+        log "ERROR: cannot count cache log matches -- abort"
+        exit 1
+    fi
 
-    {
+    # The subshell carries set -e, so any failing write or helper ends it. The
+    # status is read on the next line, because bash would disable set -e if the
+    # subshell hung from a || list. The term and the period are resolved before
+    # the block, since set -e ignores a failing substitution used as an argument.
+    (
+        set -e
+        term_label=$(printf '%s' "$search_term" | html_escape)
+        period_label=$(cutoff_label "$cutoff")
         html_open "Squid Search Report"
         echo "<div class='stat-card'>"
-        echo "<div class='metric'><span class='metric-name'>Term</span><span class='metric-value'>$(printf '%s' "$search_term" | html_escape)</span></div>"
+        echo "<div class='metric'><span class='metric-name'>Term</span><span class='metric-value'>${term_label}</span></div>"
         echo "<div class='metric'><span class='metric-name'>IP address</span><span class='metric-value'>${target_ip:-all}</span></div>"
-        echo "<div class='metric'><span class='metric-name'>Period</span><span class='metric-value'>$(cutoff_label "$cutoff")</span></div>"
+        echo "<div class='metric'><span class='metric-name'>Period</span><span class='metric-value'>${period_label}</span></div>"
         echo "<div class='metric'><span class='metric-name'>access.log matches</span><span class='metric-value'>${access_count}</span></div>"
         echo "<div class='metric'><span class='metric-name'>cache.log matches</span><span class='metric-value'>${cache_count}</span></div>"
         echo "</div>"
@@ -411,7 +493,12 @@ report_search() {
             echo "</pre>"
         fi
         html_close
-    } > "$search_html"
+    ) > "$search_html"
+    block_rc=$?
+    if [ "$block_rc" -ne 0 ]; then
+        log "ERROR: cannot write $(basename "$search_html") -- abort"
+        exit 1
+    fi
 
     log "INFO: search access=$access_count cache=$cache_count"
     publish_report "$search_html"

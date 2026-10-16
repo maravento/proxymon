@@ -25,17 +25,23 @@ set -uo pipefail
 # path for cron
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# root check
+if [ "$(id -u)" != "0" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -- abort" >&2
+    exit 1
+fi
+
 # logging
 log_file="/var/log/bandata.log"
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$log_file" 2>/dev/null || true
+    local log_msg="$(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo "$log_msg" >> "$log_file" 2>/dev/null || true
+    if [[ "$1" == ERROR:* ]]; then
+        echo "$log_msg" >&2
+    else
+        echo "$log_msg"
+    fi
 }
-
-# root check
-if [ "$(id -u)" != "0" ]; then
-    log "ERROR: This script must be run as root -- abort"
-    exit 1
-fi
 
 # prevent overlapping runs
 script_lock="/var/lock/$(basename "$0" .sh).lock"
@@ -47,9 +53,14 @@ if ! flock -n 200; then
     exit 1
 fi
 
+# Function: Report whether a package is installed, not merely residual
+package_installed() {
+    [ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = installed ]
+}
+
 # dependencies
 for dep_pkg in ipset findutils coreutils iptables util-linux sed grep procps logrotate; do
-    if ! dpkg -s "$dep_pkg" &>/dev/null; then
+    if ! package_installed "$dep_pkg"; then
         log "ERROR: dependency '$dep_pkg' is not installed -- abort"
         exit 1
     fi
@@ -69,9 +80,16 @@ if [ ! -f "$logrotate_conf" ]; then
     create 640 root adm
 }
 EOF
-    chmod 644 "$logrotate_conf"
-    chown root:root "$logrotate_conf"
-    log "INFO: logrotate config created for $(basename "$log_file") -- fixed"
+    logrotate_ok=$?
+    chmod 644 "$logrotate_conf" || logrotate_ok=1
+    chown root:root "$logrotate_conf" || logrotate_ok=1
+    if [ "$logrotate_ok" -eq 0 ]; then
+        log "INFO: logrotate config created for $(basename "$log_file") -- fixed"
+    else
+        log "WARNING: cannot create logrotate config -- alert"
+        rm -f "$logrotate_conf" \
+            || log "WARNING: cannot remove the partial logrotate config -- alert"
+    fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -186,6 +204,15 @@ done
 today_dow=$(date +"%u")
 # reorganize IP
 sort_ips="sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
+# A list that cannot be cleared keeps the previous blocks, so that failure must
+# reach the set. The mark is read where load_failed starts, further below.
+list_failed=0
+clear_list() {
+    : > "$1" || {
+        list_failed=1
+        log "WARNING: cannot clear $(basename "$1") -- alert"
+    }
+}
 # FILESYSTEM LAYOUT
 # Create folders if they don't exist
 [ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"
@@ -223,7 +250,12 @@ else
             cd "$day_logs_dir" || { log "WARNING: cannot cd into $day_logs_dir -- alert" >&2; exit 1; }
             shopt -s nullglob
             for report_file in $REPORT_IP_GLOB; do
-                user_bytes=$(awk '$1=="total:" {print $2}' "$report_file")
+                # A failing awk can still print a partial total, so its status
+                # decides. Ending the subshell clears the day, as the flow asks.
+                user_bytes=$(awk '$1=="total:" {print $2}' "$report_file") || {
+                    log "WARNING: cannot read $report_file -- alert" >&2
+                    exit 1
+                }
                 if [[ "$user_bytes" =~ $UH_UINT ]] && (( user_bytes > max_bw_day )); then
                     echo "$report_file"
                 elif [ -n "$user_bytes" ] && ! [[ "$user_bytes" =~ $UH_UINT ]]; then
@@ -234,14 +266,28 @@ else
         ) > "$tmp_day" && subshell_ok=1
 
         if [ "$subshell_ok" -eq 1 ]; then
-            grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") "$tmp_day" | $sort_ips | uniq > "${BLOCK_LIST_DAY}.tmp"
-            pipe_status=("${PIPESTATUS[@]}")
-            if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
-                mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"
-            else
-                log "WARNING: cannot build daily list, day cleared -- alert"
-                rm -f "${BLOCK_LIST_DAY}.tmp"
+            # The exclusions are read in an assignment, because a process
+            # substitution hides its own failure. A partial read would turn an
+            # exempt address into a block. grep 1 means no blank line removed.
+            allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
+            allow_rc=$?
+            if [ "$allow_rc" -gt 1 ]; then
+                log "WARNING: cannot read allow list, day cleared -- alert"
                 : > "$BLOCK_LIST_DAY"
+            else
+                grep -wvFf <(printf '%s\n' "$allow_ips") "$tmp_day" | $sort_ips | uniq > "${BLOCK_LIST_DAY}.tmp"
+                pipe_status=("${PIPESTATUS[@]}")
+                if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
+                    if ! mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"; then
+                        log "WARNING: cannot publish daily list, day cleared -- alert"
+                        rm -f "${BLOCK_LIST_DAY}.tmp"
+                        clear_list "$BLOCK_LIST_DAY"
+                    fi
+                else
+                    log "WARNING: cannot build daily list, day cleared -- alert"
+                    rm -f "${BLOCK_LIST_DAY}.tmp"
+                    : > "$BLOCK_LIST_DAY"
+                fi
             fi
         else
             log "WARNING: cannot read day reports, day cleared -- alert"
@@ -281,20 +327,44 @@ if [ "$today_dow" -eq 1 ]; then
         log "INFO: No weekday report folders found for last week"
         : > "$BLOCK_LIST_WEEK"
     else
-        report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB") \
-            || log "WARNING: cannot read weekly reports -- alert"
-        user_totals=$(echo "$report_files" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
-        over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
-        echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
-        pipe_status=("${PIPESTATUS[@]}")
-        if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
-           && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
-           && [ "${pipe_status[4]}" -eq 0 ]; then
-            mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"
-        else
-            log "WARNING: cannot build weekly list, week cleared -- alert"
-            rm -f "${BLOCK_LIST_WEEK}.tmp"
+        # Each reading decides, because a partial list would total only part of
+        # the week. Any failure clears the week, as the flow asks.
+        if ! report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f \
+            -name "$REPORT_IP_GLOB"); then
+            log "WARNING: cannot read weekly reports, week cleared -- alert"
             : > "$BLOCK_LIST_WEEK"
+        elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
+            awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
+            log "WARNING: cannot total weekly reports, week cleared -- alert"
+            : > "$BLOCK_LIST_WEEK"
+        elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
+            log "WARNING: cannot add up weekly totals, week cleared -- alert"
+            : > "$BLOCK_LIST_WEEK"
+        else
+            # Same reading as the day: the exclusions cannot come from a process
+            # substitution, whose failure the pipeline never sees.
+            allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
+            allow_rc=$?
+            if [ "$allow_rc" -gt 1 ]; then
+                log "WARNING: cannot read allow list, week cleared -- alert"
+                : > "$BLOCK_LIST_WEEK"
+            else
+                echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
+                pipe_status=("${PIPESTATUS[@]}")
+                if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
+                   && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
+                   && [ "${pipe_status[4]}" -eq 0 ]; then
+                    if ! mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"; then
+                        log "WARNING: cannot publish weekly list, week cleared -- alert"
+                        rm -f "${BLOCK_LIST_WEEK}.tmp"
+                        clear_list "$BLOCK_LIST_WEEK"
+                    fi
+                else
+                    log "WARNING: cannot build weekly list, week cleared -- alert"
+                    rm -f "${BLOCK_LIST_WEEK}.tmp"
+                    : > "$BLOCK_LIST_WEEK"
+                fi
+            fi
         fi
     fi
 
@@ -331,20 +401,43 @@ if [ ${#month_dirs[@]} -eq 0 ]; then
     log "INFO: No weekday report folders found for current month"
     : > "$BLOCK_LIST_MONTH"
 else
-    report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f -name "$REPORT_IP_GLOB") \
-        || log "WARNING: cannot read monthly reports -- alert"
-    user_totals=$(echo "$report_files" | xargs -r -I {} awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {})
-    over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1)
-    echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(grep -v '^[[:space:]]*$' "$ALLOW_LIST") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
-    pipe_status=("${PIPESTATUS[@]}")
-    if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
-       && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
-       && [ "${pipe_status[4]}" -eq 0 ]; then
-        mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"
-    else
-        log "WARNING: cannot build monthly list, month cleared -- alert"
-        rm -f "${BLOCK_LIST_MONTH}.tmp"
+    # Each reading decides, as in the week: a partial list would total only
+    # part of the month. Any failure clears the month, as the flow asks.
+    if ! report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f \
+        -name "$REPORT_IP_GLOB"); then
+        log "WARNING: cannot read monthly reports, month cleared -- alert"
         : > "$BLOCK_LIST_MONTH"
+    elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
+        awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
+        log "WARNING: cannot total monthly reports, month cleared -- alert"
+        : > "$BLOCK_LIST_MONTH"
+    elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
+        log "WARNING: cannot add up monthly totals, month cleared -- alert"
+        : > "$BLOCK_LIST_MONTH"
+    else
+        # Same reading as the day and the week, for the same reason.
+        allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
+        allow_rc=$?
+        if [ "$allow_rc" -gt 1 ]; then
+            log "WARNING: cannot read allow list, month cleared -- alert"
+            : > "$BLOCK_LIST_MONTH"
+        else
+            echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
+            pipe_status=("${PIPESTATUS[@]}")
+            if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
+               && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
+               && [ "${pipe_status[4]}" -eq 0 ]; then
+                if ! mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"; then
+                    log "WARNING: cannot publish monthly list, month cleared -- alert"
+                    rm -f "${BLOCK_LIST_MONTH}.tmp"
+                    clear_list "$BLOCK_LIST_MONTH"
+                fi
+            else
+                log "WARNING: cannot build monthly list, month cleared -- alert"
+                rm -f "${BLOCK_LIST_MONTH}.tmp"
+                : > "$BLOCK_LIST_MONTH"
+            fi
+        fi
     fi
 fi
 
@@ -364,7 +457,7 @@ log "INFO: Running Ipset/Iptables Rules..."
 # Every preparation step decides whether the new set may be published. A
 # failed create or flush leaves bandata_new holding the previous contents,
 # and swapping that in would reinstate blocks that are no longer current.
-load_failed=0
+load_failed=$list_failed
 ipset -! create bandata hash:net family inet hashsize 1024 maxelem 65536 || {
     load_failed=1
     log "WARNING: cannot create ipset 'bandata' -- alert"
@@ -581,10 +674,8 @@ update_squidreports_realname() {
         log "INFO: No MAC data processed for realname.cfg"
     else
         cfg_tmp=$(mktemp)
-        if echo "$final_output" > "$cfg_tmp"; then
-            chmod 644 "$cfg_tmp"
-            mv -f "$cfg_tmp" "$REALNAME_CFG"
-        else
+        if ! { echo "$final_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
+            && mv -f "$cfg_tmp" "$REALNAME_CFG"; }; then
             rm -f "$cfg_tmp"
             log "WARNING: cannot update realname.cfg -- alert"
         fi
@@ -594,10 +685,8 @@ update_squidreports_realname() {
         log "INFO: No excluded data for skipuser.cfg"
     else
         cfg_tmp=$(mktemp)
-        if echo "$skip_output" > "$cfg_tmp"; then
-            chmod 644 "$cfg_tmp"
-            mv -f "$cfg_tmp" "$SKIPUSERS_CFG"
-        else
+        if ! { echo "$skip_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
+            && mv -f "$cfg_tmp" "$SKIPUSERS_CFG"; }; then
             rm -f "$cfg_tmp"
             log "WARNING: cannot update skipuser.cfg -- alert"
         fi
@@ -662,6 +751,12 @@ fi
 # A run that could not publish the set or apply its rules did not do its
 # job, and must not look like one that did.
 if [ "${load_failed:-0}" -ne 0 ] || [ "${rules_failed:-0}" -ne 0 ]; then
+    # A rule failure leaves the set loaded, and rules from an earlier run may
+    # still read it. The set is emptied, as the load failure already does.
+    if [ "${rules_failed:-0}" -ne 0 ]; then
+        ipset flush bandata 2>/dev/null \
+            || log "WARNING: cannot clear ipset 'bandata' -- alert"
+    fi
     log "ERROR: cannot apply data quotas -- abort"
     exit 1
 fi

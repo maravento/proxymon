@@ -966,7 +966,7 @@ foreach my $client (sort @clients_to_show) {
                 foreach my $url (@blocked_urls) {
                     $url_count{$url}++;
                 }
-                foreach my $url (sort { ($url_count{$b} || 0) <=> ($url_count{$a} || 0) } keys %url_count) {
+                foreach my $url (sort { ($url_count{$main::b} || 0) <=> ($url_count{$main::a} || 0) } keys %url_count) {
                     print "• " . h($url) . " (" . $url_count{$url} . "x)<br>";
                 }
                 print "</td>";
@@ -992,7 +992,7 @@ foreach my $client (sort @clients_to_show) {
                 foreach my $url (@allowed_urls) {
                     $url_count{$url}++;
                 }
-                foreach my $url (sort { ($url_count{$b} || 0) <=> ($url_count{$a} || 0) } keys %url_count) {
+                foreach my $url (sort { ($url_count{$main::b} || 0) <=> ($url_count{$main::a} || 0) } keys %url_count) {
                     print "• " . h($url) . " (" . $url_count{$url} . "x)<br>";
                 }
                 print "</td>";

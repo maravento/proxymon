@@ -1036,11 +1036,17 @@ async function processQuery(userText) {
       ).join('');
 
       const netData = await fetchWorker('get_network_summary', { date: 'today' });
+      if (netData.error) {
+        removeTyping();
+        appendMessage('ai', `<p class="warn-line">${t.errGeneric(netData.error)}</p>`);
+        btn.disabled = false;
+        return;
+      }
       const filtered = (netData.all_users || netData.top_users || []).filter(u => u.bytes > thresholdBytes);
 
       removeTyping();
 
-      let response = `<p>${t.thresholdToday(new Date().toISOString().slice(0,10))}</p>`;
+      let response = `<p>${t.thresholdToday(netData.date)}</p>`;
       if (filtered.length === 0) {
         response += `<p>${t.thresholdNone(thresholdGb)}</p>`;
       } else {

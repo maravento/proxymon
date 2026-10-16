@@ -203,7 +203,7 @@ sub Aggregate($) {
 		$site=~ s{(.*?)\.mylivepage\.com}{www\.mylivepage\.com}o;
 		$site=~ s{(.*?)\.imagevenue\.com}{www\.imagevenue\.com}o;
 		$site=~ s{(.*?)\.adskape\.ru}{www\.adskape\.ru}o;
-		$site=~ s{(.*?)\.tbn\.ru}{www\\.tbn\.ru}o;
+		$site=~ s{(.*?)\.tbn\.ru}{www\.tbn\.ru}o;
 		$site=~ s{(.*?)\.fotki\.com}{www\.fotki\.com}o;
 		$site=~ s{(.*?)\.deviantart\.com}{www\.deviantart\.com}o;
 		$site=~ s{(.*?)\.rutube\.ru}{rutube\.ru}o;

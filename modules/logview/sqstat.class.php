@@ -323,7 +323,7 @@ private $fp;
 					// current speed
 					$was_time = $con_data['time'];
 					$was_size = $con_data['size'];
-					if ($was_time && $was_size) {
+					if ($was_time && isset($con_data['size'])) {
 						$delta = $is_time - $was_time;
 						if ($delta == 0) {
 							$delta = 1;

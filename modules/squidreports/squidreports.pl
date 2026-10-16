@@ -104,9 +104,9 @@ if ($fToday) {
 }
 
 if ($ARGV[0] eq "yesterday") {
-   $filterdatestart=$filterdatestart-(24*60*60);
-   $filterdatestop =$filterdatestop -(24*60*60);
-   ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($filterdatestart);
+   ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($filterdatestart-1);
+   $filterdatestart=timelocal( 0, 0, 0,$mday,$mon,$year);
+   $filterdatestop =timelocal(59,59,23,$mday,$mon,$year);
    $filterdate=sprintf("%04d%02d%02d",$year+1900,$mon+1,$mday);;
    print ">>> filter yesterday: $filterdate\n" if ($debug);
 }

@@ -29,7 +29,7 @@ trap 'echo "Error on line $LINENO"; exit 1' ERR
 
 # root check
 if [ "$(id -u)" != "0" ]; then
-    echo "ERROR: This script must be run as root -- abort"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -- abort" >&2
     exit 1
 fi
 
@@ -39,7 +39,7 @@ script_lock="/var/lock/$(basename "$0" .sh).lock"
 exec 200>"$script_lock"
 
 if ! flock -n 200; then
-    echo "ERROR: script $(basename "$0") is already running -- abort"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: script $(basename "$0") is already running -- abort" >&2
     exit 1
 fi
 
@@ -47,17 +47,18 @@ script_dir="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
 
 # Every repository path below is relative to the script, not to wherever the
 # administrator happened to be standing when running it
-cd "$script_dir" || { echo "ERROR: cannot enter $script_dir -- abort"; exit 1; }
+cd "$script_dir" || { echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: cannot enter $script_dir -- abort" >&2; exit 1; }
 
 log_file="${script_dir}/pmsetup.log"
 { > "$log_file"; } 2>/dev/null || true
 log() {
-    local msg="$1"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $msg" | tee -a "$log_file" 2>/dev/null || true
+    local msg="$(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo "$msg" >> "$log_file" 2>/dev/null || true
+    if [[ "$1" == ERROR:* ]]; then echo "$msg" >&2; else echo "$msg"; fi
 }
-info() { printf ' \e[32m \e[0m %s\n' "$*"; log "INFO: $*"; }
-warn() { printf ' \e[33m!\e[0m %s\n' "$*"; log "WARNING: $*"; }
-err()  { printf ' \e[31m \e[0m %s\n' "$*" >&2; log "ERROR: $*"; }
+info() { log "INFO: $*"; }
+warn() { log "WARNING: $*"; }
+err()  { log "ERROR: $*"; }
 abort() { err "$*"; exit 1; }
 
 source "$script_dir/config/tools/proxymonenv.sh"
@@ -138,10 +139,15 @@ configure_apache_locations() {
     done
 }
 
+# Function: Report whether a package is installed, not merely residual
+package_installed() {
+    [ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = installed ]
+}
+
 # dependencies
 check_dependencies() {
     for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate; do
-        if ! dpkg -s "$dep_pkg" &>/dev/null; then
+        if ! package_installed "$dep_pkg"; then
             if [ "$dep_pkg" = libjson-xs-perl ]; then
                 info "Installing missing dependency: $dep_pkg"
                 apt-get install -y "$dep_pkg" || abort "cannot install '$dep_pkg' -- abort"
@@ -161,7 +167,7 @@ install_apache2() {
 
     for dep_pkg in apache2 apache2-bin apache2-data apache2-doc apache2-utils \
                    php libapache2-mod-php php-cli php-curl; do
-        dpkg -s "$dep_pkg" &>/dev/null || missing_pkgs+=("$dep_pkg")
+        package_installed "$dep_pkg" || missing_pkgs+=("$dep_pkg")
     done
     if (( ${#missing_pkgs[@]} == 0 )); then
         info "apache2 and php already present"
@@ -178,7 +184,7 @@ install_apache2() {
 # squid or squid-openssl is left untouched, including its squid.conf: the
 # administrator's own proxy configuration is never replaced.
 install_squid() {
-    if dpkg -s squid &>/dev/null || dpkg -s squid-openssl &>/dev/null; then
+    if package_installed squid || package_installed squid-openssl; then
         info "squid already present, its configuration is kept"
         squid_preexisting=1
         return 0
@@ -219,24 +225,32 @@ set_squid_logrotate() {
         return 0
     fi
     cp -f "$rotate_file"{,.bak} &>/dev/null || true
-    sed -i -E 's/^([[:space:]]*)(daily|monthly)$/\1weekly/' "$rotate_file"
     if grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
-        info "squid log rotation set to weekly"
+        info "$rotate_file already weekly -- skip"
     else
-        warn "cannot set weekly rotation in $rotate_file -- alert"
+        sed -i -E 's/^([[:space:]]*)(hourly|daily|monthly|yearly)$/\1weekly/' \
+            "$rotate_file"
+        if ! grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
+            sed -i '0,/{[[:space:]]*$/s//&\n    weekly/' "$rotate_file"
+        fi
+        if grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
+            info "$rotate_file set to weekly -- fixed"
+        else
+            warn "cannot set weekly in ${rotate_file#/etc/} -- alert"
+        fi
     fi
     if grep -qE '^[[:space:]]*(size|maxsize)[[:space:]]' "$rotate_file"; then
-        warn "$rotate_file sets size or maxsize, which splits the current day -- alert"
+        warn "$rotate_file sets size or maxsize, which splits current day -- alert"
     fi
     if grep -qE "^[[:space:]]*$hook$" "$rotate_file"; then
-        info "squid rotation already closes the previous day"
+        info "squidreports.pl yesterday already in rotation -- skip"
     elif grep -qE '^[[:space:]]*prerotate' "$rotate_file"; then
-        warn "$rotate_file already defines prerotate, closing not added -- alert"
+        info "$rotate_file has prerotate defined -- skip"
     elif ! grep -qE '^[[:space:]]*sharedscripts' "$rotate_file"; then
         warn "$rotate_file has no sharedscripts, closing not added -- alert"
     else
         sed -i "/^[[:space:]]*sharedscripts/a \\    prerotate\n        $hook\n    endscript" "$rotate_file"
-        info "squid rotation now closes the previous day first"
+        info "squidreports.pl yesterday added to rotation -- fixed"
     fi
 }
 
@@ -279,9 +293,9 @@ get_acl() {
     http_code=$(curl -k -s -o /dev/null -w '%{http_code}' -I -L --connect-timeout 5 --max-time 15 --retry 1 "$source_url")
     case "$http_code" in
         2*|405) ;;
-        000) log "INFO: $(basename "$source_url") timeout -- retry"; return 1 ;;
-        5*)  log "INFO: $(basename "$source_url") server busy -- retry"; return 1 ;;
-        *)   log "INFO: $(basename "$source_url") http $http_code -- retry"; return 1 ;;
+        000) log "TIMEOUT: $(basename "${source_url%%\?*}")"; return 1 ;;
+        5*)  log "BUSY: $http_code $(basename "${source_url%%\?*}")"; return 1 ;;
+        *)   log "BROKEN: $http_code $(basename "${source_url%%\?*}")"; return 1 ;;
     esac
     # wget has no timeout of its own -- if curl's HEAD check succeeds but
     # the actual transfer stalls (dead connection, slow/black-holed route),
@@ -289,10 +303,10 @@ get_acl() {
     # bounds each read/connect phase and --tries=1 stops it from silently
     # retrying on top of retry_cmd's own retry loop.
     if ! timeout 30 wget -q -c -N --timeout=15 --tries=1 "$source_url" -O "$target_file"; then
-        log "INFO: $(basename "$source_url") download incomplete -- retry"
+        log "PARTIAL: $(basename "${source_url%%\?*}")"
         return 1
     fi
-    log "INFO: $(basename "$source_url") saved"
+    log "SAVED: $(basename "$source_url")"
 }
 
 retry_cmd() {
@@ -401,7 +415,7 @@ check_squid_traffic() {
         info "no valid traffic found ($log_lines lines, 0 valid)"
         echo "Check Squid ACLs, port, and that clients point at this proxy. Continuing anyway."
     else
-        echo "Squid traffic: $log_lines lines, $log_entries valid entries"
+        info "Squid traffic: $log_lines lines, $log_entries valid entries"
     fi
 }
 
@@ -464,7 +478,7 @@ create_proxymon_env() {
         range_value=$(grep "^RANGE=" "$env_file" | head -n1 | cut -d'=' -f2-)
         if [ -n "$range_value" ] && ! [[ "$range_value" =~ $UH_CIDR ]]; then
             warn "RANGE='$range_value' in $env_file is not a network CIDR -- alert"
-            echo " This looks like the old filename-glob value. Add REPORT_IP_GLOB=$range_value,"
+            echo " This looks like old filename-glob value. Add REPORT_IP_GLOB=$range_value,"
             echo " then set RANGE to your actual LAN subnet (e.g. RANGE=192.168.0.0/24)."
         fi
         return 0
@@ -669,11 +683,23 @@ cron_d_set() {
     local cron_file="/etc/cron.d/proxymon"
     local cron_tmp
 
-    cron_tmp=$(mktemp)
-    [ -f "$cron_file" ] && { grep -vF "$match" "$cron_file" > "$cron_tmp" || true; }
-    [ -n "$line" ] && printf '%s\n' "$line" >> "$cron_tmp"
+    cron_tmp=$(mktemp) || return 1
+    if [ -f "$cron_file" ]; then
+        grep -vF "$match" "$cron_file" > "$cron_tmp" || {
+            [ "$?" -eq 1 ] || { rm -f "$cron_tmp"; return 1; }
+        }
+    fi
+    if [ -n "$line" ]; then
+        printf '%s\n' "$line" >> "$cron_tmp" || {
+            rm -f "$cron_tmp"
+            return 1
+        }
+    fi
     if [ -s "$cron_tmp" ]; then
-        install -m 644 -o root -g root "$cron_tmp" "$cron_file"
+        if ! install -m 644 -o root -g root "$cron_tmp" "$cron_file"; then
+            rm -f "$cron_tmp"
+            return 1
+        fi
     else
         rm -f "$cron_file"
     fi
@@ -804,8 +830,8 @@ do_install() {
 
     # Squidreports runs as www-data. In /etc/cron.d the user is a field of
     # the line, so it lives in the project's own file.
-    cron_d_set "squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
-    cron_d_set "squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
+    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
+    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
 
     info "proxymon cron entry updated (Squidreports)"
 
@@ -1022,7 +1048,7 @@ EOF
         a2dissite proxymon.conf 2>/dev/null || true
         a2dissite warning.conf 2>/dev/null || true
         err "Apache configuration test failed, sites just enabled disabled"
-        err "fix the configuration, then re-run install -- abort"
+        err "fix configuration, then re-run install -- abort"
         exit 1
     fi
     info "Apache configuration OK"
@@ -1167,7 +1193,7 @@ do_update() {
 
     [ -d "$TOOL_REPORT_DIR" ] || install -d -m 755 -o root -g root "$TOOL_REPORT_DIR"
 
-    info "Live data left untouched"
+    info "ACL lists and reports were not changed -- skip"
 
     chmod 755 "$CONFIG_DIR/bandata/bandata.sh"
     chmod 755 "$CONFIG_DIR/tools/pmbk.sh"
@@ -1175,14 +1201,14 @@ do_update() {
     chown root:root "$CONFIG_DIR/bandata/bandata.sh"
     chown root:root "$CONFIG_DIR/tools/pmbk.sh"
     chown root:root "$CONFIG_DIR/tools/squidtool.sh"
-    info "Permissions set"
+    info "updated scripts are executable and owned by root"
 
     configure_apache_locations
     set_squid_logrotate
-    cron_d_set "squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
-    cron_d_set "squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
-    cron_d_set "bandata.sh" "*/5 * * * * root $CONFIG_DIR/bandata/bandata.sh"
-    cron_d_set "pmbk.sh" "@monthly root $CONFIG_DIR/tools/pmbk.sh"
+    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
+    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
+    cron_d_set "$CONFIG_DIR/bandata/bandata.sh" "*/5 * * * * root $CONFIG_DIR/bandata/bandata.sh"
+    cron_d_set "$CONFIG_DIR/tools/pmbk.sh" "@monthly root $CONFIG_DIR/tools/pmbk.sh"
     apache2ctl configtest || abort "Apache configuration invalid -- abort"
 
     trap - EXIT
@@ -1213,6 +1239,13 @@ do_uninstall() {
     if [[ ! -d "$WEB_ROOT" ]] && [[ ! -d "$CONFIG_DIR" ]]; then
         info " Proxy Monitor is not installed"
         return 0
+    fi
+
+    local rotate_file=/etc/logrotate.d/squid
+    local hook="runuser -u www-data -- $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
+    if [ -f "$rotate_file" ] && grep -qE "^[[:space:]]*${hook//./\\.}[[:space:]]*$" "$rotate_file"; then
+        sed -i "\|^[[:space:]]*${hook//./\\.}[[:space:]]*$|d" "$rotate_file"
+        info "squid rotation hook removed from $rotate_file"
     fi
 
     rm -f /etc/cron.d/proxymon
@@ -1346,7 +1379,7 @@ do_uninstall() {
     a2query -s
 
     info "Proxy Monitor uninstalled successfully"
-    info "Restart the computer to clear any remaining temporary Bandata rules."
+    info "Restart computer to clear any remaining temporary Bandata rules."
 }
 
 # ------------------------------------------------------------------------------
@@ -1394,6 +1427,8 @@ USAGE_END
 # ------------------------------------------------------------------------------
 
 # Run the action given on the command line, or fall back to the menu
+log "pmsetup start..."
+
 case "${1:-}" in
     --install) do_install ;;
     --update) do_update ;;
@@ -1406,3 +1441,5 @@ case "${1:-}" in
         exit 1
         ;;
 esac
+
+log "pmsetup done at: $(date '+%Y-%m-%d %H:%M:%S')"
