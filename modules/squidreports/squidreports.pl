@@ -196,7 +196,7 @@ while (<FF>) {
 
 	   ($Ltimestamp,$Lelapsed,$Lhost,$Ltype,$Lsize,$Lmethod,$Lurl,$Luser,$Lhierarchy,$Lconttype,@Lrest)=split;
 	   ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($Ltimestamp);
-	   $mon++; #fix, month start from 0
+	   $mon++;
 	   $date  =sprintf("%04d%02d%02d",$year+1900,$mon,$mday);
 
 	   #check row with invalid record

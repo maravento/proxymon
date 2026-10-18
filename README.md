@@ -30,7 +30,7 @@
 
 ### ⚠️ Warning
 
-Tested on Ubuntu 24.04/26.04 LTS. Use on other versions or distributions is at your own risk.
+WARNING: Only tested on Ubuntu 24.04/26.04 LTS. Other versions or distributions are not tested and are used at your own risk.
 
 |   CPU   |   RAM   |   Storage   |   Dependencies   |
 | :-----: | :-----: | :---------: | :--------------: |
@@ -155,12 +155,24 @@ proxymon/
 
 ---
 
-### Install
-
 ```bash
 git clone --depth=1 https://github.com/maravento/proxymon.git
 cd proxymon
+
+# Install
+sudo bash pmsetup.sh --install
+
+# Update
+sudo bash pmsetup.sh --update
+
+# Uninstall
+sudo bash pmsetup.sh --uninstall
+
+# Interactive menu
 sudo bash pmsetup.sh
+
+# Help
+sudo bash pmsetup.sh --help   # or -h
 ```
 
 ### Before You Begin
@@ -250,6 +262,8 @@ sudo bash pmsetup.sh
 | `PANEL_PORT`, `WARNING_PORT` | `pmsetup.sh`, `squidtool.sh`, `worker.php`, `bandata.sh` | Panel and warning ports. Defaults: `18080` and `18081`. Apache keeps the panel on loopback and the warning page on `SERVER_IP`. | Puertos del panel y los avisos. Valores iniciales: `18080` y `18081`. Apache mantiene el panel en localhost y los avisos en `SERVER_IP`. |
 | `BACKUP_DIR` | `pmbk.sh` | Backup destination. Default: `/etc/bak/proxymon`. | Destino de las copias de seguridad. Valor inicial: `/etc/bak/proxymon`. |
 | `TOOL_REPORT_DIR` | `pmsetup.sh`, `squidtool.sh`, `pmbk.sh` | Directory for generated traffic and log-search HTML reports, served through Apache's Squidtool alias. | Directorio de informes HTML de tráfico y búsqueda, publicado mediante el alias Squidtool de Apache. |
+| `SQUIDTOOL_MIN_HITS` | `squidtool.sh` | Minimum requests per row in traffic reports without an IP filter. Default: `20`, written automatically without a prompt. Changing this default is not recommended. Reports for one IP show all rows. Accepts nonnegative integers without leading zeros. | Mínimo de solicitudes por fila en informes de tráfico sin filtro de IP. Valor inicial: `20`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Los informes de una IP muestran todas las filas. Acepta enteros no negativos sin ceros iniciales. |
+| `SQUIDTOOL_ALERT_THRESHOLD` | `squidtool.sh` | Request threshold for highlighting and counting traffic rows as alerts. Default: `300`, written automatically without a prompt. Changing this default is not recommended. Accepts nonnegative integers without leading zeros. | Umbral de solicitudes para resaltar y contar filas de tráfico como alertas. Valor inicial: `300`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Acepta enteros no negativos sin ceros iniciales. |
 | `SQUIDMON_CONFIG` | `pmsetup.sh`, Squidmon, `pmbk.sh` | Squidmon settings file. Its log source comes from `SQUID_LOG_FILE`. | Archivo de configuración de Squidmon. Su registro de origen proviene de `SQUID_LOG_FILE`. |
 | `LLM_ENV_FILE` | `pmsetup.sh`, `worker.php`, `pmbk.sh` | SquidAI credential file. Default: `/etc/proxymon/.env`. | Archivo de credenciales de SquidAI. Valor inicial: `/etc/proxymon/.env`. |
 | `REPORT_STATS_PATH` | `pmsetup.sh`, Squidreports, SquidAI, `pmbk.sh` | Additional Detail and Analyze statistics. Default: the original report directory followed by `stats`. Remains separate from Bandata's original reports. | Estadísticas adicionales de Detail y Analyze. Valor inicial: directorio de informes originales seguido de `stats`. Permanece separado de los informes originales utilizados por Bandata. |
@@ -265,7 +279,8 @@ sudo bash pmsetup.sh
 | `ALLOW_LIST` | `bandata.sh` | IPs exempt from every quota | IP exentas de toda cuota |
 | `BLOCK_LIST_DAY`, `BLOCK_LIST_WEEK`, `BLOCK_LIST_MONTH` | `bandata.sh` | The three lists Bandata rewrites, one per quota window | Las tres listas que Bandata reescribe, una por ventana de cuota |
 | `SQUID_LOG_DIR`, `SQUID_LOG_FILE` | `pmsetup.sh`, `squidtool.sh`, `api.php`, `worker.php`, Squidreports, Squidmon | Squid log directory and `access.log` path | Directorio de logs de Squid y ruta de `access.log` |
-| `SQUID_MGR_HOST`, `SQUID_MGR_PORT` | `connections.php` | Where Squid's cache manager answers; Logview reads the requests in flight from it | Dirección y puerto del administrador de caché de Squid; Logview consulta allí las solicitudes en curso |
+| `SQUID_MGR_HOST`, `SQUID_MGR_PORT` | `connections.php` | Where Squid's cache manager answers; Logview reads the requests in flight from it. `SQUID_MGR_PORT` defaults to `3128` and is shared with other projects | Dirección y puerto del administrador de caché de Squid; Logview consulta allí las solicitudes en curso. `SQUID_MGR_PORT` tiene valor inicial `3128` y se comparte con otros proyectos |
+| `SQUID_INTERCEPT_PORT` | Other projects | Squid intercept port, default `3129`. Shared key for other projects. | Puerto transparente de Squid, valor inicial `3129`. Clave compartida para otros proyectos. |
 | `SQUID_MGR_PASSWD` | `connections.php` | Empty by default. Set it only if `squid.conf` declares `cachemgr_passwd mypassword all`, and use the very same value | Vacía de forma predeterminada. Defínala únicamente si `squid.conf` declara `cachemgr_passwd mipassword all`, y utilice el mismo valor |
 | `WARNING_HTML` | `bandata.sh` | Captive portal page where Bandata writes the current quota values | Página del portal cautivo donde Bandata escribe los valores de cuota vigentes |
 | `CACHE_PATH` | `pmsetup.sh`, `worker.php` | SquidAI cache directory, owned by `www-data` with mode `750` | Directorio de caché de SquidAI, propiedad de `www-data` con permisos `750` |
@@ -891,22 +906,22 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 >
 > Bandata calcula el consumo con los informes disponibles de Squidreports. Si faltan informes o están incompletos, el consumo calculado puede ser inferior al real.
 
-> A failure never penalizes a client. When Bandata cannot read its reports, cannot build a list, or cannot publish its rules, it clears the affected blocks and logs a `WARNING: ... -- alert`. The client regains access and the administrator investigates the cause. Missing report folders are not a failure: that case is reported as `INFO` and the quota is simply calculated over the days that exist.
+> A failure never penalizes a client. When Bandata cannot read its reports, cannot build a list, or cannot publish its rules, it clears the affected blocks and logs a `WARNING: ... -alert`. The client regains access and the administrator investigates the cause. Missing report folders are not a failure: that case is reported as `INFO` and the quota is simply calculated over the days that exist.
 >
-> Una falla nunca penaliza al cliente. Cuando Bandata no puede leer sus informes, construir una lista o publicar sus reglas, vacía los bloqueos afectados y registra un `WARNING: ... -- alert`. El cliente recupera el acceso y el administrador investiga la causa. La ausencia de carpetas de informes no es una falla: ese caso se informa como `INFO` y la cuota se calcula sobre los días que existen.
+> Una falla nunca penaliza al cliente. Cuando Bandata no puede leer sus informes, construir una lista o publicar sus reglas, vacía los bloqueos afectados y registra un `WARNING: ... -alert`. El cliente recupera el acceso y el administrador investiga la causa. La ausencia de carpetas de informes no es una falla: ese caso se informa como `INFO` y la cuota se calcula sobre los días que existen.
 
 ```text
 # The day reports cannot be read
-WARNING: cannot read day reports, day cleared -- alert
+2026-10-17 12:00:00 WARNING: cannot read day reports, day cleared -alert
 
 # A block list cannot be built from the reports
-WARNING: cannot build daily list, day cleared -- alert
-WARNING: cannot build weekly list, week cleared -- alert
-WARNING: cannot build monthly list, month cleared -- alert
+2026-10-17 12:00:00 WARNING: cannot build daily list, day cleared -alert
+2026-10-17 12:00:00 WARNING: cannot build weekly list, week cleared -alert
+2026-10-17 12:00:00 WARNING: cannot build monthly list, month cleared -alert
 
 # The kernel set is incomplete or cannot be put in service
-WARNING: block set half loaded, all blocks cleared -- alert
-WARNING: cannot activate new set, all blocks cleared -- alert
+2026-10-17 12:00:00 WARNING: block set half loaded, all blocks cleared -alert
+2026-10-17 12:00:00 WARNING: cannot activate new set, all blocks cleared -alert
 ```
 
 ```bash
@@ -1444,8 +1459,8 @@ sudo /etc/proxymon/tools/squidtool.sh
 | Command | Description | Descripción |
 |---|---|---|
 | `sudo bash pmbk.sh` | Create a backup now | Crear una copia ahora |
-| `sudo bash pmbk.sh install` | Register the `@monthly` cron entry | Registrar la entrada mensual en cron |
-| `sudo bash pmbk.sh uninstall` | Remove the cron entry, keeping the archives | Quitar la entrada de cron, conservando los archivos ZIP |
+| `sudo bash pmbk.sh --install` | Register the `@monthly` cron entry | Registrar la entrada mensual en cron |
+| `sudo bash pmbk.sh --uninstall` | Remove the cron entry, keeping the archives | Quitar la entrada de cron, conservando los archivos ZIP |
 
 > Backs up Proxymon into `BACKUP_DIR/pmbk_<YYYYMMDD_HHMMSS>.zip` (`BACKUP_DIR=/etc/bak/proxymon` by default), keeping up to 3 archives. `pmsetup.sh --install` registers the monthly cron entry automatically; `pmsetup.sh --uninstall` removes it before removing the project. Restore with `sudo unzip -X ARCHIVE.zip -d /` to recover the stored Unix ownership and permissions. Validate the archive in an isolated directory before restoring.
 >
@@ -1459,6 +1474,21 @@ sudo /etc/proxymon/tools/squidtool.sh
 /var/log/bandata.log                 # Rotated via /etc/logrotate.d/bandata
 pmsetup.log                          # In pmsetup.sh's own directory, rewritten on each run
 /etc/proxymon/tools/squidtool.log    # In squidtool.sh's own directory, rewritten on each run
+```
+
+#### Message examples
+
+> Processing messages keep their timestamp and have no level or flag. `STATUS` is a viewer label, not text written in the log. Three trailing dots are reserved for these lines; other messages have no final period.
+>
+> Los mensajes de procesamiento conservan la fecha y no llevan nivel ni flag. `STATUS` es una etiqueta del visor; no se escribe en el log. Los tres puntos finales se reservan para estas líneas; los demás mensajes no llevan punto final.
+
+> Independent examples from different executions / Ejemplos independientes de diferentes ejecuciones.
+
+```text
+2026-10-17 12:00:00 Updating PHP...
+2026-10-17 12:00:00 INFO: blockpatterns.txt: download failed; retry 2/3
+2026-10-17 12:00:00 WARNING: blockpatterns.txt download failed -alert
+2026-10-17 12:00:00 WARNING: pmbk.sh: monthly backup setup failed -alert
 ```
 
 ## ORIGINAL PROJECTS

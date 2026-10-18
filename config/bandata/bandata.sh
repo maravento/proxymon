@@ -5,10 +5,6 @@
 #
 # bandata -- data usage limits for proxymon
 #
-# DESCRIPTION:
-# Applies the data quotas to the LAN addresses Squid reports, and blocks
-# the ones over quota. Updates Squidreports names and ACL groups. Requires root.
-#
 # USAGE:
 # sudo bash bandata.sh    Apply the quotas now
 #
@@ -27,7 +23,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # root check
 if [ "$(id -u)" != "0" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -- abort" >&2
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
     exit 1
 fi
 
@@ -45,11 +41,14 @@ log() {
 
 # prevent overlapping runs
 script_lock="/var/lock/$(basename "$0" .sh).lock"
-(umask 077; : >> "$script_lock")
+(umask 077; : >> "$script_lock") || {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: cannot open $(basename "$script_lock") -abort" >&2
+    exit 1
+}
 exec 200>"$script_lock"
 
 if ! flock -n 200; then
-    log "ERROR: script $(basename "$0") is already running -- abort"
+    log "ERROR: script $(basename "$0") is already running -abort"
     exit 1
 fi
 
@@ -61,7 +60,7 @@ package_installed() {
 # dependencies
 for dep_pkg in ipset findutils coreutils iptables util-linux sed grep procps logrotate; do
     if ! package_installed "$dep_pkg"; then
-        log "ERROR: dependency '$dep_pkg' is not installed -- abort"
+        log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
     fi
 done
@@ -84,11 +83,11 @@ EOF
     chmod 644 "$logrotate_conf" || logrotate_ok=1
     chown root:root "$logrotate_conf" || logrotate_ok=1
     if [ "$logrotate_ok" -eq 0 ]; then
-        log "INFO: logrotate config created for $(basename "$log_file") -- fixed"
+        log "INFO: logrotate config created for $(basename "$log_file") -fixed"
     else
-        log "WARNING: cannot create logrotate config -- alert"
+        log "WARNING: cannot create logrotate config -alert"
         rm -f "$logrotate_conf" \
-            || log "WARNING: cannot remove the partial logrotate config -- alert"
+            || log "WARNING: cannot remove the partial logrotate config -alert"
     fi
 fi
 
@@ -111,7 +110,7 @@ env_specs=("$proxymon_env root:www-data 640")
 for env_spec in "${env_specs[@]}"; do
     read -r env_path env_owner_want env_perms_want <<< "$env_spec"
     if [ ! -f "$env_path" ]; then
-        log "ERROR: $(basename "$env_path") not found -- abort"
+        log "ERROR: $(basename "$env_path") not found -abort"
         exit 1
     fi
     env_owner=$(stat -c '%U:%G' "$env_path" 2>/dev/null)
@@ -120,9 +119,9 @@ for env_spec in "${env_specs[@]}"; do
        || [[ "$env_perms" != "$env_perms_want" ]]; then
         if chown "$env_owner_want" "$env_path" 2>/dev/null \
            && chmod "$env_perms_want" "$env_path" 2>/dev/null; then
-            log "INFO: $(basename "$env_path") perms fixed -- fixed"
+            log "INFO: $(basename "$env_path") perms fixed -fixed"
         else
-            log "ERROR: cannot fix $(basename "$env_path") perms -- abort"
+            log "ERROR: cannot fix $(basename "$env_path") perms -abort"
             exit 1
         fi
     fi
@@ -135,7 +134,8 @@ unset env_owner env_perms
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../tools/proxymonenv.sh"
 
 # LOAD
-load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -- abort"; exit 1; }
+# Reads proxymon.env; a file that cannot be read aborts the run here
+load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
 
 # KEY CHECK
 # Collect every failure first, then decide -- a single abort reports them all
@@ -148,7 +148,7 @@ for env_key in WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REAL
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
-    elif [ "$env_key" = WARNING_PORT ] && { ! [[ "${!env_key}" =~ ^[1-9][0-9]{0,4}$ ]] || (( ${!env_key} > 65535 )); }; then
+    elif [ "$env_key" = WARNING_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
         key_errors+=("$env_key invalid port")
     fi
 done
@@ -166,17 +166,17 @@ for env_key in MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH; do
 done
 if (( ${#key_errors[@]} > 0 )); then
     for key_error in "${key_errors[@]}"; do
-        log "ERROR: $key_error"
+        log "ERROR: $key_error -abort"
     done
-    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -- abort"
+    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -abort"
     exit 1
 fi
-unset key_errors key_error env_key
+unset key_errors key_error env_key checked_port
 
 # KEY GUARD
 # Each key above is valid on its own. These two relations are not.
 if [ ! -e "/sys/class/net/$LAN" ]; then
-    log "ERROR: interface '$LAN' does not exist -- abort"
+    log "ERROR: interface '$LAN' does not exist -abort"
     exit 1
 fi
 # Byte forms of the three limits, derived from keys KEY CHECK already validated
@@ -195,7 +195,7 @@ log "bandata start..."
 # between the write and the mv (no -e/trap in this script to catch that).
 for stale_file in "$BLOCK_LIST_DAY.tmp" "$BLOCK_LIST_WEEK.tmp" "$BLOCK_LIST_MONTH.tmp"; do
     if [ -f "$stale_file" ]; then
-        log "WARNING: removing orphaned $(basename "$stale_file") -- alert"
+        log "WARNING: removing orphaned $(basename "$stale_file") -alert"
         rm -f "$stale_file"
     fi
 done
@@ -210,7 +210,7 @@ list_failed=0
 clear_list() {
     : > "$1" || {
         list_failed=1
-        log "WARNING: cannot clear $(basename "$1") -- alert"
+        log "WARNING: cannot clear $(basename "$1") -alert"
     }
 }
 # FILESYSTEM LAYOUT
@@ -223,7 +223,7 @@ touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
 
 if [ "$BANDATA_HOTSPOT" = true ] && [ ! -d "$HOTSPOT_PATH" ]; then
     log "ERROR: BANDATA_HOTSPOT=true but $HOTSPOT_PATH does not exist"
-    log "ERROR: install uhm or set BANDATA_HOTSPOT=false -- abort"
+    log "ERROR: install uhm or set BANDATA_HOTSPOT=false -abort"
     exit 1
 fi
 
@@ -231,7 +231,7 @@ fi
 # BANDAY
 # ------------------------------------------------------------------------------
 
-log "INFO: Running Bandata Day..."
+log "Running Bandata Day..."
 
 # path to day report
 day_logs_dir=$REPORT_PATH/$(date +"%Y%m%d")
@@ -241,25 +241,25 @@ if [[ "$today_dow" -eq 6 || "$today_dow" -eq 7 ]]; then
     : > "$BLOCK_LIST_DAY"
 else
     if [ ! -d "$day_logs_dir" ]; then
-        log "INFO: day report folder $(basename "$day_logs_dir") not found -- skip"
+        log "INFO: day report folder $(basename "$day_logs_dir") not found -skip"
         : > "$BLOCK_LIST_DAY"
     else
         tmp_day=$(mktemp)
         subshell_ok=0
         (
-            cd "$day_logs_dir" || { log "WARNING: cannot cd into $day_logs_dir -- alert" >&2; exit 1; }
+            cd "$day_logs_dir" || { log "WARNING: cannot cd into $day_logs_dir -alert" >&2; exit 1; }
             shopt -s nullglob
             for report_file in $REPORT_IP_GLOB; do
                 # A failing awk can still print a partial total, so its status
                 # decides. Ending the subshell clears the day, as the flow asks.
                 user_bytes=$(awk '$1=="total:" {print $2}' "$report_file") || {
-                    log "WARNING: cannot read $report_file -- alert" >&2
+                    log "WARNING: cannot read $report_file -alert" >&2
                     exit 1
                 }
                 if [[ "$user_bytes" =~ $UH_UINT ]] && (( user_bytes > max_bw_day )); then
                     echo "$report_file"
                 elif [ -n "$user_bytes" ] && ! [[ "$user_bytes" =~ $UH_UINT ]]; then
-                    log "WARNING: non-numeric total '$user_bytes' in $report_file -- alert" >&2
+                    log "WARNING: non-numeric total '$user_bytes' in $report_file -alert" >&2
                 fi
             done
             exit 0
@@ -272,25 +272,25 @@ else
             allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
             allow_rc=$?
             if [ "$allow_rc" -gt 1 ]; then
-                log "WARNING: cannot read allow list, day cleared -- alert"
+                log "WARNING: cannot read allow list, day cleared -alert"
                 : > "$BLOCK_LIST_DAY"
             else
                 grep -wvFf <(printf '%s\n' "$allow_ips") "$tmp_day" | $sort_ips | uniq > "${BLOCK_LIST_DAY}.tmp"
                 pipe_status=("${PIPESTATUS[@]}")
                 if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
                     if ! mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"; then
-                        log "WARNING: cannot publish daily list, day cleared -- alert"
+                        log "WARNING: cannot publish daily list, day cleared -alert"
                         rm -f "${BLOCK_LIST_DAY}.tmp"
                         clear_list "$BLOCK_LIST_DAY"
                     fi
                 else
-                    log "WARNING: cannot build daily list, day cleared -- alert"
+                    log "WARNING: cannot build daily list, day cleared -alert"
                     rm -f "${BLOCK_LIST_DAY}.tmp"
                     : > "$BLOCK_LIST_DAY"
                 fi
             fi
         else
-            log "WARNING: cannot read day reports, day cleared -- alert"
+            log "WARNING: cannot read day reports, day cleared -alert"
             : > "$BLOCK_LIST_DAY"
         fi
         rm -f "$tmp_day"
@@ -314,7 +314,7 @@ fi
 # "+1 month -1 day"). Not portable to BSD/macOS date. This project
 # targets Linux only (already requires ipset/iptables).
 
-log "INFO: Running Bandata Week..."
+log "Running Bandata Week..."
 
 if [ "$today_dow" -eq 1 ]; then
     week_dirs=()
@@ -331,14 +331,14 @@ if [ "$today_dow" -eq 1 ]; then
         # the week. Any failure clears the week, as the flow asks.
         if ! report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f \
             -name "$REPORT_IP_GLOB"); then
-            log "WARNING: cannot read weekly reports, week cleared -- alert"
+            log "WARNING: cannot read weekly reports, week cleared -alert"
             : > "$BLOCK_LIST_WEEK"
         elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
             awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
-            log "WARNING: cannot total weekly reports, week cleared -- alert"
+            log "WARNING: cannot total weekly reports, week cleared -alert"
             : > "$BLOCK_LIST_WEEK"
         elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
-            log "WARNING: cannot add up weekly totals, week cleared -- alert"
+            log "WARNING: cannot add up weekly totals, week cleared -alert"
             : > "$BLOCK_LIST_WEEK"
         else
             # Same reading as the day: the exclusions cannot come from a process
@@ -346,7 +346,7 @@ if [ "$today_dow" -eq 1 ]; then
             allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
             allow_rc=$?
             if [ "$allow_rc" -gt 1 ]; then
-                log "WARNING: cannot read allow list, week cleared -- alert"
+                log "WARNING: cannot read allow list, week cleared -alert"
                 : > "$BLOCK_LIST_WEEK"
             else
                 echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
@@ -355,12 +355,12 @@ if [ "$today_dow" -eq 1 ]; then
                    && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
                    && [ "${pipe_status[4]}" -eq 0 ]; then
                     if ! mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"; then
-                        log "WARNING: cannot publish weekly list, week cleared -- alert"
+                        log "WARNING: cannot publish weekly list, week cleared -alert"
                         rm -f "${BLOCK_LIST_WEEK}.tmp"
                         clear_list "$BLOCK_LIST_WEEK"
                     fi
                 else
-                    log "WARNING: cannot build weekly list, week cleared -- alert"
+                    log "WARNING: cannot build weekly list, week cleared -alert"
                     rm -f "${BLOCK_LIST_WEEK}.tmp"
                     : > "$BLOCK_LIST_WEEK"
                 fi
@@ -383,7 +383,7 @@ fi
 # BANMONTH
 # ------------------------------------------------------------------------------
 
-log "INFO: Running Bandata Month..."
+log "Running Bandata Month..."
 
 # Build weekday directories for current month (excluding weekends)
 month_prefix=$(date +"%Y%m")
@@ -405,21 +405,21 @@ else
     # part of the month. Any failure clears the month, as the flow asks.
     if ! report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f \
         -name "$REPORT_IP_GLOB"); then
-        log "WARNING: cannot read monthly reports, month cleared -- alert"
+        log "WARNING: cannot read monthly reports, month cleared -alert"
         : > "$BLOCK_LIST_MONTH"
     elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
         awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
-        log "WARNING: cannot total monthly reports, month cleared -- alert"
+        log "WARNING: cannot total monthly reports, month cleared -alert"
         : > "$BLOCK_LIST_MONTH"
     elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
-        log "WARNING: cannot add up monthly totals, month cleared -- alert"
+        log "WARNING: cannot add up monthly totals, month cleared -alert"
         : > "$BLOCK_LIST_MONTH"
     else
         # Same reading as the day and the week, for the same reason.
         allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
         allow_rc=$?
         if [ "$allow_rc" -gt 1 ]; then
-            log "WARNING: cannot read allow list, month cleared -- alert"
+            log "WARNING: cannot read allow list, month cleared -alert"
             : > "$BLOCK_LIST_MONTH"
         else
             echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
@@ -428,12 +428,12 @@ else
                && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
                && [ "${pipe_status[4]}" -eq 0 ]; then
                 if ! mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"; then
-                    log "WARNING: cannot publish monthly list, month cleared -- alert"
+                    log "WARNING: cannot publish monthly list, month cleared -alert"
                     rm -f "${BLOCK_LIST_MONTH}.tmp"
                     clear_list "$BLOCK_LIST_MONTH"
                 fi
             else
-                log "WARNING: cannot build monthly list, month cleared -- alert"
+                log "WARNING: cannot build monthly list, month cleared -alert"
                 rm -f "${BLOCK_LIST_MONTH}.tmp"
                 : > "$BLOCK_LIST_MONTH"
             fi
@@ -450,28 +450,29 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# IPSET/IPTABLES FOR BANDATA
+# IPSET RULES
 # ------------------------------------------------------------------------------
 
-log "INFO: Running Ipset/Iptables Rules..."
+log "Running Ipset/Iptables Rules..."
 # Every preparation step decides whether the new set may be published. A
 # failed create or flush leaves bandata_new holding the previous contents,
 # and swapping that in would reinstate blocks that are no longer current.
 load_failed=$list_failed
 ipset -! create bandata hash:net family inet hashsize 1024 maxelem 65536 || {
     load_failed=1
-    log "WARNING: cannot create ipset 'bandata' -- alert"
+    log "WARNING: cannot create ipset 'bandata' -alert"
 }
 ipset -! create bandata_new hash:net family inet hashsize 1024 maxelem 65536 || {
     load_failed=1
-    log "WARNING: cannot create ipset 'bandata_new' -- alert"
+    log "WARNING: cannot create ipset 'bandata_new' -alert"
 }
 ipset -! flush bandata_new || {
     load_failed=1
-    log "WARNING: cannot flush ipset 'bandata_new' -- alert"
+    log "WARNING: cannot flush ipset 'bandata_new' -alert"
 }
 
-# NAT
+# FORWARDING
+# Enable IPv4 packet forwarding
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
 
 # Load IPs to bandata_new
@@ -479,10 +480,10 @@ all_bans=$(cat "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH" | $sort_
 
 if [ -n "$all_bans" ]; then
     for banned_ip in $all_bans; do
-        [[ "$banned_ip" =~ $UH_IPV4 ]] || { log "WARNING: not an IPv4 '$banned_ip' -- alert"; continue; }
+        [[ "$banned_ip" =~ $UH_IPV4 ]] || { log "WARNING: not an IPv4 '$banned_ip' -alert"; continue; }
         ipset -exist add bandata_new "$banned_ip" || {
             load_failed=1
-            log "WARNING: cannot add '$banned_ip' to bandata_new -- alert"
+            log "WARNING: cannot add '$banned_ip' to bandata_new -alert"
         }
     done
 fi
@@ -491,13 +492,13 @@ fi
 # A client must not stay blocked because of a script or kernel failure.
 # When the new set cannot be published, every block is cleared instead.
 if [ "$load_failed" -ne 0 ]; then
-    log "WARNING: block set half loaded, all blocks cleared -- alert"
+    log "WARNING: block set half loaded, all blocks cleared -alert"
     ipset flush bandata 2>/dev/null || true
     ipset destroy bandata_new 2>/dev/null || true
 elif ipset swap bandata_new bandata; then
     ipset destroy bandata_new
 else
-    log "WARNING: cannot activate new set, all blocks cleared -- alert"
+    log "WARNING: cannot activate new set, all blocks cleared -alert"
     ipset flush bandata 2>/dev/null || true
     ipset destroy bandata_new 2>/dev/null || true
 fi
@@ -521,7 +522,7 @@ else
     log "INFO: There are no IPs in bandata"
 fi
 
-log "INFO: Applying Iptables Rules..."
+log "Applying Iptables Rules..."
 
 # Add a rule only when it is not there yet, and remember any failure. Without
 # this the script reported "bandata done" and exit zero even when no rule
@@ -531,7 +532,7 @@ iptables_rule() {
     iptables -C "$@" 2>/dev/null && return 0
     if ! iptables -A "$@"; then
         rules_failed=1
-        log "WARNING: cannot apply rule: iptables -A $* -- alert"
+        log "WARNING: cannot apply rule: iptables -A $* -alert"
     fi
 }
 
@@ -546,7 +547,7 @@ iptables_insert() {
     # shellcheck disable=SC2086
     if ! iptables $table -I "$chain" 1 "$@"; then
         rules_failed=1
-        log "WARNING: cannot apply rule: iptables $table -I $chain 1 $* -- alert"
+        log "WARNING: cannot apply rule: iptables $table -I $chain 1 $* -alert"
     fi
 }
 
@@ -555,7 +556,7 @@ iptables_insert() {
 for bandata_chain in BANDATA_FWD BANDATA_IN; do
     iptables -L "$bandata_chain" -n >/dev/null 2>&1 ||         iptables -N "$bandata_chain" || {
             rules_failed=1
-            log "WARNING: cannot create chain $bandata_chain -- alert"
+            log "WARNING: cannot create chain $bandata_chain -alert"
         }
 done
 
@@ -580,7 +581,7 @@ iptables_rule BANDATA_IN -m set --match-set bandata src -j DROP
 iptables_insert -t nat PREROUTING -i "$LAN" -m set --match-set bandata src -p tcp --dport 80 -j REDIRECT --to-port "$WARNING_PORT"
 
 # ------------------------------------------------------------------------------
-# WARNING PAGE UPDATE
+# WARNING PAGE
 # ------------------------------------------------------------------------------
 
 # Sync quota values from proxymon.env into warning.html
@@ -621,7 +622,7 @@ update_squidreports_realname() {
         if [ ! -f "$hotspot_acl" ]; then
             # stdout of this function is captured and ends up in realname.cfg,
             # so the diagnostic goes to stderr and never reaches that file
-            log "WARNING: $(basename "$hotspot_acl") not found -- alert" >&2
+            log "WARNING: $(basename "$hotspot_acl") not found -alert" >&2
             return
         fi
         awk -F';' -v re="${UH_IPV4//\\./\\\\.}" \
@@ -677,7 +678,7 @@ update_squidreports_realname() {
         if ! { echo "$final_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
             && mv -f "$cfg_tmp" "$REALNAME_CFG"; }; then
             rm -f "$cfg_tmp"
-            log "WARNING: cannot update realname.cfg -- alert"
+            log "WARNING: cannot update realname.cfg -alert"
         fi
     fi
 
@@ -688,7 +689,7 @@ update_squidreports_realname() {
         if ! { echo "$skip_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
             && mv -f "$cfg_tmp" "$SKIPUSERS_CFG"; }; then
             rm -f "$cfg_tmp"
-            log "WARNING: cannot update skipuser.cfg -- alert"
+            log "WARNING: cannot update skipuser.cfg -alert"
         fi
     fi
 }
@@ -700,7 +701,7 @@ update_squidreports_groups() {
     local cfg_tmp acl_file group_id group_name
 
     cfg_tmp=$(mktemp) || {
-        log "WARNING: cannot stage group.cfg -- alert"
+        log "WARNING: cannot stage group.cfg -alert"
         return 1
     }
     for group_id in 01 02; do
@@ -713,7 +714,7 @@ update_squidreports_groups() {
             group_name=hotspot
         fi
         if [ ! -f "$acl_file" ]; then
-            log "WARNING: $(basename "$acl_file") not found -- alert"
+            log "WARNING: $(basename "$acl_file") not found -alert"
             continue
         fi
         if ! awk -F';' -v re="${UH_IPV4//\\./\\\\.}" \
@@ -721,7 +722,7 @@ update_squidreports_groups() {
             '$1 == "a" && NF >= 4 && $3 ~ re {print $3, id, name}' \
             "$acl_file" >> "$cfg_tmp"; then
             rm -f -- "$cfg_tmp"
-            log "WARNING: cannot read groups from $(basename "$acl_file") -- alert"
+            log "WARNING: cannot read groups from $(basename "$acl_file") -alert"
             return 1
         fi
     done
@@ -730,7 +731,7 @@ update_squidreports_groups() {
         log "INFO: group.cfg updated"
     else
         rm -f -- "$cfg_tmp"
-        log "WARNING: cannot update group.cfg -- alert"
+        log "WARNING: cannot update group.cfg -alert"
         return 1
     fi
 }
@@ -755,9 +756,9 @@ if [ "${load_failed:-0}" -ne 0 ] || [ "${rules_failed:-0}" -ne 0 ]; then
     # still read it. The set is emptied, as the load failure already does.
     if [ "${rules_failed:-0}" -ne 0 ]; then
         ipset flush bandata 2>/dev/null \
-            || log "WARNING: cannot clear ipset 'bandata' -- alert"
+            || log "WARNING: cannot clear ipset 'bandata' -alert"
     fi
-    log "ERROR: cannot apply data quotas -- abort"
+    log "ERROR: cannot apply data quotas -abort"
     exit 1
 fi
 

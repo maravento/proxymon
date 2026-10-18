@@ -1671,8 +1671,6 @@ function loadUITextsFromDataset(markdownText) {
   const lines = sectionText.split('\n');
 
   // Parse line by line detecting each table by its header | key | is | in |
-  // Bugfix: 3-column global regex derails with padding
-  // width columns used by dataset.md, reading values as keys and vice versa.
   let iClave = -1, iEs = -1, iEn = -1;
 
   const parseCells = (line) =>

@@ -5,10 +5,6 @@
 #
 # squidtool -- Squid log analysis for proxymon
 #
-# DESCRIPTION:
-# Reads the Squid logs the panel does not cover, rotated and compressed
-# ones included, and writes its reports as HTML. Requires root.
-#
 # USAGE:
 # sudo bash squidtool.sh    Interactive menu
 #
@@ -25,16 +21,19 @@ set -uo pipefail
 
 # root check
 if [ "$(id -u)" != "0" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -- abort" >&2
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
     exit 1
 fi
 
 # prevent overlapping runs
 script_lock="/var/lock/$(basename "$0" .sh).lock"
-(umask 077; : >> "$script_lock")
+(umask 077; : >> "$script_lock") || {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: cannot open $(basename "$script_lock") -abort" >&2
+    exit 1
+}
 exec 200>"$script_lock"
 if ! flock -n 200; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: script $(basename "$0") is already running -- abort" >&2
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: script $(basename "$0") is already running -abort" >&2
     exit 1
 fi
 
@@ -60,14 +59,14 @@ package_installed() {
 # dependencies
 for dep_pkg in perl gawk gzip grep coreutils util-linux; do
     if ! package_installed "$dep_pkg"; then
-        log "ERROR: dependency '$dep_pkg' is not installed -- abort"
+        log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
     fi
 done
 
 # dependencies (squid or squid-openssl)
 if ! package_installed squid && ! package_installed squid-openssl; then
-    log "ERROR: 'squid' or 'squid-openssl' is not installed -- abort"
+    log "ERROR: 'squid' or 'squid-openssl' is not installed -abort"
     exit 1
 fi
 
@@ -81,12 +80,6 @@ UH_UINT='^(0|[1-9][0-9]*)$'
 
 proxymon_env="/etc/proxymon/proxymon.env"
 
-# Rows below this many requests are dropped from the traffic report when no
-# IP was given, so the table is not flooded by one-off entries. A report for
-# a single IP shows everything.
-min_hits=20
-alert_threshold=300
-
 # ------------------------------------------------------------------------------
 # ENV
 # ------------------------------------------------------------------------------
@@ -97,7 +90,7 @@ env_specs=("$proxymon_env root:www-data 640")
 for env_spec in "${env_specs[@]}"; do
     read -r env_path env_owner_want env_perms_want <<< "$env_spec"
     if [ ! -f "$env_path" ]; then
-        log "ERROR: $(basename "$env_path") not found -- abort"
+        log "ERROR: $(basename "$env_path") not found -abort"
         exit 1
     fi
     env_owner=$(stat -c '%U:%G' "$env_path" 2>/dev/null)
@@ -106,9 +99,9 @@ for env_spec in "${env_specs[@]}"; do
        || [[ "$env_perms" != "$env_perms_want" ]]; then
         if chown "$env_owner_want" "$env_path" 2>/dev/null \
            && chmod "$env_perms_want" "$env_path" 2>/dev/null; then
-            log "INFO: $(basename "$env_path") perms fixed -- fixed"
+            log "INFO: $(basename "$env_path") perms fixed -fixed"
         else
-            log "ERROR: cannot fix $(basename "$env_path") perms -- abort"
+            log "ERROR: cannot fix $(basename "$env_path") perms -abort"
             exit 1
         fi
     fi
@@ -121,7 +114,9 @@ unset env_owner env_perms
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/proxymonenv.sh"
 
 # LOAD
-load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -- abort"; exit 1; }
+# Reads proxymon.env and derives the report paths from its values.
+# A file that cannot be read aborts the run here.
+load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
 report_dir="${TOOL_REPORT_DIR:-}"
 traffic_html="$report_dir/squid_traffic.html"
 search_html="$report_dir/squid_search.html"
@@ -130,32 +125,37 @@ panel_port="${PANEL_PORT:-}"
 # KEY CHECK
 # Collect every failure first, then decide -- a single abort reports them all
 key_errors=()
-for env_key in SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR PANEL_PORT; do
+for env_key in SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR PANEL_PORT SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD; do
     if ! grep -q "^${env_key}=" "$proxymon_env"; then
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
-    elif [ "$env_key" = PANEL_PORT ] && { ! [[ "${!env_key}" =~ ^[1-9][0-9]{0,4}$ ]] || (( ${!env_key} > 65535 )); }; then
+    elif [[ "$env_key" == SQUIDTOOL_MIN_HITS || "$env_key" == SQUIDTOOL_ALERT_THRESHOLD ]] \
+         && ! [[ "${!env_key}" =~ $UH_UINT ]]; then
+        key_errors+=("$env_key invalid integer")
+    elif [ "$env_key" = PANEL_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
         key_errors+=("$env_key invalid port")
     fi
 done
 if (( ${#key_errors[@]} > 0 )); then
     for key_error in "${key_errors[@]}"; do
-        log "ERROR: $key_error"
+        log "ERROR: $key_error -abort"
     done
-    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -- abort"
+    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -abort"
     exit 1
 fi
-unset key_errors key_error env_key
+unset key_errors key_error env_key checked_port
+min_hits="$SQUIDTOOL_MIN_HITS"
+alert_threshold="$SQUIDTOOL_ALERT_THRESHOLD"
 
 # FALLBACK
 # Second layer of protection, behind KEY CHECK -- by design never reached
 if [ -z "${SQUID_LOG_DIR:-}" ]; then
-    log "WARNING: no SQUID_LOG_DIR in proxymon.env -- fallback"
+    log "WARNING: no SQUID_LOG_DIR in proxymon.env -fallback"
 fi
 squid_log_dir="$SQUID_LOG_DIR"
 if [ -z "${SQUID_LOG_FILE:-}" ]; then
-    log "WARNING: no SQUID_LOG_FILE in proxymon.env -- fallback"
+    log "WARNING: no SQUID_LOG_FILE in proxymon.env -fallback"
 fi
 squid_log_file="${SQUID_LOG_FILE:-$squid_log_dir/access.log}"
 cache_log_file="$squid_log_dir/cache.log"
@@ -165,11 +165,15 @@ cache_log_file="$squid_log_dir/cache.log"
 # path for a symlink while this script writes. Apache serves them through
 # an Alias in proxymon.conf and only needs read access.
 if ! mkdir -p "$report_dir"; then
-    log "ERROR: cannot create $report_dir -- abort"
+    log "ERROR: cannot create $report_dir -abort"
     exit 1
 fi
-if ! chown root:root "$report_dir" || ! chmod 755 "$report_dir"; then
-    log "ERROR: cannot set permissions on $report_dir -- abort"
+if ! chown root:root "$report_dir"; then
+    log "ERROR: TOOL_REPORT_DIR: cannot set owner/group -abort"
+    exit 1
+fi
+if ! chmod 755 "$report_dir"; then
+    log "ERROR: TOOL_REPORT_DIR: cannot set permissions -abort"
     exit 1
 fi
 
@@ -177,7 +181,7 @@ fi
 # Every report below reads this file, so a path that no longer matches the
 # filesystem produces an empty report instead of an error.
 if ! ls "$squid_log_file"* >/dev/null 2>&1; then
-    log "ERROR: access log not found in $squid_log_dir -- abort"
+    log "ERROR: access log not found in $squid_log_dir -abort"
     exit 1
 fi
 
@@ -189,7 +193,7 @@ ask_ip() {
     local ip_answer
     read -r -p "IP address (enter for all): " ip_answer
     if [ -n "$ip_answer" ] && ! [[ "$ip_answer" =~ $UH_IPV4 ]]; then
-        log "INFO: invalid IP '$ip_answer' -- skip" >&2
+        log "INFO: invalid IP '$ip_answer' -skip" >&2
         return 1
     fi
     printf '%s' "$ip_answer"
@@ -212,7 +216,7 @@ ask_cutoff() {
         || [ "$hours_answer" -lt 1 ] || [ "$hours_answer" -gt 876000 ]; then
         # Callers read this function through $(...), so stdout must carry the
         # timestamp alone. The notice goes to stderr and still reaches the log.
-        log "WARNING: invalid hours '$hours_answer' -- fallback" >&2
+        log "WARNING: invalid hours '$hours_answer' -fallback" >&2
         hours_answer=72
     fi
     # The epoch is read in an assignment, because arithmetic would turn a
@@ -309,8 +313,12 @@ EOF
 # Leaves the report readable by the panel and prints where to open it
 publish_report() {
     local report_file="$1" server_ip
-    if ! chown root:root "$report_file" || ! chmod 644 "$report_file"; then
-        log "ERROR: cannot set permissions on $(basename "$report_file") -- abort"
+    if ! chown root:root "$report_file"; then
+        log "ERROR: cannot set owner and group: $(basename "$report_file") -abort"
+        exit 1
+    fi
+    if ! chmod 644 "$report_file"; then
+        log "ERROR: cannot set $(basename "$report_file") permissions -abort"
         exit 1
     fi
     server_ip=$(grep -oP "^Listen \K[0-9.]+(?=:${panel_port})" /etc/apache2/ports.conf 2>/dev/null | head -1)
@@ -325,12 +333,12 @@ report_traffic() {
     local target_ip cutoff rows row_count alert_count filter_rc block_rc
     target_ip=$(ask_ip) || return
     if ! cutoff=$(ask_cutoff 72); then
-        log "ERROR: cannot resolve traffic period -- abort"
+        log "ERROR: cannot resolve traffic period -abort"
         exit 1
     fi
 
     log "INFO: traffic report -- ip=${target_ip:-all} cutoff=$cutoff"
-    echo "Analyzing, please wait..."
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Analyzing, please wait..."
 
     if ! rows=$(zcat -f "$squid_log_file"* | awk -v cutoff="$cutoff" -v ip="$target_ip" '
         $1 > cutoff {
@@ -342,7 +350,7 @@ report_traffic() {
             }
             else if ($7 ~ /^[^\/]+:[0-9]+$/) { host = $7; sub(/:[0-9]+$/, "", host); print $3, host }
         }' | sort | uniq -c | sort -nr); then
-        log "ERROR: cannot analyze access logs -- abort"
+        log "ERROR: cannot analyze access logs -abort"
         exit 1
     fi
 
@@ -354,17 +362,17 @@ report_traffic() {
     # fi carries the status of the branch that ran, so one test covers both.
     filter_rc=$?
     if [ "$filter_rc" -ne 0 ]; then
-        log "ERROR: cannot filter traffic rows -- abort"
+        log "ERROR: cannot filter traffic rows -abort"
         exit 1
     fi
 
     if ! row_count=$(printf '%s' "$rows" | count_lines); then
-        log "ERROR: cannot count traffic rows -- abort"
+        log "ERROR: cannot count traffic rows -abort"
         exit 1
     fi
     if ! alert_count=$(printf '%s\n' "$rows" |
         awk -v th="$alert_threshold" 'NF >= 3 && $1 + 0 >= th' | count_lines); then
-        log "ERROR: cannot count traffic alerts -- abort"
+        log "ERROR: cannot count traffic alerts -abort"
         exit 1
     fi
 
@@ -397,7 +405,7 @@ report_traffic() {
     ) > "$traffic_html"
     block_rc=$?
     if [ "$block_rc" -ne 0 ]; then
-        log "ERROR: cannot write $(basename "$traffic_html") -- abort"
+        log "ERROR: cannot write $(basename "$traffic_html") -abort"
         exit 1
     fi
 
@@ -412,17 +420,17 @@ report_search() {
     local cache_count block_rc
     read -r -p "Enter the text to search (e.g. google): " search_term
     if [ -z "$search_term" ]; then
-        log "INFO: no search term given -- skip"
+        log "INFO: no search term given -skip"
         return
     fi
     target_ip=$(ask_ip) || return
     if ! cutoff=$(ask_cutoff all); then
-        log "ERROR: cannot resolve search period -- abort"
+        log "ERROR: cannot resolve search period -abort"
         exit 1
     fi
 
     log "INFO: search '$search_term' -- ip=${target_ip:-all} cutoff=$cutoff"
-    echo "Searching, please wait..."
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Searching, please wait..."
 
     if ! access_hits=$(
         zcat -f "$squid_log_file"* \
@@ -433,7 +441,7 @@ report_search() {
         (( pipe_status[0] == 0 && pipe_status[1] == 0 &&
            pipe_status[2] <= 1 && pipe_status[3] == 0 ))
     ); then
-        log "ERROR: cannot search access logs -- abort"
+        log "ERROR: cannot search access logs -abort"
         exit 1
     fi
 
@@ -447,16 +455,16 @@ report_search() {
         (( pipe_status[0] == 0 && pipe_status[1] == 0 &&
            pipe_status[2] <= 1 && pipe_status[3] == 0 ))
     ); then
-        log "ERROR: cannot search cache log -- abort"
+        log "ERROR: cannot search cache log -abort"
         exit 1
     fi
 
     if ! access_count=$(printf '%s' "$access_hits" | count_lines); then
-        log "ERROR: cannot count access log matches -- abort"
+        log "ERROR: cannot count access log matches -abort"
         exit 1
     fi
     if ! cache_count=$(printf '%s' "$cache_hits" | count_lines); then
-        log "ERROR: cannot count cache log matches -- abort"
+        log "ERROR: cannot count cache log matches -abort"
         exit 1
     fi
 
@@ -496,7 +504,7 @@ report_search() {
     ) > "$search_html"
     block_rc=$?
     if [ "$block_rc" -ne 0 ]; then
-        log "ERROR: cannot write $(basename "$search_html") -- abort"
+        log "ERROR: cannot write $(basename "$search_html") -abort"
         exit 1
     fi
 
@@ -524,7 +532,7 @@ show_menu() {
             1) report_traffic ;;
             2) report_search ;;
             3) return 0 ;;
-            *) log "INFO: invalid option -- retry" ;;
+            *) log "INFO: invalid option -retry" ;;
         esac
     done
 }
