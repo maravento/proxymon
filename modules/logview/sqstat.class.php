@@ -53,7 +53,14 @@ private $fp;
 
                             var oldHdr = document.querySelector("div.header");
                             var newHdr = d.querySelector("div.header");
-                            if (oldHdr && newHdr) oldHdr.outerHTML = newHdr.outerHTML;
+                            if (oldHdr && newHdr) {
+                                var viewSwitch = oldHdr.querySelector(".view-switch");
+                                oldHdr.replaceWith(newHdr);
+                                if (viewSwitch) {
+                                    var controls = newHdr.querySelector(".live-controls") || newHdr.querySelector("form") || newHdr;
+                                    controls.prepend(viewSwitch);
+                                }
+                            }
 
                             if (typeof jsInit === "function") jsInit();
                         });

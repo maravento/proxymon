@@ -1056,11 +1056,11 @@ MAX_BANDWIDTH_MONTH=20G
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p><strong>Logview</strong> contains two internal tabs: <strong>Log</strong> for access logs and <strong>Live</strong> for active requests. Both views remain inside Logview.</p>
+      <p><strong>Logview</strong> contains two internal tabs: <strong>Log</strong> for access logs and <strong>Live</strong> for active requests. Both views remain inside Logview. The Log/Live buttons share the controls row; the Log search field has a compact width.</p>
       <p>Dark is the default theme for Log and Live. The shared theme selection is saved in the browser and applied before displaying the content when Logview reloads. Live uses the same selection when opened, including when its refresh is paused.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p><strong>Logview</strong> contiene dos pestañas internas: <strong>Log</strong> para los registros de acceso y <strong>Live</strong> para las solicitudes en curso. Ambas vistas permanecen dentro de Logview.</p>
+      <p><strong>Logview</strong> contiene dos pestañas internas: <strong>Log</strong> para los registros de acceso y <strong>Live</strong> para las solicitudes en curso. Ambas vistas permanecen dentro de Logview. Los botones Log/Live comparten la fila de controles; el campo de búsqueda de Log tiene un ancho reducido.</p>
       <p>El tema oscuro es el predeterminado de Log y Live. La selección de tema compartido se guarda en el navegador y se aplica antes de mostrar el contenido al recargar Logview. Live adopta esa selección al abrirse, incluso con su actualización pausada.</p>
     </td>
   </tr>
@@ -1074,7 +1074,7 @@ MAX_BANDWIDTH_MONTH=20G
 
 | Control | Description | Descripción |
 | --- | --- | --- |
-| <img src="./img/logview-darkmodebutton.png" width="60" alt="Theme toggle"> | Shared theme toggle in the main bar, beside **Log** and **Live**. Switches both views between light and dark themes. | Botón de tema compartido en la barra principal, junto a **Log** y **Live**. Alterna ambas vistas entre los temas claro y oscuro. |
+| <img src="./img/logview-darkmodebutton.png" width="60" alt="Theme toggle"> | Shared theme toggle at the right of the dashboard header, beside the local date and time. Switches both views between light and dark themes. | Botón de tema compartido a la derecha de la cabecera, junto a la fecha y hora local. Alterna ambas vistas entre los temas claro y oscuro. |
 
 | Description | Descripción |
 | --- | --- |

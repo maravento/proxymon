@@ -70,33 +70,18 @@ html.dark body .grep-banner b{color:#63b3ed}
   border-bottom:3px solid #3498db;
 }
 
-.toolbar-title{
-  font-size:14px;
-  font-weight:700;
-  color:#fff;
-  display:flex;
-  align-items:center;
-  gap:7px;
-  white-space:nowrap;
-}
-
-.toolbar-title .icon{
-  background:rgba(255,255,255,0.1);
-  border-radius:6px;
-  padding:4px 7px;
-  font-size:15px;
-}
-
 .search-wrap{
   position:relative;
-  flex:1;
-  min-width:220px;
+  flex:0 1 320px;
+  min-width:200px;
+  max-width:100%;
   display:flex;
   gap:6px;
   align-items:center;
 }
 .search-wrap input{
   flex:1;
+  min-width:0;
   background:#253545;
   border:1px solid #3a4f63;
   color:#e6eef8;
@@ -315,15 +300,11 @@ tbody td{
 <!-- ── Toolbar ──────────────────────────────────────────────────────── -->
 <div class="toolbar">
 
-  <div class="toolbar-title">
-    <span class="icon">📄</span>
-    Logview
-  </div>
-
   <div class="search-wrap">
     <span class="sicon">🔍</span>
     <input id="q" type="text"
-      placeholder="Search IP, URL, user, method, HTTP code..."
+      placeholder="Search logs…"
+      aria-label="Search IP, URL, user, method or HTTP code"
       onkeydown="if(event.key==='Enter')grepSearch()">
     <button class="btn-grep" id="btnGrep" onclick="toggleGrep()" title="Search entire log file">
       🔎 Full log

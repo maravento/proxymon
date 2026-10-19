@@ -6,6 +6,7 @@
   <title>Proxy Monitor</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='42' cy='42' r='30' fill='none' stroke='%233498db' stroke-width='12'/><line x1='64' y1='64' x2='92' y2='92' stroke='%233498db' stroke-width='14' stroke-linecap='round'/></svg>">
   <link rel="alternate icon" type="image/png" href="squidreports/assets/global/img/favicon.png">
+  <script src="/proxymon/logview/theme.js"></script>
   <style>
     :root{
       --bg-app: #f8f9fa;
@@ -101,7 +102,9 @@
       gap: 8px;
     }
 
+    #btnTheme { border: 0; border-radius: 6px; padding: 7px 10px; background: rgba(255,255,255,.08); color: white; cursor: pointer; }
     .periodo {
+      white-space: nowrap;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -259,6 +262,7 @@
       </div>
 
       <div class="header-right">
+        <button id="btnTheme" type="button" onclick="logviewTheme.toggle()" aria-label="Switch theme" title="Switch theme">☀️</button>
         <div class="periodo">
           <span>📅</span> <span id="currentMonth"></span>
         </div>
@@ -325,12 +329,15 @@
   </main>
 
   <script>
-    // Set current month dynamically
-    document.getElementById('currentMonth').textContent = new Date().toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric' 
-    });
+    function updateClock() {
+      const now = new Date();
+      const pad = value => String(value).padStart(2, '0');
+      document.getElementById('currentMonth').textContent =
+        `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+        `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
 
     // Tab switching
     document.querySelectorAll('.tabs-pro .tab-pro').forEach(btn => {
@@ -362,6 +369,7 @@
     });
 
     function hideLoading(iframe) {
+      logviewTheme.sync(iframe);
       try {
         const loader = iframe.parentElement.querySelector('.loading');
         if (loader) {
