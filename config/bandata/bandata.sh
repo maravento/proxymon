@@ -4,6 +4,7 @@
 ################################################################################
 #
 # bandata -- data usage limits for proxymon
+# FILE: bandata/bandata.sh
 #
 # USAGE:
 # sudo bash bandata.sh    Apply the quotas now

@@ -2008,10 +2008,17 @@ function severityBadge(sev) {
   return '<span style="color:var(--text-muted)">🟡 MEDIUM</span>';
 }
 
+function renderMissingListsWarning(data) {
+  if (!Array.isArray(data.missing_lists) || !data.missing_lists.length) return '';
+  const files = data.missing_lists.join(', ');
+  return `<p class="warn-line">⚠️ ${t.incompleteLists(files)}</p>`;
+}
+
 function renderSecurityIncidents(data) {
   if (data.error) return `<p class="warn-line">⚠️ ${data.error}</p>`;
+  const missingWarning = renderMissingListsWarning(data);
   const incidents = data.incidents || [];
-  if (!incidents.length) return `<p class="ok-line">${t.securityNone}</p>`;
+  if (!incidents.length) return missingWarning || `<p class="ok-line">${t.securityNone}</p>`;
 
   const rows = incidents.map(inc => {
     const sev = getSeverity(inc.pattern, inc.hits);
@@ -2043,7 +2050,7 @@ function renderSecurityIncidents(data) {
   const hitsLabel     = t.labelHits;
   const severityLabel = t.labelSeverity;
 
-  return `${summary}
+  return `${missingWarning}${summary}
   <table>
     <thead>
       <tr>
@@ -2060,8 +2067,9 @@ function renderSecurityIncidents(data) {
 
 function renderBlockTable(data, title, mode) {
   if (data.error) return `<p class="warn-line">⚠️ ${data.error}</p>`;
+  const missingWarning = renderMissingListsWarning(data);
   const incidents = data.incidents || [];
-  if (!incidents.length) return `<p class="ok-line">✅ ${title}: no records today.</p>`;
+  if (!incidents.length) return missingWarning || `<p class="ok-line">✅ ${title}: no records today.</p>`;
 
   const count = data.incident_count ?? data.count ?? incidents.length;
   const nameLabel = t.labelName;
@@ -2074,7 +2082,7 @@ function renderBlockTable(data, title, mode) {
       const pat = `<code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--accent)">${escHtml(inc.pattern || inc.domain || '')}</code>`;
       return `<tr><td>${inc.ip}</td><td>${escHtml(inc.name)}</td><td>${pat}</td><td${sev}>${inc.hits}</td></tr>`;
     }).join('');
-    return `<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
+    return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
       <table>
         <thead><tr><th>IP</th><th>${nameLabel}</th><th>Pattern</th><th>${hitsLabel}</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -2096,7 +2104,7 @@ function renderBlockTable(data, title, mode) {
     });
   }
   const colLabel = mode === 'tlds' ? 'TLD' : t.labelDomain;
-  return `<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
+  return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
     <table>
       <thead><tr><th>IP</th><th>${nameLabel}</th><th>${colLabel}</th><th>${hitsLabel}</th></tr></thead>
       <tbody>${rows}</tbody>

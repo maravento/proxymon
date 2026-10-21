@@ -519,6 +519,7 @@ FILE: squidai/dataset.md
 | titleBlockedDomains | 🚫 Accesos a dominios bloqueados | 🚫 Blocked domain accesses |
 | titleBlockedTlds    | 🌐 Accesos a TLDs bloqueados     | 🌐 Blocked TLD accesses    |
 | securityNone        | ✅ Sin incidentes de seguridad hoy. | ✅ No security incidents today. |
+| incompleteLists     | Resultados incompletos. Listas de bloqueo ausentes: {files} | Incomplete results. Missing blocklists: {files} |
 
 ### Plantillas con parámetros | Parameter templates
 

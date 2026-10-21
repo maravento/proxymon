@@ -1531,7 +1531,7 @@ sudo /etc/proxymon/tools/squidtool.sh
         <li>The <code>bandata</code> logrotate configuration.</li>
         <li>The project's <code>/etc/cron.d/proxymon</code> entry and the <code>php.ini</code> in use.</li>
       </ul>
-      Paths that do not exist are skipped. <code>pmsetup.sh --update</code> runs this backup before updating project files.
+      Paths that do not exist are skipped. Only the last 3 archives are kept. <code>pmsetup.sh --update</code> runs this backup before updating project files.
     </td>
     <td style="width: 50%; vertical-align: top;">
       <code>pmbk.sh</code> crea un archivo ZIP con la instalación y configuración de Proxy Monitor, incluidas las rutas que se enumeran a continuación:
@@ -1543,7 +1543,7 @@ sudo /etc/proxymon/tools/squidtool.sh
         <li>La configuración de logrotate de <code>bandata</code>.</li>
         <li>La entrada <code>/etc/cron.d/proxymon</code> del proyecto y el <code>php.ini</code> en uso.</li>
       </ul>
-      Las rutas que no existan se omiten. <code>pmsetup.sh --update</code> ejecuta esta copia de seguridad antes de actualizar los archivos del proyecto.
+      Las rutas que no existan se omiten. Solo se conservan los 3 últimos archivos. <code>pmsetup.sh --update</code> ejecuta esta copia de seguridad antes de actualizar los archivos del proyecto.
     </td>
   </tr>
 </table>

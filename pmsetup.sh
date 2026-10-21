@@ -4,6 +4,7 @@
 ################################################################################
 #
 # pmsetup -- installer for proxymon
+# FILE: pmsetup.sh
 #
 # USAGE:
 # sudo bash pmsetup.sh --install      Fresh install
@@ -1366,7 +1367,7 @@ do_update() {
     if bash "$script_dir/config/tools/pmbk.sh"; then
         info "backup taken with pmbk.sh"
     else
-        warn "pmbk.sh: backup failed -alert"
+        abort "pmbk.sh: backup failed -abort"
     fi
 
     secure_web_code "$WEB_ROOT" 1 || abort "cannot update web code -abort"
@@ -1462,12 +1463,17 @@ do_uninstall() {
     fi
     failure_message="cannot read locations from proxymon.env"
     configure_locations
-    info "for a backup, run $CONFIG_DIR/tools/pmbk.sh first"
     log "Uninstalling Proxy Monitor..."
 
     if [[ ! -d "$WEB_ROOT" ]] && [[ ! -d "$CONFIG_DIR" ]]; then
         info "Proxy Monitor is not installed"
         return 0
+    fi
+
+    if bash "$CONFIG_DIR/tools/pmbk.sh"; then
+        info "backup taken with pmbk.sh"
+    else
+        abort "pmbk.sh: backup failed -abort"
     fi
 
     local rotate_file=/etc/logrotate.d/squid
@@ -1652,7 +1658,7 @@ show_menu() {
             1) do_install; break ;;
             2) do_update; break ;;
             3) do_uninstall; break ;;
-            4) exit 0 ;;
+            4) break ;;
             *) info "invalid option -retry" ;;
         esac
     done

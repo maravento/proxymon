@@ -887,6 +887,11 @@ function parseAccessLog(string $ip, string $date): array {
 
         $fh = @fopen($logFile, 'r');
         if (!$fh) throw new IncompleteLogRead('Cannot read ' . $logFile);
+        $fileStat = fstat($fh);
+        if ($fileStat === false || ($fileStat['mode'] & 0170000) !== 0100000) {
+            fclose($fh);
+            throw new IncompleteLogRead('Not a regular file: ' . $logFile);
+        }
         $logSources++;
 
         // For large files, read in chunks

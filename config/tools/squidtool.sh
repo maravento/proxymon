@@ -4,6 +4,7 @@
 ################################################################################
 #
 # squidtool -- Squid log analysis for proxymon
+# FILE: tools/squidtool.sh
 #
 # USAGE:
 # sudo bash squidtool.sh    Interactive menu

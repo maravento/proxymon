@@ -4,6 +4,7 @@
 ################################################################################
 #
 # domain-suffixes-update -- manual Public Suffix List update for proxymon
+# FILE: squidreports/domain-suffixes-update.sh
 #
 # USAGE:
 # sudo bash domain-suffixes-update.sh    Update domain-suffixes.txt
