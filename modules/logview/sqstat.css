@@ -1,4 +1,7 @@
-/* "connections" table */
+/*
+ * SqStat light theme
+ * FILE: logview/sqstat.css
+ "connections" table */
 html:not(.dark) TABLE.result {
 	border:1px solid #ccccdd;border-collapse:collapse;
 }
@@ -65,6 +68,5 @@ html:not(.dark) #dhtmlpointer {
 	visibility: hidden;
 }
 
-html:not(.dark) .live-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-html:not(.dark) .live-group { margin-left: auto; white-space: nowrap; }
-@media (max-width: 640px) { html:not(.dark) .live-group { margin-left: 0; } }
+html:not(.dark) .live-controls { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 16px; }
+html:not(.dark) .live-info { grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 0; text-align: right; }

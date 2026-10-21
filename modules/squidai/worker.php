@@ -1,6 +1,7 @@
 <?php
 /**
  * SquidAI Worker — Backend PHP
+ * FILE: squidai/worker.php
  * Read local sources from the proxy and return JSON to the frontend
  * Supports any LLM via configurable API key
  *
@@ -346,6 +347,24 @@ try {
             break;
 
         case 'llm_proxy':
+            if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+                header('Allow: POST');
+                http_response_code(405);
+                echo json_encode(['error' => 'LLM requests require the POST method']);
+                break;
+            }
+            $requestContentType = strtolower(trim(explode(';', $_SERVER['CONTENT_TYPE'] ?? '', 2)[0]));
+            if ($requestContentType !== 'application/json') {
+                http_response_code(415);
+                echo json_encode(['error' => 'LLM requests require Content-Type: application/json']);
+                break;
+            }
+            if ($requestOrigin !== '' && !in_array($requestOrigin, $allowedOrigins, true)) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Request Origin is not allowed for this panel']);
+                break;
+            }
+
             // ── LLM PROXY ─────────────────────────────────────────────────────
             // Provider-agnostic LLM proxy. Provider configuration lives in LLM_ENV_FILE
             // The frontend always sends Gemini format and always receives Gemini format.
@@ -532,19 +551,29 @@ try {
  */
 function readLinesLocked(string $path): array {
     $fh = @fopen($path, 'r');
-    if (!$fh) return [];
+    if (!$fh) throw new IncompleteLogRead('Cannot open ' . $path);
 
-    $lines = [];
-    if (flock($fh, LOCK_SH)) {
+    try {
+        $fileStat = fstat($fh);
+        if ($fileStat === false || ($fileStat['mode'] & 0170000) !== 0100000) {
+            throw new IncompleteLogRead('Not a regular file: ' . $path);
+        }
+        if (!flock($fh, LOCK_SH)) {
+            throw new IncompleteLogRead('Cannot acquire a shared read lock for ' . $path);
+        }
+        $lines = [];
         while (($line = fgets($fh)) !== false) {
             $line = rtrim($line, "\r\n");
             if ($line === '') continue;
             $lines[] = $line;
         }
-        flock($fh, LOCK_UN);
+        if (!feof($fh)) {
+            throw new IncompleteLogRead('Incomplete read of ' . $path);
+        }
+        return $lines;
+    } finally {
+        fclose($fh);
     }
-    fclose($fh);
-    return $lines;
 }
 
 /**
@@ -699,6 +728,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
 
     $ipEsc = escapeshellarg($ip);
 
+    $logSources = 0;
     foreach ($logFiles as $logFile) {
         if (!file_exists($logFile)) continue;
 
@@ -707,6 +737,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
             . '; s=("${PIPESTATUS[@]}"); exit $(( s[0] > 1 || s[1] > 1 ? 2 : 0 ))';
         $handle = popen('/bin/bash -c ' . escapeshellarg($command), 'r');
         if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
+        $logSources++;
 
         $lineCount = 0;
         while (($line = fgets($handle)) !== false) {
@@ -734,6 +765,9 @@ function getDeniedDirectIps(string $ip, string $date): array {
         }
     }
 
+    if ($logSources === 0) {
+        throw new IncompleteLogRead('No Squid access logs available in ' . SQUID_LOG_DIR);
+    }
     if ($hits === 0) return ['hits' => 0, 'severity' => null];
 
     if ($hits >= 100)    $severity = 'CRITICAL';
@@ -821,6 +855,7 @@ function readSquidreportsReport(string $ip, string $date): array {
 function parseAccessLog(string $ip, string $date): array {
     $domains    = [];
     $totalBytes = 0;
+    $logSources = 0;
 
     // Determine range of timestamps
     $targetDate = ($date === 'today' || !$date) ? date('Y-m-d') : $date;
@@ -852,6 +887,7 @@ function parseAccessLog(string $ip, string $date): array {
 
         $fh = @fopen($logFile, 'r');
         if (!$fh) throw new IncompleteLogRead('Cannot read ' . $logFile);
+        $logSources++;
 
         // For large files, read in chunks
         $lineCount = 0;
@@ -898,9 +934,16 @@ function parseAccessLog(string $ip, string $date): array {
             }
             $totalBytes += $bytes;
         }
+        $complete = feof($fh);
         fclose($fh);
+        if (!$complete) {
+            throw new IncompleteLogRead('Incomplete read of ' . $logFile);
+        }
     }
 
+    if ($logSources === 0) {
+        throw new IncompleteLogRead('No Squid access logs available in ' . SQUID_LOG_DIR);
+    }
     usort($domains, fn($a, $b) => $b['bytes'] - $a['bytes']);
     $all = array_values($domains);
     $top10 = array_slice($all, 0, 10);
@@ -976,6 +1019,12 @@ function checkBlacklist(string $ip, string $date): array {
  * - 'tlds' → Domain TLD in blocktlds.txt
  */
 function getBlockedByType(string $type, string $date = 'today'): array {
+
+    $missingLists = [];
+    $listFile = ['domains' => BLOCKDOMAINS, 'patterns' => BLOCKPATTERNS, 'tlds' => BLOCKTLDS][$type] ?? null;
+    if ($listFile !== null && !file_exists($listFile)) {
+        $missingLists[] = basename($listFile);
+    }
 
     // Normalize date (same pattern as getNetworkSummary)
     if ($date === 'today' || !$date) {
@@ -1069,11 +1118,13 @@ function getBlockedByType(string $type, string $date = 'today'): array {
     }
     $logFiles = array_merge($rotated, [SQUID_LOG_FILE]);
 
+    $logSources = 0;
     foreach ($logFiles as $logFile) {
         if (!file_exists($logFile)) continue;
 
         $handle = popen("timeout 30 grep -a 'TCP_DENIED' " . escapeshellarg($logFile), 'r');
         if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
+        $logSources++;
 
         $lineCount = 0;
         while (($line = fgets($handle)) !== false) {
@@ -1189,6 +1240,9 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         }
     }
 
+    if ($logSources === 0) {
+        throw new IncompleteLogRead('No Squid access logs available in ' . SQUID_LOG_DIR);
+    }
     $results = array_values($incidentMap);
 
     usort($results, fn($a, $b) => $b['hits'] - $a['hits']);
@@ -1199,6 +1253,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         'count'       => count($results),
         'total_bytes' => $totalBytes,
         'total_human' => formatBytes($totalBytes),
+        'missing_lists' => $missingLists,
     ];
 }
 

@@ -1,4 +1,7 @@
-/* ===========================================================
+/*
+ * Squidreports - bootstrap modalmanager
+ * FILE: squidreports/assets/global/plugins/bootstrap-modal/js/bootstrap-modalmanager.js
+ ===========================================================
  * bootstrap-modalmanager.js v2.2.5
  * ===========================================================
  * Copyright 2012 Jordan Schroter.

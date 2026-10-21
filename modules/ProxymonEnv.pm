@@ -1,3 +1,5 @@
+# Proxymon environment reader for Perl
+# FILE: ProxymonEnv.pm
 package ProxymonEnv;
 use strict;
 use warnings;

@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - group detail
+# FILE: squidreports/group_detail.cgi
 # group_detail.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

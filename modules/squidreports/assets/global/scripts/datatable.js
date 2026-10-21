@@ -1,4 +1,7 @@
-/***
+/**
+ * Squidreports - datatable
+ * FILE: squidreports/assets/global/scripts/datatable.js
+*
 Wrapper/Helper Class for datagrid based on jQuery Datatable Plugin
 ***/
 var Datatable = function() {

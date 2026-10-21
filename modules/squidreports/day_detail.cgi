@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - day detail
+# FILE: squidreports/day_detail.cgi
 # day_detail.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

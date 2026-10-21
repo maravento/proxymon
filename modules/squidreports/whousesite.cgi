@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - whousesite
+# FILE: squidreports/whousesite.cgi
 # whousesite.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

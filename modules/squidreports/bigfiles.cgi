@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - bigfiles
+# FILE: squidreports/bigfiles.cgi
 # bigfiles.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.
@@ -43,7 +45,7 @@ $total=0;
 
 $workperiod=" $day $MonthName[$month] $year";
 
-open FF,"<$reportpath/$year$month$day/.bigfiles" || MyDie("cant' open .bigfile");
+open FF,"<$reportpath/$year$month$day/.bigfiles" or MyDie("cant' open .bigfile");
 
 $N=0;
 while (<FF>) {

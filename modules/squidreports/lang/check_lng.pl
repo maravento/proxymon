@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - check lng
+# FILE: squidreports/lang/check_lng.pl
 #
 # LightSquid Project (c) 2004-2005 Sergey Erokhin aka ESL
 #

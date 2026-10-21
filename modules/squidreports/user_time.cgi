@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - user time
+# FILE: squidreports/user_time.cgi
 # user_time.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

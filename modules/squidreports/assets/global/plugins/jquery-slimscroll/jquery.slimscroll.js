@@ -1,4 +1,7 @@
-/*! Copyright (c) 2011 Piotr Rochala (http://rocha.la)
+/*!
+ * Squidreports - jquery.slimscroll
+ * FILE: squidreports/assets/global/plugins/jquery-slimscroll/jquery.slimscroll.js
+ Copyright (c) 2011 Piotr Rochala (http://rocha.la)
  * Dual licensed under the MIT (http://www.opensource.org/licenses/mit-license.php)
  * and GPL (http://www.opensource.org/licenses/gpl-license.php) licenses.
  *

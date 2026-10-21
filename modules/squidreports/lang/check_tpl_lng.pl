@@ -1,3 +1,5 @@
+# Squidreports - check tpl lng
+# FILE: squidreports/lang/check_tpl_lng.pl
 #/bin/perl
 
 $lang=lc $ARGV[0];

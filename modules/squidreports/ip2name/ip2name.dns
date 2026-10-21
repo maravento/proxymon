@@ -1,3 +1,5 @@
+# Squidreports ip2name.dns name resolver
+# FILE: squidreports/ip2name/ip2name.dns
 #contributor: esl
 #resolve hostname, cache it for speedup
 # -- vim: filetype=perl

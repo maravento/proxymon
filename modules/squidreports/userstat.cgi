@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - userstat
+# FILE: squidreports/userstat.cgi
 # userstat.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.
@@ -35,7 +37,7 @@ InitTPL("userstat", scalar $co->param('tpl'));
 
 $workperiod=" $day $MonthName[$month] $year";
 
-open FF,"<".StatisticsFile("$year$month$day", ".userstat") || MyDie("can't open .userstat");
+open FF,"<".StatisticsFile("$year$month$day", ".userstat") or MyDie("can't open .userstat");
 
 $N=0;
 $allhit=0;

@@ -1,3 +1,7 @@
+<!--
+Proxymon documentation
+FILE: README.md
+-->
 # [Proxy Monitor](https://github.com/maravento)
 
 [![status-maintained](https://img.shields.io/badge/status-maintained-purple.svg)](https://github.com/maravento/proxymon)
@@ -243,6 +247,21 @@ sudo bash pmsetup.sh --help   # or -h
 
 ### proxymon.env
 
+#### ⚠️ Warning
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <p>Changing the default values in <code>proxymon.env</code> is at the sysadmin's own risk.</p>
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <p>El administrador del sistema cambia los valores predeterminados de <code>proxymon.env</code> bajo su propia responsabilidad.</p>
+    </td>
+  </tr>
+</table>
+
+#### Keys
+
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
@@ -292,7 +311,7 @@ sudo bash pmsetup.sh --help   # or -h
 
 | Description | Descripción |
 | --- | --- |
-| • The installer establishes paths and ports in `proxymon.env`. Runtime modules read these settings; legacy paths in preserved `squidreports.cfg` files no longer override them. Configure Squidmon's log source through `SQUID_LOG_FILE`; its form displays this value read-only.<br><br>• Run `pmsetup.sh --update` after changing ports to apply Apache's configuration. Changing a data path does not move existing files: relocate the data and retain its permissions before using the new path. `pmbk.sh` backs up the configured original reports and additional statistics.<br><br>• `/etc/proxymon/proxymon.env` remains the fixed configuration entry point. Installation defaults are declared by the installer. Project-relative library paths and operating-system paths remain independent of environment settings. | • El instalador establece las rutas y los puertos en `proxymon.env`. Los módulos leen estos valores; las rutas antiguas de archivos `squidreports.cfg` preservados ya no los reemplazan. Configure el registro de Squidmon mediante `SQUID_LOG_FILE`; su formulario muestra este valor sin permitir editarlo.<br><br>• Ejecute `pmsetup.sh --update` después de cambiar puertos para aplicar la configuración de Apache. Cambiar una ruta de datos no mueve los archivos existentes: traslade los datos y conserve sus permisos antes de utilizar la nueva ruta. `pmbk.sh` respalda los informes originales y las estadísticas adicionales configurados.<br><br>• `/etc/proxymon/proxymon.env` permanece como punto fijo de entrada a la configuración. El instalador declara los valores iniciales de instalación. Las rutas relativas de bibliotecas y las rutas del sistema operativo permanecen independientes de la configuración del entorno. |
+| • The installer establishes paths and ports in `proxymon.env`. Runtime modules read these settings; legacy paths in preserved `squidreports.cfg` files no longer override them. Configure Squidmon's log source through `SQUID_LOG_FILE`; its form displays this value read-only.<br><br>• Run `pmsetup.sh --update` after changing ports to apply Apache's configuration. Changing a data path does not move existing files: relocate the data and retain its permissions before using the new path. `pmbk.sh` backs up the configured original reports and additional statistics.<br><br>• `/etc/proxymon/proxymon.env` remains the fixed configuration entry point. Installation defaults are declared by the installer. Project-relative library paths and operating-system paths remain independent of environment settings.<br><br>• The installation sets two fixed Squid ports: `3128` for the cache and `3129` for intercept. `SQUID_MGR_PORT` and `SQUID_INTERCEPT_PORT` record these values; they do not configure Squid. To change a port, edit `proxymon.env` and `squid.conf` with the same value. | • El instalador establece las rutas y los puertos en `proxymon.env`. Los módulos leen estos valores; las rutas antiguas de archivos `squidreports.cfg` preservados ya no los reemplazan. Configure el registro de Squidmon mediante `SQUID_LOG_FILE`; su formulario muestra este valor sin permitir editarlo.<br><br>• Ejecute `pmsetup.sh --update` después de cambiar puertos para aplicar la configuración de Apache. Cambiar una ruta de datos no mueve los archivos existentes: traslade los datos y conserve sus permisos antes de utilizar la nueva ruta. `pmbk.sh` respalda los informes originales y las estadísticas adicionales configurados.<br><br>• `/etc/proxymon/proxymon.env` permanece como punto fijo de entrada a la configuración. El instalador declara los valores iniciales de instalación. Las rutas relativas de bibliotecas y las rutas del sistema operativo permanecen independientes de la configuración del entorno.<br><br>• La instalación fija dos puertos de Squid: `3128` para la caché y `3129` para intercept. `SQUID_MGR_PORT` y `SQUID_INTERCEPT_PORT` registran estos valores; no configuran Squid. Para cambiar un puerto, edite `proxymon.env` y `squid.conf` con el mismo valor. |
 
 > `LLM_ENV_FILE` points to a second file, `.env` by default, with the SquidAI credentials `LLM_URL`, `LLM_API_KEY`, `LLM_MODEL` and `LLM_RESPONSE_FORMAT`. The installer creates this file only if absent, using a template embedded in `pmsetup.sh`. Existing content is preserved. See API Configuration.
 >
@@ -779,7 +798,7 @@ sudo netdiscover
 | **History:** Displays recorded intervals by hour for a day, by day for a week or month, and by month for a year. Select bytes, requests, HIT/MISS bytes, throughput, HIT/MISS throughput or denied requests for the chart. The original report totals appear separately. Missing intervals are not filled with zero. | **History:** Muestra los intervalos registrados por hora para un día, por día para una semana o mes y por mes para un año. Permite graficar bytes, solicitudes, bytes HIT/MISS, velocidad media, velocidad HIT/MISS o solicitudes denegadas. Los totales de los informes originales aparecen por separado. Los intervalos ausentes no se completan con cero. |
 | **MIME:** Aggregates content types for the selected period, with requests, bytes, cache, duration, throughput, first/last access and largest object. The type comes from Squid's log; HTTPS tunnels do not reveal their enclosed content. | **MIME:** Agrupa tipos de contenido para el período, con solicitudes, bytes, caché, duración, velocidad media, primer/último acceso y objeto de mayor tamaño. El tipo proviene del registro de Squid; los túneles HTTPS no revelan su contenido interno. |
 | **Networks:** Groups client IPs by configured network, with traffic, cache, duration, throughput and largest object. Select a network to inspect its users/IPs. The main network comes from `RANGE` in `/etc/proxymon/proxymon.env`. Unmatched addresses remain individual. In `squidreports.cfg`, optional additional `$analytics_networks` entries use `[label, CIDR]`; IPv4 and IPv6 are supported. The longest matching prefix wins. | **Networks:** Agrupa IP de clientes por red configurada, con tráfico, caché, duración, velocidad media y objeto de mayor tamaño. Seleccione una red para consultar sus usuarios/IP. La red principal se lee de `RANGE` en `/etc/proxymon/proxymon.env`. Las direcciones sin coincidencia permanecen individuales. En `squidreports.cfg`, las entradas opcionales adicionales de `$analytics_networks` usan `[nombre, CIDR]`; admite IPv4 e IPv6. Prevalece el prefijo coincidente más específico. |
-| **Domains and Sites:** **Domains** combines subdomains and opens their individual sites. **Sites** opens users for a destination; selecting a user shows their sites within the selected domain. Tables retain first/last access, cache, duration, throughput and largest object. Domain grouping uses the included historical multi-label suffix data. Optional `$analytics_domain_suffixes` supplements it; it is not a current Public Suffix List. | **Domains y Sites:** **Domains** agrupa subdominios y abre sus sitios individuales. **Sites** abre los usuarios de un destino; seleccionar un usuario muestra sus sitios dentro del dominio seleccionado. Las tablas conservan primer/último acceso, caché, duración, velocidad media y objeto de mayor tamaño. La agrupación utiliza los datos históricos de sufijos compuestos incluidos en el módulo. `$analytics_domain_suffixes` permite complementarlos; no es una Public Suffix List actualizada. |
+| **Domains and Sites:** **Domains** combines subdomains and opens their individual sites. **Sites** opens users for a destination; selecting a user shows their sites within the selected domain. Tables retain first/last access, cache, duration, throughput and largest object. Domain grouping uses the bundled Public Suffix List, including wildcard and exception rules. International suffixes are stored as ASCII/Punycode. Optional `$analytics_domain_suffixes` adds literal suffixes. | **Domains y Sites:** **Domains** agrupa subdominios y abre sus sitios individuales. **Sites** abre los usuarios de un destino; seleccionar un usuario muestra sus sitios dentro del dominio seleccionado. Las tablas conservan primer/último acceso, caché, duración, velocidad media y objeto de mayor tamaño. La agrupación utiliza la Public Suffix List incluida, con comodines y excepciones. Los sufijos internacionales se guardan en ASCII/Punycode. `$analytics_domain_suffixes` permite añadir sufijos literales. |
 | **Denied:** Ranks denied destinations by request count. Each destination shows its users, Squid codes and first/last access. Includes authentication failures recorded as denied. These requests remain outside allowed-traffic totals. | **Denied:** Ordena los destinos denegados por cantidad de solicitudes. Cada destino muestra usuarios, códigos de Squid y primer/último acceso. Incluye fallos de autenticación registrados como denegados. Estas solicitudes se excluyen de los totales de tráfico permitido. |
 | **Storage and coverage:** Original files stay in `REPORT_PATH/YYYYMMDD/`. Detail's additional files and Analyze's `analyzer.json` share `REPORT_STATS_PATH/YYYYMMDD/`, distinguished by filename. The parser replaces each day's aggregates when regenerating it. Dates missing additional metrics produce a coverage notice; regenerate them from retained logs. No additional pages or chart images are stored. | **Almacenamiento y cobertura:** Los archivos originales permanecen en `REPORT_PATH/YYYYMMDD/`. Los archivos adicionales de Detail y `analyzer.json` de Analyze comparten `REPORT_STATS_PATH/YYYYMMDD/`, separados por nombre. El parser reemplaza los agregados del día al regenerarlo. Las fechas sin métricas adicionales muestran un aviso de cobertura; regenérelas desde registros conservados. No se guardan páginas adicionales ni imágenes de gráficos. |
 | **Tables and print:** Tables show 100 rows per page. Distribution charts show the first 20 rows; History charts show recorded intervals. **Print** prints the current page. Rates divide summed bytes by summed request durations; zero-duration rates appear as **—**. Internet cost calculation is excluded. | **Tablas e impresión:** Las tablas muestran 100 filas por página. Los gráficos de distribución muestran las primeras 20 filas; los históricos muestran los intervalos registrados. **Print** imprime la página actual. Las velocidades dividen los bytes acumulados entre las duraciones acumuladas; con duración cero aparece **—**. Se excluye el cálculo de costes de Internet. |
@@ -787,6 +806,28 @@ sudo netdiscover
 > Analyze reads the installed network configuration automatically; no example network needs copying. Additional network aliases remain optional in `squidreports.cfg`. Subnet statistics use the same configuration when regenerated.
 >
 > Analyze lee automáticamente la configuración de red instalada; no necesita copiar una red de ejemplo. Los alias adicionales siguen siendo opcionales en `squidreports.cfg`. Las estadísticas por subred usan la misma configuración al regenerarse.
+
+#### Manual Public Suffix List update / Actualización manual de Public Suffix List
+
+| Description | Descripción |
+|---|---|
+| Run `domain-suffixes-update.sh` manually as root. It is installed beside `domain-suffixes.txt`; no cron entry is added. | Ejecute `domain-suffixes-update.sh` manualmente como root. Se instala junto a `domain-suffixes.txt`; no se añade ninguna entrada de cron. |
+| The updater loads `SQUIDREPORTS_DIR` from `/etc/proxymon/proxymon.env` through the shared reader. It does not assume the default web directory. Installation and update deploy the reader beside the updater. | El actualizador carga `SQUIDREPORTS_DIR` de `/etc/proxymon/proxymon.env` mediante el lector compartido. No presupone el directorio web predeterminado. La instalación y la actualización despliegan el lector junto al actualizador. |
+| Downloads the official PSL over HTTPS, validates its metadata, ICANN and PRIVATE sections and every rule, and normalizes international suffixes to ASCII/Punycode. Preserves wildcard and exception rules. | Descarga la PSL oficial mediante HTTPS, valida sus metadatos, las secciones ICANN y PRIVATE y cada regla. Normaliza sufijos internacionales a ASCII/Punycode y conserva comodines y excepciones. |
+| Replaces the list only after validation succeeds. Download or validation failures leave the previous list unchanged. An identical list is not rewritten. The configured directory must be root-owned and not writable by group or others. | Reemplaza la lista solo después de validarla. Los fallos de descarga o validación conservan la lista anterior. Una lista idéntica no se reescribe. El directorio configurado debe pertenecer a root, sin escritura para grupo u otros. |
+| Logs to `/var/log/proxymon.log`. Requires `curl` and `python3`, included in installer dependencies. Project updates preserve the manually updated list. | Registra en `/var/log/proxymon.log`. Requiere `curl` y `python3`, incluidos en las dependencias del instalador. Las actualizaciones del proyecto conservan la lista actualizada manualmente. |
+
+Default installation path / Ruta de instalación predeterminada:
+
+~~~bash
+sudo bash /var/www/proxymon/squidreports/domain-suffixes-update.sh
+~~~
+
+Use the updater under your configured `SQUIDREPORTS_DIR` if this path differs.
+
+Utilice el actualizador situado en su `SQUIDREPORTS_DIR` configurado si utiliza otra ruta.
+
+Official source / Fuente oficial: [Public Suffix List](https://publicsuffix.org/list/public_suffix_list.dat).
 
 #### User Statistics
 
@@ -901,7 +942,6 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
   </tr>
 </table>
 
-
 > Bandata calculates usage from available Squidreports reports. If reports are missing or incomplete, calculated usage may be lower than actual usage.
 >
 > Bandata calcula el consumo con los informes disponibles de Squidreports. Si faltan informes o están incompletos, el consumo calculado puede ser inferior al real.
@@ -909,6 +949,39 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 > A failure never penalizes a client. When Bandata cannot read its reports, cannot build a list, or cannot publish its rules, it clears the affected blocks and logs a `WARNING: ... -alert`. The client regains access and the administrator investigates the cause. Missing report folders are not a failure: that case is reported as `INFO` and the quota is simply calculated over the days that exist.
 >
 > Una falla nunca penaliza al cliente. Cuando Bandata no puede leer sus informes, construir una lista o publicar sus reglas, vacía los bloqueos afectados y registra un `WARNING: ... -alert`. El cliente recupera el acceso y el administrador investiga la causa. La ausencia de carpetas de informes no es una falla: ese caso se informa como `INFO` y la cuota se calcula sobre los días que existen.
+
+| Warning | When it appears | Cuándo aparece |
+|---|---|---|
+| `WARNING: banday.txt is missing` | The daily block list is absent when Bandata combines the three quota lists. The message names `banweek.txt` or `banmonth.txt` when that list is absent instead. | Falta la lista diaria al combinar las tres listas de bloqueos por cuota. El mensaje identifica `banweek.txt` o `banmonth.txt` cuando falta esa lista. |
+| `WARNING: clearing all Bandata quota blocks -alert` | Bandata detects a list preparation, set preparation or IP loading failure. It then attempts to clear all quota blocks. This warning does not confirm successful removal. | Bandata detecta un fallo al preparar listas, preparar conjuntos o cargar IP. Después intenta retirar todos los bloqueos por cuota. El aviso no confirma su retirada. |
+
+An unreadable file, a directory instead of a file, or a read error produces a different warning. The warning identifies the affected file; command failures also include the exit code.
+
+Un archivo sin permiso de lectura, una carpeta o un error de lectura generan otro aviso. El aviso identifica el archivo afectado. Los fallos de comandos también incluyen su código de salida.
+
+**Release of quota blocks after a failure / Liberación de bloqueos por cuota ante fallos**
+
+The recovery mechanism clears the active `bandata` set to release all Bandata quota blocks. It runs when:
+
+- A daily, weekly or monthly block list is missing, unreadable or not a regular file.
+- Reading, sorting or deduplicating those lists fails.
+- Creating `bandata` or `bandata_new`, or clearing `bandata_new`, fails.
+- Adding an IP address to `bandata_new` fails.
+- Clearing a quota list after a publication failure fails.
+- Activating the new set with `ipset swap` fails; this branch logs its own warning.
+
+El mecanismo de recuperación vacía el conjunto activo `bandata` para liberar todos los bloqueos por cuota. No retira bloqueos ajenos a Bandata. Se activa ante estos fallos:
+
+- Falta una lista diaria, semanal o mensual, es ilegible o no es un archivo regular.
+- Falla la lectura, la ordenación o la eliminación de duplicados de esas listas.
+- Falla la creación de `bandata` o `bandata_new`, o el vaciado de `bandata_new`.
+- Falla la incorporación de una IP a `bandata_new`.
+- Falla el vaciado de una lista tras fallar su publicación.
+- Falla la activación mediante `ipset swap`; esta ruta registra su propio aviso.
+
+The warning announces recovery, not successful completion. Block removal depends on `ipset flush bandata` succeeding.
+
+El aviso anuncia la recuperación, no su finalización. La liberación requiere que `ipset flush bandata` termine correctamente.
 
 ```text
 # The day reports cannot be read
@@ -924,15 +997,36 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 2026-10-17 12:00:00 WARNING: cannot activate new set, all blocks cleared -alert
 ```
 
+**Scheduled execution / Ejecución programada**
+
 ```bash
 # Bandata - Monitor bandwidth usage and enforce data limits (every 5 minutes)
 sudo nano /etc/cron.d/proxymon
 */5 * * * * root /etc/proxymon/bandata/bandata.sh
 ```
 
-<p align="center">
-<a href="https://www.maravento.com/"><img src="./img/bandata-terminal.png" width="513" alt="bandata terminal"></a>
-</p>
+**Terminal output example / Ejemplo de salida en terminal**
+
+```bash
+2026-10-19 15:59:56 bandata start...
+2026-10-19 15:59:56 Running Bandata Day...
+2026-10-19 15:59:56 INFO: Daily Blocked:
+ 192.168.0.86
+2026-10-19 15:59:56 Running Bandata Week...
+2026-10-19 15:59:57 INFO: Weekly Blocked:
+ 192.168.0.86
+ 192.168.0.101
+ 192.168.0.127
+2026-10-19 15:59:57 Running Bandata Month...
+2026-10-19 16:00:01 INFO: Monthly Blocked:
+ 192.168.0.60
+ 192.168.0.68
+2026-10-19 16:00:01 Running Ipset/Iptables Rules...
+2026-10-19 16:00:01 Applying Iptables Rules...
+2026-10-19 16:00:01 INFO: group.cfg updated
+2026-10-19 16:00:01 INFO: Quota rules applied; blocked IPs: 5
+2026-10-19 16:00:01 bandata done at: 2026-10-19 16:00:01
+```
 
 ##### Warning Portal
 
@@ -1121,13 +1215,11 @@ MAX_BANDWIDTH_MONTH=20G
 
 | Description | Descripción |
 | --- | --- |
-| **Live** displays active Squid requests, with grouping by IP or user, current and average speeds, duration and speed subtotals. | **Live** muestra las solicitudes activas de Squid, con agrupación por IP o usuario, velocidad actual y media, duración y subtotales de velocidad. |
-| **Group by User:** Uses the `username` field returned by Squid Cache Manager. Usernames depend on proxy authentication configured in Squid. Without a username, Squid may return `-`; Live keeps that value and groups those connections together. A missing field appears as `N/A`. The displayed user total counts groups, not individual people. Use **IP** grouping to distinguish client addresses when proxy authentication is not used. | **Group by User:** Utiliza el campo `username` que devuelve el administrador de caché de Squid. Los nombres dependen de la autenticación del proxy configurada en Squid. Sin un nombre de usuario, Squid puede devolver `-`; Live conserva ese valor y agrupa esas conexiones juntas. Si falta el campo, muestra `N/A`. El total de usuarios cuenta grupos, no personas individuales. Utilice la agrupación **IP** para distinguir direcciones de clientes cuando no se utiliza autenticación en el proxy. |
-| Live queries Squid's Cache Manager using `SQUID_MGR_HOST`, `SQUID_MGR_PORT` and `SQUID_MGR_PASSWD` from `proxymon.env`. Refresh defaults to five seconds; Stop pauses it. Refresh and grouping are stored per browser session. | Live consulta el administrador de caché de Squid mediante `SQUID_MGR_HOST`, `SQUID_MGR_PORT` y `SQUID_MGR_PASSWD` de `proxymon.env`. Se actualiza cada cinco segundos por defecto; Stop pausa la actualización. El intervalo y la agrupación se conservan por sesión del navegador. |
+| **Live** displays active Squid requests, grouped by client IP, current and average speeds, duration and speed subtotals. | **Live** muestra las solicitudes activas de Squid, agrupadas por IP de cliente, velocidad actual y media, duración y subtotales de velocidad. |
+| Live queries Squid's Cache Manager using `SQUID_MGR_HOST`, `SQUID_MGR_PORT` and `SQUID_MGR_PASSWD` from `proxymon.env`. Refresh defaults to five seconds; Stop pauses it. Refresh is stored per browser session. | Live consulta el administrador de caché de Squid mediante `SQUID_MGR_HOST`, `SQUID_MGR_PORT` y `SQUID_MGR_PASSWD` de `proxymon.env`. Se actualiza cada cinco segundos por defecto; Stop pausa la actualización. El intervalo se conserva por sesión del navegador. |
 
 | Control | Description | Descripción |
 | --- | --- | --- |
-| <img src="./img/logview-sqstatgroupby.png" width="150" alt="Live grouping"> | Groups active requests by IP address or username. | Agrupa las solicitudes en curso por dirección IP o nombre de usuario. |
 
 ### AI
 
@@ -1467,6 +1559,12 @@ sudo /etc/proxymon/tools/squidtool.sh
 > Respalda Proxymon en `BACKUP_DIR/pmbk_<YYYYMMDD_HHMMSS>.zip` (`BACKUP_DIR=/etc/bak/proxymon` por defecto), conservando hasta tres archivos ZIP. `pmsetup.sh --install` registra la entrada mensual de cron automáticamente; `pmsetup.sh --uninstall` la elimina antes de quitar el proyecto. Restaure con `sudo unzip -X ARCHIVO.zip -d /` para recuperar propietarios y permisos Unix almacenados. Valide el archivo en un directorio aislado antes de restaurar.
 
 ### PROXYMON LOGS
+
+> Project log: `/var/log/proxymon.log`. Installation and update configure daily rotation in `/etc/logrotate.d/proxymon`, keeping seven previous files plus the active log. Compression starts on the next rotation. Empty logs are not rotated; missing logs are tolerated. Squid and Apache keep their own policies.
+>
+> Log del proyecto: `/var/log/proxymon.log`. La instalación y la actualización configuran rotación diaria en `/etc/logrotate.d/proxymon`. Se conservan siete archivos anteriores y el activo. La compresión comienza en la siguiente rotación. Los logs vacíos no se rotan; los ausentes se toleran. Squid y Apache conservan sus propias políticas.
+
+
 
 ```bash
 /var/log/apache2/proxymon_access.log

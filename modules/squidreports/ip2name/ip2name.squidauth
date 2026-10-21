@@ -1,3 +1,5 @@
+# Squidreports ip2name.squidauth name resolver
+# FILE: squidreports/ip2name/ip2name.squidauth
 #contributor: esl
 #specialy for squid with turned on user authentication
 #simple version

@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - analytics
+# FILE: squidreports/analytics.cgi
 # Historical analytics integrated in Squidreports. Distributed under the project's GPL license.
 use strict;
 use warnings;

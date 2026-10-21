@@ -139,7 +139,7 @@ for env_key in SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR PANEL_PORT SQUIDTOOL
 done
 if (( ${#key_errors[@]} > 0 )); then
     for key_error in "${key_errors[@]}"; do
-        log "ERROR: $key_error -abort"
+        log "WARNING: $key_error -alert"
     done
     log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -abort"
     exit 1
@@ -148,16 +148,8 @@ unset key_errors key_error env_key checked_port
 min_hits="$SQUIDTOOL_MIN_HITS"
 alert_threshold="$SQUIDTOOL_ALERT_THRESHOLD"
 
-# FALLBACK
-# Second layer of protection, behind KEY CHECK -- by design never reached
-if [ -z "${SQUID_LOG_DIR:-}" ]; then
-    log "WARNING: no SQUID_LOG_DIR in proxymon.env -fallback"
-fi
 squid_log_dir="$SQUID_LOG_DIR"
-if [ -z "${SQUID_LOG_FILE:-}" ]; then
-    log "WARNING: no SQUID_LOG_FILE in proxymon.env -fallback"
-fi
-squid_log_file="${SQUID_LOG_FILE:-$squid_log_dir/access.log}"
+squid_log_file="$SQUID_LOG_FILE"
 cache_log_file="$squid_log_dir/cache.log"
 
 # REPORT DIR

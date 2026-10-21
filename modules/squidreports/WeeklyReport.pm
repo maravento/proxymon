@@ -1,3 +1,5 @@
+# Squidreports - WeeklyReport
+# FILE: squidreports/WeeklyReport.pm
 package WeeklyReport;
 use strict;
 use warnings;

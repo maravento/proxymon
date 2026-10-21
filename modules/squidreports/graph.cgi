@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - graph
+# FILE: squidreports/graph.cgi
 # graph.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

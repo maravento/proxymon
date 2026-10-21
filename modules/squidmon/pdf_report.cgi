@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidmon - pdf report
+# FILE: squidmon/pdf_report.cgi
 # pdf_report.cgi
 use strict;
 use warnings;
@@ -38,6 +40,11 @@ eval {
 
     my (%stats, %client_traffic, %domain_stats, %hourly_stats);
     %stats = (total_requests => 0, blocked_requests => 0, allowed_requests => 0);
+
+    if (!-f $log_file) {
+        print "<p><strong>Squid log file not found:</strong> <code>$log_file</code></p>";
+        return;
+    }
 
     # Read the last lines of the log
     my @log_lines = ();
@@ -186,7 +193,7 @@ HTMLHEAD
     }
     print "</table></body></html>";
 
-}; # fin eval
+}; # end eval
 
 if ($@) {
     print "<h3 style='color:red;'>Error generating report: $@</h3>";

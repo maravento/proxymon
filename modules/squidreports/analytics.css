@@ -1,4 +1,7 @@
-/* Squidreports analytics. Distributed under the project's GPL license. */
+/*
+ * Squidreports - analytics
+ * FILE: squidreports/analytics.css
+ Squidreports analytics. Distributed under the project's GPL license. */
 :root { color-scheme: light; }
 body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; color: #263746; background: #eef3f8; }
 main { max-width: 1500px; margin: auto; }

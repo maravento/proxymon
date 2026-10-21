@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidmon - squidmon standalone
+# FILE: squidmon/squidmon-standalone.pl
 # squidmon-standalone.pl
 # Pure Perl implementation without Webmin dependencies
 # Replaces web-lib.pl and ui-lib.pl

@@ -1,3 +1,5 @@
+# Squidreports fr language resource
+# FILE: squidreports/lang/fr.lng
 MSG_CODEPAGE=ISO-8859-1
 MSG_%BYTES=%OCTETS
 MSG_ACCESSED_SITE=Site(s) Accédé(s)

@@ -1,3 +1,7 @@
+<!--
+Squidreports documentation
+FILE: squidreports/assets/global/plugins/bootstrap-daterangepicker/README.md
+-->
 # Date Range Picker for Bootstrap
 
 ![Improvely.com](http://i.imgur.com/LbAMf3D.png)

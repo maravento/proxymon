@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - common
+# FILE: squidreports/common.pl
 # common.pl
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

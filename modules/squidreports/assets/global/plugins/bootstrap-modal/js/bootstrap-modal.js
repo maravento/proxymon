@@ -1,4 +1,7 @@
-/* ===========================================================
+/*
+ * Squidreports - bootstrap modal
+ * FILE: squidreports/assets/global/plugins/bootstrap-modal/js/bootstrap-modal.js
+ ===========================================================
  * bootstrap-modal.js v2.2.5
  * ===========================================================
  * Copyright 2012 Jordan Schroter

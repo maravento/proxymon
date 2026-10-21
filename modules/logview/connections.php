@@ -1,5 +1,6 @@
 <?php
 // SqStat integration. Original license: LICENSE-SqStat.
+// FILE: logview/connections.php
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -19,12 +20,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $sameOrigin) {
         $value = (int)$_POST['refresh'];
         $_SESSION['refresh'] = $value <= 0 ? 0 : max(5, min(3600, $value));
     }
-    if (isset($_POST['group']) && in_array($_POST['group'], ['ip', 'username'], true)) {
-        $_SESSION['group'] = $_POST['group'];
-    }
 }
 $current_refresh = $_SESSION['refresh'] ?? 5;
-$group_by = $_SESSION['group'] ?? 'ip';
 $env = readEnvFile('/etc/proxymon/proxymon.env');
 $squidhost = $env['SQUID_MGR_HOST'] ?? throw new RuntimeException('SQUID_MGR_HOST missing in proxymon.env');
 $squidport = (int)($env['SQUID_MGR_PORT'] ?? throw new RuntimeException('SQUID_MGR_PORT missing in proxymon.env'));
@@ -40,4 +37,4 @@ if ($data === false) {
     exit;
 }
 $data['con'] = $data['con'] ?? [];
-echo $stat->makeHtmlReport($data, false, [], false, $current_refresh);
+echo $stat->makeHtmlReport($data, false, $current_refresh);

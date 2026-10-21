@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - ReportExplorer
+# FILE: squidreports/tools/SiteAggregator/ReportExplorer.pl
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.
 # Original work: LightSquid Project (c) 2004-2009 Sergey Erokhin aka ESL

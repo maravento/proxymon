@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - squidreports
+# FILE: squidreports/squidreports.pl
 # squidreports.pl
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

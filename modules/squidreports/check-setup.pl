@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - check setup
+# FILE: squidreports/check-setup.pl
 # check-setup.pl
 
 print "Squidreports Config Checker, (c) 2005-9 Sergey Erokhin GNU GPL\n\n";
@@ -12,12 +14,13 @@ die "can't access to common.pl !!!\n"      if (!eval { require "common.pl" });
 
 die "no: CGI.PM found, please install\n"   if (!eval { require CGI });
 
-die "can't access to $logpath `access.log` file\ncheck \$logpath variable or privilege\n" unless (-f ProxymonEnv::required($main::proxymon_settings,'SQUID_LOG_FILE'));
+my $logfile = ProxymonEnv::required($main::proxymon_settings,'SQUID_LOG_FILE');
+die "can't access to `$logfile`\ncheck SQUID_LOG_FILE variable or privilege\n" unless (-f $logfile);
 
-die "Invalid access.log format or can't check format type ...\n" if (CheckLogType("$logpath/access.log"));
+die "Invalid access.log format or can't check format type ...\n" if (CheckLogType($logfile));
 
 print "LogPath   : $logpath\n";
-open F,"<$logpath/access.log"          or die "can't access to `access.log` file, check privilege\n";
+open F,"<$logfile"          or die "can't access to `$logfile` file, check privilege\n";
 close F;
 
 print "reportpath: $reportpath\n";

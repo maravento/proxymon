@@ -1,3 +1,7 @@
+/*
+ * Logview theme control
+ * FILE: logview/theme.js
+ */
 (function () {
   'use strict';
   var theme = 'dark';

@@ -1,3 +1,5 @@
+# Squidmon - squidmon lib
+# FILE: squidmon/squidmon-lib.pl
 use File::Basename ();
 #!/usr/bin/perl
 # squidmon-lib.pl

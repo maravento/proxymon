@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - topsites
+# FILE: squidreports/topsites.cgi
 # topsites.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

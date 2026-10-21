@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!--
+Logview log viewer
+FILE: logview/access.php
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">

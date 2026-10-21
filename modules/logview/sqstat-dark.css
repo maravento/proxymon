@@ -1,4 +1,7 @@
-/* SqStat Dark Theme */
+/*
+ * SqStat dark theme
+ * FILE: logview/sqstat-dark.css
+ SqStat Dark Theme */
 
 /* Estilos globales */
 html.dark body {
@@ -215,6 +218,5 @@ html.dark ::-moz-selection {
 	color: #ffffff;
 }
 
-html.dark .live-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-html.dark .live-group { margin-left: auto; white-space: nowrap; }
-@media (max-width: 640px) { html.dark .live-group { margin-left: 0; } }
+html.dark .live-controls { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 16px; }
+html.dark .live-info { grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 0; text-align: right; }

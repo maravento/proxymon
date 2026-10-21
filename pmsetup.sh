@@ -173,7 +173,7 @@ package_installed() {
 
 # dependencies
 check_dependencies() {
-    for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate; do
+    for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate; do
         if ! package_installed "$dep_pkg"; then
             if [ "$dep_pkg" = libjson-xs-perl ]; then
                 info "Installing missing dependency: $dep_pkg"
@@ -240,6 +240,23 @@ deploy_squid_template() {
     failure_message="cannot edit squid.conf"
     sed -i "s:192.168.0.0/24:$RANGE:g; s:192.168.0.10:$SERVER_IP:g" /etc/squid/squid.conf
     info "squid.conf deployed with RANGE=$RANGE and SERVER_IP=$SERVER_IP"
+    failure_message="cannot create Squid cache directories"
+    mkdir -p /var/spool/squid/rock
+    failure_message="cannot set owner of Squid cache directories"
+    chown -R proxy:proxy /var/spool/squid
+    failure_message="cannot set permissions on Squid cache directories"
+    chmod -R 700 /var/spool/squid
+    systemctl stop squid &>/dev/null || true
+    failure_message="cannot initialize Squid cache directories"
+    if ! squid -z &>/dev/null; then
+        warn "cannot create squid cache store, service not started -alert"
+        return 0
+    fi
+    if systemctl restart squid &>/dev/null; then
+        info "squid running with the deployed squid.conf"
+    else
+        warn "squid did not start, check 'journalctl -u squid' -alert"
+    fi
 }
 
 # Squidmon, Logview and SquidAI read only the current access.log. A rotation
@@ -448,8 +465,6 @@ check_apache_config() {
 run_initial_checks() {
     local failure_message="cannot check Proxymon requirements"
     info "running initial checks"
-    failure_message="cannot check conflicting packages"
-    check_conflicts "web server" nginx lighttpd caddy
     failure_message="cannot check Apache and PHP settings"
     check_apache_config
 }
@@ -599,6 +614,7 @@ create_proxymon_env() {
     # Bandwidth limits -- validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
     read_bandwidth() {
         local prompt_text="$1" default_value="$2" user_answer
+        local check_bash_range="${3:-false}" quota_bytes
         if [ "$unattended" = true ]; then
             echo "$default_value"
             return
@@ -607,7 +623,18 @@ create_proxymon_env() {
             failure_message="cannot read the bandwidth limit answer"
             read -rp "$prompt_text" user_answer || return 1
             user_answer=${user_answer:-$default_value}
-            if LC_ALL=C numfmt --from=iec "${user_answer/,/.}" >/dev/null 2>&1; then
+            if quota_bytes=$(LC_ALL=C numfmt --from=iec "${user_answer/,/.}" 2>/dev/null); then
+                if [ "$check_bash_range" = true ] && ! {
+                    [[ "$quota_bytes" =~ $UH_UINT ]] && {
+                        [ "${#quota_bytes}" -lt 19 ] || {
+                            [ "${#quota_bytes}" -eq 19 ] \
+                                && [[ "$quota_bytes" < 9223372036854775808 ]]
+                        }
+                    }
+                }; then
+                    info "daily quota exceeds Bash integer range -retry" >&2
+                    continue
+                fi
                 echo "$user_answer"
                 return
             fi
@@ -615,7 +642,7 @@ create_proxymon_env() {
         done
     }
     failure_message="cannot read the daily bandwidth limit"
-    bw_day=$(read_bandwidth "Max bandwidth per day (default: 1G): " "1G") || { report_failure; exit 1; }
+    bw_day=$(read_bandwidth "Max bandwidth per day (default: 1G): " "1G" true) || { report_failure; exit 1; }
     failure_message="cannot read the weekly bandwidth limit"
     bw_week=$(read_bandwidth "Max bandwidth per week (default: 5G): " "5G") || { report_failure; exit 1; }
     failure_message="cannot read the monthly bandwidth limit"
@@ -639,8 +666,19 @@ create_proxymon_env() {
     update_realname_flag=true
     echo "Update hostnames and groups in Squidreports: $update_realname_flag (default)"
 
-    local squid_mgr_port="${PROXYMON_SQUID_MGR_PORT:-3128}"
-    local squid_intercept_port="${PROXYMON_SQUID_INTERCEPT_PORT:-3129}"
+    local squid_mgr_port="3128"
+    local squid_intercept_port="3129"
+    local squid_conf_port
+    if [ -f /etc/squid/squid.conf ]; then
+        squid_conf_port=$(awk '$1=="http_port" && $0 !~ /intercept/ {n=split($2,p,":"); print p[n]; exit}' /etc/squid/squid.conf)
+        if [ -n "$squid_conf_port" ]; then
+            squid_mgr_port="$squid_conf_port"
+        fi
+        squid_conf_port=$(awk '$1=="http_port" && $0 ~ /intercept/ {n=split($2,p,":"); print p[n]; exit}' /etc/squid/squid.conf)
+        if [ -n "$squid_conf_port" ]; then
+            squid_intercept_port="$squid_conf_port"
+        fi
+    fi
     local squid_port_value
     for squid_port_value in "$squid_mgr_port" "$squid_intercept_port"; do
         if ! [[ "$squid_port_value" =~ $UH_UINT ]] || [ "${#squid_port_value}" -gt 5 ] || [ "$squid_port_value" -lt 1 ] || [ "$squid_port_value" -gt 65535 ]; then
@@ -763,19 +801,46 @@ cron_d_set() {
     rm -f "$cron_tmp"
 }
 
+install_project_logrotate() {
+    local rotate_file="/etc/logrotate.d/proxymon"
+    local project_log="/var/log/proxymon.log"
+    if [ ! -f "$project_log" ]; then
+        touch "$project_log" || return 1
+    fi
+    chown root:adm "$project_log" || return 1
+    chmod 640 "$project_log" || return 1
+    cat > "$rotate_file" <<EOF
+$project_log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root adm
+}
+EOF
+    [ "$?" -eq 0 ] || return 1
+    chown root:root "$rotate_file" || return 1
+    chmod 644 "$rotate_file" || return 1
+    info "updated $rotate_file"
+}
+
 do_install() {
     local failure_message="cannot finish the Proxymon installation"
+    failure_message="cannot check conflicting packages"
+    check_conflicts "web server" nginx lighttpd caddy
+    failure_message="cannot read locations from proxymon.env"
+    configure_locations
+    if [[ -d "$WEB_ROOT" ]]; then
+        abort "proxymon already installed -abort"
+    fi
     failure_message="cannot install Apache and PHP packages"
     install_apache2
     failure_message="cannot install Squid packages"
     install_squid
     failure_message="cannot check Proxymon requirements"
     run_initial_checks
-    failure_message="cannot read locations from proxymon.env"
-    configure_locations
-    if [[ -d "$WEB_ROOT" ]]; then
-        abort "proxymon already installed -abort"
-    fi
 
     failure_message="cannot check the required network port"
     check_port tcp "$PANEL_PORT" "web interface"
@@ -799,6 +864,11 @@ do_install() {
     mkdir -p "$CONFIG_DIR"
     failure_message="bandata/ + tools/ copy to $(basename "$CONFIG_DIR") failed"
     cp -rf config/bandata config/tools "$CONFIG_DIR"/
+    failure_message="cannot deploy the suffix updater"
+    install -m 644 -o root -g root config/tools/proxymonenv.sh "$WEB_ROOT/squidreports/proxymonenv.sh"
+    chmod 755 "$WEB_ROOT/squidreports/domain-suffixes-update.sh"
+    info "updated squidreports/domain-suffixes-update.sh"
+    info "updated squidreports/proxymonenv.sh"
 
     log "Configuring Apache..."
 
@@ -1117,6 +1187,7 @@ EOF
     deploy_squid_template
     failure_message="cannot update Squid logrotate settings"
     set_squid_logrotate
+    install_project_logrotate || abort "cannot configure proxymon log rotation -abort"
     failure_message="cannot set owner of squid.conf"
     chown root:root /etc/squid/squid.conf
     failure_message="cannot set permissions on squid.conf"
@@ -1198,6 +1269,7 @@ EOF
 web_preserved_paths=(
     "squidreports/report"
     "squidreports/reportstats"
+    "squidreports/domain-suffixes.txt"
     "squidreports/realname.cfg"
     "squidreports/skipuser.cfg"
     "squidreports/squidreports.cfg"
@@ -1247,7 +1319,7 @@ secure_web_code() (
             fi
             chown root:root "$dest_path" || return 1
             case "$rel_path" in
-                *.cgi|squidreports/squidreports.pl) chmod 755 "$dest_path" || return 1 ;;
+                *.cgi|squidreports/squidreports.pl|squidreports/domain-suffixes-update.sh) chmod 755 "$dest_path" || return 1 ;;
                 *) chmod 644 "$dest_path" || return 1 ;;
             esac
         fi
@@ -1298,6 +1370,11 @@ do_update() {
     fi
 
     secure_web_code "$WEB_ROOT" 1 || abort "cannot update web code -abort"
+    failure_message="cannot deploy the suffix updater"
+    install -m 644 -o root -g root config/tools/proxymonenv.sh "$WEB_ROOT/squidreports/proxymonenv.sh"
+    chmod 755 "$WEB_ROOT/squidreports/domain-suffixes-update.sh"
+    info "updated squidreports/domain-suffixes-update.sh"
+    info "updated squidreports/proxymonenv.sh"
     failure_message="cannot remove weekly.cgi"
     rm -f -- "$WEB_ROOT/squidreports/weekly.cgi"
     failure_message="cannot remove ip2name.dhcp"
@@ -1349,6 +1426,7 @@ do_update() {
     configure_apache_locations
     failure_message="cannot update Squid logrotate settings"
     set_squid_logrotate
+    install_project_logrotate || abort "cannot configure proxymon log rotation -abort"
     failure_message="cannot update the project cron file"
     cron_d_set "$WEB_ROOT/squidreports/squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
     failure_message="cannot update the project cron file"
@@ -1535,6 +1613,7 @@ do_uninstall() {
     info "Proxymon log files removed"
 
     failure_message="cannot remove bandata.log*"
+    rm -f /etc/logrotate.d/proxymon
     rm -f /etc/logrotate.d/bandata /var/log/bandata.log*
     info "Bandata logrotate config and log files removed"
 

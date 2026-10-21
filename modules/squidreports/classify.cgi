@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - classify
+# FILE: squidreports/classify.cgi
 # classify.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.
@@ -47,7 +49,7 @@ InitTPL("classify", scalar $co->param('tpl'));
 
 $workperiod=" $day $MonthName[$month] $year";
 
-open FF,"<".StatisticsFile("$year$month$day", $srcfile) || MyDie("can't open $srcfile");
+open FF,"<".StatisticsFile("$year$month$day", $srcfile) or MyDie("can't open $srcfile");
 
 @rows=();
 $total=0;

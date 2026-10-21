@@ -1,6 +1,8 @@
 <?php
 /**
  * Logview API — ProxyMon module
+ * FILE: logview/api.php
+ *
  * Reads SQUID_LOG_FILE from proxymon.env and returns parsed JSON
  *
  * Params:
@@ -130,7 +132,22 @@ if (isset($_GET['grep']) && $_GET['grep'] !== '') {
     $escaped = escapeshellarg($term);
     $log     = escapeshellarg(LOG_FILE);
     $max_matches = 5000;
-    $output  = shell_exec("timeout 20 grep -Fa -e $escaped $log 2>/dev/null | tail -n $max_matches");
+    $search_command = "timeout 20 grep -Fa -e $escaped $log 2>/dev/null | tail -n $max_matches";
+    $search_command .= '; search_status=("${PIPESTATUS[@]}");'
+        . ' if [ "${search_status[1]}" -ne 0 ]; then exit 200; fi;'
+        . ' exit "${search_status[0]}"';
+    $output_lines = [];
+    exec('bash -c ' . escapeshellarg($search_command), $output_lines, $search_status);
+    if ($search_status === 124) {
+        err('Search exceeded the 20-second limit. No results returned.', 504);
+    }
+    if ($search_status === 200) {
+        err('Cannot retain the latest search matches: tail failed.', 500);
+    }
+    if ($search_status > 1) {
+        err('Cannot search the log: grep/timeout exit ' . $search_status . '.', 500);
+    }
+    $output = implode("\n", $output_lines);
 
     if ($output === null || $output === '') {
         echo json_encode([

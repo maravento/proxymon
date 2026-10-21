@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - denied
+# FILE: squidreports/denied.cgi
 # denied.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.

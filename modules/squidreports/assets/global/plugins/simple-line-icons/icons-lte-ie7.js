@@ -1,4 +1,7 @@
-/* Load this script using conditional IE comments if you need to support IE 7 and IE 6. */
+/*
+ * Squidreports - icons lte ie7
+ * FILE: squidreports/assets/global/plugins/simple-line-icons/icons-lte-ie7.js
+ Load this script using conditional IE comments if you need to support IE 7 and IE 6. */
 
 window.onload = function() {
 	function addIcon(el, entity) {

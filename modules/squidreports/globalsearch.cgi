@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - globalsearch
+# FILE: squidreports/globalsearch.cgi
 # globalsearch.cgi
 use strict;
 use warnings;

@@ -1,3 +1,5 @@
+# Squidreports - paths
+# FILE: squidreports/paths.pl
 use File::Basename ();
 require (File::Basename::dirname(__FILE__).'/../ProxymonEnv.pm');
 our $proxymon_settings=ProxymonEnv::read_env();

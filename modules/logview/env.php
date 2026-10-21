@@ -1,4 +1,7 @@
 <?php
+// Logview environment reader
+// FILE: logview/env.php
+
 function readEnvFile(string $path): array {
     $vars = [];
     if (!is_readable($path)) return $vars;

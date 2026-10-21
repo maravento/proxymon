@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - index
+# FILE: squidreports/index.cgi
 # index.cgi
 #
 # Squidreports is a reimplementation of LightSquid, modified by maravento in 2026.
@@ -114,7 +116,7 @@ for ($i=1;$i<=12;$i++) {
 @days=sort glob("$reportpath/$year$month*"); @days=reverse @days;
 
 foreach $daypath (@days) {
-    open FF,"<$daypath/.total" || MyDie("can't open file $daypath/.total<br>"); 
+    open FF,"<$daypath/.total" or MyDie("can't open file $daypath/.total<br>"); 
     $user=<FF>;chomp $user;$user=~s/^user: //;
     $size=<FF>;chomp $size;$size=~s/^size: //;
     close FF;

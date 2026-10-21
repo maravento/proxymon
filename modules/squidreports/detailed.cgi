@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidreports - detailed
+# FILE: squidreports/detailed.cgi
 # Detailed traffic reports integrated in Squidreports.
 # Distributed under the project's GPL license; no SARG runtime dependency.
 use strict;

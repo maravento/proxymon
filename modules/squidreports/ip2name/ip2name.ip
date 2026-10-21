@@ -1,3 +1,5 @@
+# Squidreports ip2name.ip name resolver
+# FILE: squidreports/ip2name/ip2name.ip
 #contributor: esl
 #do nothing
 #always return IP

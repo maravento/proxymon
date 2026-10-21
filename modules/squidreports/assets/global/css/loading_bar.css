@@ -1,3 +1,7 @@
+/*
+ * Squidreports - loading bar
+ * FILE: squidreports/assets/global/css/loading_bar.css
+ */
 body > :not(.pace),body:before,body:after {-webkit-transition:opacity .4s ease-in-out; -moz-transition:opacity .4s ease-in-out; -o-transition:opacity .4s ease-in-out; -ms-transition:opacity .4s ease-in-out; transition:opacity .4s ease-in-out } body:not(.pace-done) > :not(.pace),body:not(.pace-done):before,body:not(.pace-done):after { opacity:0 } 
 
 .pace {

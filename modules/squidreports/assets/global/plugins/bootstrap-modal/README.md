@@ -1,3 +1,7 @@
+<!--
+Squidreports documentation
+FILE: squidreports/assets/global/plugins/bootstrap-modal/README.md
+-->
 Bootstrap Modal v2.2.5
 =============
 

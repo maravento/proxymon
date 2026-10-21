@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Squidmon - config
+# FILE: squidmon/config.cgi
 # config.cgi
 use strict;
 use warnings;

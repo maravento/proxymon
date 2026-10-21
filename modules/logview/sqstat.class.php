@@ -1,4 +1,7 @@
 <?php
+// SqStat live connections renderer
+// FILE: logview/sqstat.class.php
+
 
 // sqstat class
 
@@ -231,8 +234,7 @@ private $fp;
 		}
 		return implode($glue, $ret);
 	}
-	function makeHtmlReport($data,$resolveip=false,$hosts_array=array(),$use_js=true,$current_refresh=0){
-		global $group_by;
+	function makeHtmlReport($data,$use_js=true,$current_refresh=0){
 		if($this->use_sessions){
 			if (session_status() !== PHP_SESSION_ACTIVE) {
                 session_name('PROXYMON_SQSTAT');
@@ -243,39 +245,24 @@ private $fp;
 		$total_avg = $total_curr = 0;
 		// resort data array
 		$users=array();
-        switch($group_by){
-			case "host":
-			$group_by_name="Host";
-			break;
-			case "username":
-			$group_by_name="User";
-			break;
-			case "ip":
-			$group_by_name="IP";
-			break;
-			default:
-			die("wrong group_by!");
-		}
 
 		foreach($data["con"] as $key => $v){
 			if(substr($v["uri"],0,13)=="cache_object:") continue; // skip myself
-			$ip=substr($v["remote"],0,strpos($v["remote"],":"));
-			if(isset($hosts_array[$ip])){
-				$ip=$hosts_array[$ip];
+			$remote=$v["remote"];
+			if(preg_match('/^\[([^\]]+)\]:[0-9]+$/D',$remote,$address_match)){
+				$address=$address_match[1];
+			}elseif(preg_match('/^([^:]+):[0-9]+$/D',$remote,$address_match)){
+				$address=$address_match[1];
+			}else{
+				$address=$remote;
 			}
-			// i use ip2long() to make ip sorting work correctly
-			elseif($resolveip){
-				$hostname=gethostbyaddr($ip);
-				if($hostname==$ip) $ip=ip2long($ip);// resolve failed
-				else $ip=$hostname;
-			}			
-			else{
-				$ip=ip2long(substr($v["remote"],0,strpos($v["remote"],":")));
-			}
+			$packed_address=inet_pton($address);
+			$normalized_address=$packed_address!==false?inet_ntop($packed_address):$address;
+			$ipv4_address=ip2long($normalized_address);
+			$ip=$ipv4_address!==false?$ipv4_address:$normalized_address;
 			$v['connection'] = $key;
 			if(!isset($v["username"])) $v["username"]="N/A";
-			$group_key = ($group_by === 'username') ? $v["username"] : $ip;
-			$users[$group_key][]=$v;
+			$users[$ip][]=$v;
 		}
 		ksort($users);
 		$refresh=0;
@@ -291,12 +278,12 @@ private $fp;
 			$servers.='</select>';
 		}
 		$text.='<div class="header"><form method="post" action="'.htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8').'">'.
-		'Squid RealTime stat for the '.$servers.' proxy server ('.htmlspecialchars($data["server_version"], ENT_QUOTES, 'UTF-8').').<br/>'.
-		'<div class="live-controls"><div>Auto refresh: <input name="refresh" type="text" size="4" value="'.$refresh.'"/> sec. <input type="submit" value="Update"/> <input name="stop" type="submit" value="Stop"/> Created at: <tt>'.date("h:i:s d/m/Y").'</tt></div>'.
-		'<label class="live-group">Group by: <select name="group" onchange="this.form.submit()"><option value="ip"'.($group_by==='ip'?' selected':'').'>IP</option><option value="username"'.($group_by==='username'?' selected':'').'>User</option></select></label></div></form></div>'.
+		'<div class="live-controls"><div class="live-info"><span class="live-title">Squid RealTime stat for the '.$servers.' proxy server ('.htmlspecialchars($data["server_version"], ENT_QUOTES, 'UTF-8').').</span>'.
+		'<div class="live-refresh">Auto refresh: <input name="refresh" type="text" size="4" value="'.$refresh.'"/> sec. <input type="submit" value="Update"/> <input name="stop" type="submit" value="Stop"/></div>'.
+		'</div></div></form></div>'.
 		'<table class="result" align="center" width="100%" border="0">'.
 		'<tr>'.
-		'<th>'.$group_by_name.'</th><th>URI</th>'.
+		'<th>IP</th><th>URI</th>'.
 		($this->use_sessions?'<th>Curr. Speed</th><th>Avg. Speed</th>':'').
 		'<th>Size</th><th>Time</th>'.
 		'</tr>';

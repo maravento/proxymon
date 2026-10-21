@@ -1,3 +1,7 @@
+<!--
+SquidAI - dataset
+FILE: squidai/dataset.md
+-->
 # SquidAI — Base de Conocimiento Bilingüe
 # Archivo fuente de verdad: intenciones, palabras clave, prompts e instrucciones.
 # Formato: cada sección tiene una tabla con dos columnas: Español | Inglés

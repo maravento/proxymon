@@ -1,3 +1,5 @@
+# Squidmon English messages
+# FILE: squidmon/lang/en
 index_title=Squidmon
 index=Index
 stat_total_requests=Total Requests

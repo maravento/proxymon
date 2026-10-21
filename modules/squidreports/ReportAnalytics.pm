@@ -1,3 +1,5 @@
+# Squidreports - ReportAnalytics
+# FILE: squidreports/ReportAnalytics.pm
 package ReportAnalytics;
 # Squidreports analytics. Distributed under the project's GPL license.
 use strict;
@@ -97,11 +99,17 @@ sub domain {
     return $host if $host =~ /:/ || $host =~ /^\d+(?:\.\d+){3}$/;
     my @parts=split /\./,$host;
     my $lookup=ref($suffixes) eq 'HASH' ? $suffixes : {map {$_=>1} @$suffixes};
-    for my $n (reverse 1..$#parts) {
-        my $suffix=join('.',@parts[-$n..-1]);
-        return join('.',@parts[-($n+1)..-1]) if $lookup->{$suffix};
+    my $suffix_length=1;
+    for my $offset (0..$#parts) {
+        my $suffix=join('.',@parts[$offset..$#parts]);
+        return $suffix if $lookup->{'!'.$suffix};
+        my $length=@parts-$offset;
+        $suffix_length=$length if $lookup->{$suffix} && $length>$suffix_length;
+        if ($offset>0 && $lookup->{'*.'.$suffix} && $length+1>$suffix_length) {
+            $suffix_length=$length+1;
+        }
     }
-    return @parts>1 ? join('.',@parts[-2,-1]) : $host;
+    return @parts>$suffix_length ? join('.',@parts[-($suffix_length+1)..-1]) : $host;
 }
 sub select_days {
     my ($root,$year,$month,$day,$week)=@_;

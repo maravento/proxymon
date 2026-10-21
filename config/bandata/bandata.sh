@@ -98,6 +98,7 @@ fi
 # validation -- one variable per thing validated; use directly with =~
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
+UH_BOOL='^(true|false)$'
 
 # ------------------------------------------------------------------------------
 # ENV
@@ -150,6 +151,9 @@ for env_key in WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REAL
         key_errors+=("$env_key not set")
     elif [ "$env_key" = WARNING_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
         key_errors+=("$env_key invalid port")
+    elif { [ "$env_key" = BANDATA_HOTSPOT ] || [ "$env_key" = UPDATE_REALNAME ]; } \
+        && ! [[ "${!env_key}" =~ $UH_BOOL ]]; then
+        key_errors+=("$env_key invalid boolean")
     fi
 done
 # numfmt is the only parser that accepts the IEC forms the administrator
@@ -160,18 +164,28 @@ for env_key in MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH; do
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
-    elif [[ -z "$(LC_ALL=C numfmt --from=iec "${!env_key/,/.}" 2>/dev/null)" ]]; then
+    elif ! quota_bytes=$(LC_ALL=C numfmt --from=iec "${!env_key/,/.}" 2>/dev/null) \
+        || [[ -z "$quota_bytes" ]]; then
         key_errors+=("$env_key invalid size, expected 500M, 1G or 1.5G")
+    elif [ "$env_key" = MAX_BANDWIDTH_DAY ] && ! {
+        [[ "$quota_bytes" =~ $UH_UINT ]] && {
+            [ "${#quota_bytes}" -lt 19 ] || {
+                [ "${#quota_bytes}" -eq 19 ] \
+                    && [[ "$quota_bytes" < 9223372036854775808 ]]
+            }
+        }
+    }; then
+        key_errors+=("$env_key exceeds Bash integer range")
     fi
 done
 if (( ${#key_errors[@]} > 0 )); then
     for key_error in "${key_errors[@]}"; do
-        log "ERROR: $key_error -abort"
+        log "WARNING: $key_error -alert"
     done
     log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -abort"
     exit 1
 fi
-unset key_errors key_error env_key checked_port
+unset key_errors key_error env_key checked_port quota_bytes
 
 # KEY GUARD
 # Each key above is valid on its own. These two relations are not.
@@ -222,8 +236,7 @@ clear_list() {
 touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
 
 if [ "$BANDATA_HOTSPOT" = true ] && [ ! -d "$HOTSPOT_PATH" ]; then
-    log "ERROR: BANDATA_HOTSPOT=true but $HOTSPOT_PATH does not exist"
-    log "ERROR: install uhm or set BANDATA_HOTSPOT=false -abort"
+    log "ERROR: BANDATA_HOTSPOT=true but $HOTSPOT_PATH missing -abort"
     exit 1
 fi
 
@@ -476,7 +489,39 @@ ipset -! flush bandata_new || {
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
 
 # Load IPs to bandata_new
-all_bans=$(cat "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH" | $sort_ips | uniq)
+if ! all_bans=$(
+    {
+        for block_list in "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"; do
+            if [ ! -e "$block_list" ]; then
+                log "WARNING: $(basename "$block_list") is missing" >&2
+                exit 1
+            elif [ ! -f "$block_list" ]; then
+                log "WARNING: $(basename "$block_list") is not a regular file" >&2
+                exit 1
+            elif [ ! -r "$block_list" ]; then
+                log "WARNING: $(basename "$block_list") is not readable" >&2
+                exit 1
+            fi
+            cat -- "$block_list"
+            read_status=$?
+            if [ "$read_status" -ne 0 ]; then
+                log "WARNING: cannot read $(basename "$block_list"); cat exit $read_status" >&2
+                exit 1
+            fi
+        done
+    } | $sort_ips | uniq
+    read_status=("${PIPESTATUS[@]}")
+    if [ "${read_status[1]}" -ne 0 ]; then
+        log "WARNING: quota IP sort failed; sort exit ${read_status[1]}" >&2
+    fi
+    if [ "${read_status[2]}" -ne 0 ]; then
+        log "WARNING: quota IP deduplication failed; uniq exit ${read_status[2]}" >&2
+    fi
+    (( read_status[0] == 0 && read_status[1] == 0 && read_status[2] == 0 ))
+); then
+    all_bans=""
+    load_failed=1
+fi
 
 if [ -n "$all_bans" ]; then
     for banned_ip in $all_bans; do
@@ -492,7 +537,7 @@ fi
 # A client must not stay blocked because of a script or kernel failure.
 # When the new set cannot be published, every block is cleared instead.
 if [ "$load_failed" -ne 0 ]; then
-    log "WARNING: block set half loaded, all blocks cleared -alert"
+    log "WARNING: clearing all Bandata quota blocks -alert"
     ipset flush bandata 2>/dev/null || true
     ipset destroy bandata_new 2>/dev/null || true
 elif ipset swap bandata_new bandata; then
@@ -501,25 +546,6 @@ else
     log "WARNING: cannot activate new set, all blocks cleared -alert"
     ipset flush bandata 2>/dev/null || true
     ipset destroy bandata_new 2>/dev/null || true
-fi
-
-if [ -n "$all_bans" ]; then
-    log "INFO: FINAL BAN SUMMARY:"
-    ipset list bandata 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | $sort_ips | while IFS= read -r banned_ip; do
-        # Check which category this IP belongs to
-        if grep -qxF "$banned_ip" "$BLOCK_LIST_DAY" 2>/dev/null; then
-            ban_period="DAILY"
-        elif grep -qxF "$banned_ip" "$BLOCK_LIST_WEEK" 2>/dev/null; then
-            ban_period="WEEKLY"
-        elif grep -qxF "$banned_ip" "$BLOCK_LIST_MONTH" 2>/dev/null; then
-            ban_period="MONTHLY"
-        else
-            ban_period="UNKNOWN"
-        fi
-        log "INFO: $banned_ip [$ban_period]"
-    done
-else
-    log "INFO: There are no IPs in bandata"
 fi
 
 log "Applying Iptables Rules..."
@@ -740,7 +766,7 @@ update_squidreports_groups() {
 # UPDATE
 # ------------------------------------------------------------------------------
 
-if [[ "${UPDATE_REALNAME:-false}" == "true" ]]; then
+if [ "$UPDATE_REALNAME" = true ]; then
     update_squidreports_realname
     update_squidreports_groups
 fi
@@ -760,6 +786,13 @@ if [ "${load_failed:-0}" -ne 0 ] || [ "${rules_failed:-0}" -ne 0 ]; then
     fi
     log "ERROR: cannot apply data quotas -abort"
     exit 1
+fi
+
+if active_bans=$(ipset list bandata 2>/dev/null); then
+    active_ban_count=$(printf '%s\n' "$active_bans" | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {count++} END {print count+0}')
+    log "INFO: Quota rules applied; blocked IPs: $active_ban_count"
+else
+    log "WARNING: cannot read bandata; block count unavailable -alert"
 fi
 
 log "bandata done at: $(date '+%Y-%m-%d %H:%M:%S')"

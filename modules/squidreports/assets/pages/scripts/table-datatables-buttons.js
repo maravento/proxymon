@@ -1,3 +1,7 @@
+/*
+ * Squidreports - table datatables buttons
+ * FILE: squidreports/assets/pages/scripts/table-datatables-buttons.js
+ */
 var TableDatatablesButtons = function () {
 
     var initTable3 = function () {
