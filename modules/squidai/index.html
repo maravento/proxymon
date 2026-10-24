@@ -227,12 +227,14 @@ FILE: squidai/index.html
     .msg.has-table { width: 100%; max-width: none; }
     .msg.has-table .bubble { flex: 1; max-width: none; }
 
-    .bubble td.name-cell { white-space: nowrap; }
+    .bubble th.name-cell, .bubble td.name-cell { white-space: nowrap; }
+    .bubble th.name-cell { overflow-wrap: normal; }
     .bubble td.domain-cell { width: 100%; }
 
     @media (max-width: 640px) {
+      .bubble th.name-cell { padding-left: 6px; padding-right: 6px; }
       .bubble td.name-cell { white-space: normal; width: 30%; }
-      .bubble td.domain-cell { width: auto; }
+      .bubble td.domain-cell { width: auto; padding-left: 6px; padding-right: 6px; }
     }
 
     .msg.user .bubble {
@@ -2084,7 +2086,7 @@ function renderSecurityIncidents(data) {
     <thead>
       <tr>
         <th>IP</th>
-        <th>${nameLabel}</th>
+        <th class="name-cell">${nameLabel}</th>
         <th>${patternLabel}</th>
         <th style="text-align:center">${hitsLabel}</th>
         <th>${severityLabel}</th>
@@ -2113,7 +2115,7 @@ function renderBlockTable(data, title, mode) {
     }).join('');
     return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
       <table>
-        <thead><tr><th>IP</th><th>${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>Pattern</th></tr></thead>
+        <thead><tr><th>IP</th><th class="name-cell">${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>Pattern</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
@@ -2135,7 +2137,7 @@ function renderBlockTable(data, title, mode) {
   const colLabel = mode === 'tlds' ? 'TLD' : t.labelDomain;
   return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
     <table>
-      <thead><tr><th>IP</th><th>${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>${colLabel}</th></tr></thead>
+      <thead><tr><th>IP</th><th class="name-cell">${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>${colLabel}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }

@@ -148,6 +148,20 @@ $allowedOrigins = [
     'http://127.0.0.1:' . $panelPort,
     'http://localhost:' . $panelPort,
 ];
+// A panel published behind a reverse proxy or tunnel is reached by its public
+// domain, and the browser sends that domain as Origin on every POST.
+// PANEL_DOMAINS declares those domains, so the admin opts in instead of this
+// endpoint trusting any request header.
+foreach (explode(',', (string) ($proxymonEnv['PANEL_DOMAINS'] ?? '')) as $panelDomain) {
+    $panelDomain = strtolower(trim($panelDomain));
+    if ($panelDomain === '') continue;
+    if (!filter_var($panelDomain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)
+        || !preg_match('/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/', $panelDomain)) {
+        error_log('SquidAI malformed PANEL_DOMAINS entry: ' . $panelDomain);
+        continue;
+    }
+    $allowedOrigins[] = 'https://' . $panelDomain;
+}
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($requestOrigin, $allowedOrigins, true)) {
     header('Access-Control-Allow-Origin: ' . $requestOrigin);

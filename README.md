@@ -279,6 +279,7 @@ sudo bash pmsetup.sh --help   # or -h
 |----------|---------|--------------|-------------|
 | `WEB_ROOT`, `CONFIG_DIR` | `pmsetup.sh`, `pmbk.sh` | Web application and root-script directories. Defaults: `/var/www/proxymon` and `/etc/proxymon`. | Directorios de la aplicación web y los scripts de root. Valores iniciales: `/var/www/proxymon` y `/etc/proxymon`. |
 | `PANEL_PORT`, `WARNING_PORT` | `pmsetup.sh`, `squidtool.sh`, `worker.php`, `bandata.sh` | Panel and warning ports. Defaults: `18080` and `18081`. Apache keeps the panel on loopback and the warning page on `SERVER_IP`. | Puertos del panel y los avisos. Valores iniciales: `18080` y `18081`. Apache mantiene el panel en localhost y los avisos en `SERVER_IP`. |
+| `PANEL_DOMAINS` | `worker.php` | Public HTTPS panel domains accepted by SquidAI, separated by commas. Empty by default: only local panel origins are allowed. Use bare domains, without a scheme, port or path, for example `proxy.example.com`. See the SquidAI section. | Dominios públicos HTTPS del panel admitidos por SquidAI, separados por comas. Vacío por defecto: solo se autorizan los orígenes locales del panel. Escriba dominios sin esquema, puerto ni ruta, por ejemplo `proxy.example.com`. Ver la sección SquidAI. |
 | `BACKUP_DIR` | `pmbk.sh` | Backup destination. Default: `/etc/bak/proxymon`. Changing this default is not recommended. | Destino de las copias de seguridad. Valor inicial: `/etc/bak/proxymon`. No se recomienda modificar este valor. |
 | `TOOL_REPORT_DIR` | `pmsetup.sh`, `squidtool.sh`, `pmbk.sh` | Directory for generated traffic and log-search HTML reports, served through Apache's Squidtool alias. | Directorio de informes HTML de tráfico y búsqueda, publicado mediante el alias Squidtool de Apache. |
 | `SQUIDTOOL_MIN_HITS` | `squidtool.sh` | Minimum requests per row in traffic reports without an IP filter. Default: `20`, written automatically without a prompt. Changing this default is not recommended. Reports for one IP show all rows. Accepts nonnegative integers without leading zeros. | Mínimo de solicitudes por fila en informes de tráfico sin filtro de IP. Valor inicial: `20`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Los informes de una IP muestran todas las filas. Acepta enteros no negativos sin ceros iniciales. |
@@ -295,8 +296,8 @@ sudo bash pmsetup.sh --help   # or -h
 | `REALNAME_CFG`, `SKIPUSERS_CFG` | `bandata.sh`, `worker.php`, Squidreports | Squidreports hostname mappings and excluded-user list | Correspondencia entre IP y nombres de equipo, y lista de usuarios excluidos de Squidreports |
 | `ACL_PATH`, `ACL_MAC_PATH`, `ACL_SQUID_PATH` | `pmsetup.sh`, `bandata.sh`, `worker.php` | ACL tree shared with the other projects on the host, and its MAC and Squid branches | Árbol de ACL compartido con los otros proyectos del host, y sus ramas MAC y Squid |
 | `ACL_BANDATA_PATH` | `bandata.sh` | Directory holding Bandata's own quota lists | Directorio con las listas de cuota propias de Bandata |
-| `ALLOW_LIST` | `bandata.sh` | IPs exempt from every quota | IP exentas de toda cuota |
-| `BLOCK_LIST_DAY`, `BLOCK_LIST_WEEK`, `BLOCK_LIST_MONTH` | `bandata.sh` | The three lists Bandata rewrites, one per quota window | Las tres listas que Bandata reescribe, una por ventana de cuota |
+| `ALLOW_LIST` | `bandata.sh` | `allowdata.txt`: IPs exempt from every quota. This is the only Bandata ACL the administrator edits, manually on the server. The web interface does not provide an editor. | `allowdata.txt`: IP exentas de toda cuota. Es la única ACL de Bandata que edita el administrador, manualmente en el servidor. La interfaz web no permite editarla. |
+| `BLOCK_LIST_DAY`, `BLOCK_LIST_WEEK`, `BLOCK_LIST_MONTH` | `bandata.sh` | `banday.txt`, `banweek.txt` and `banmonth.txt`: block lists managed automatically by Bandata. Do not edit them manually; the web interface does not provide an editor. | `banday.txt`, `banweek.txt` y `banmonth.txt`: listas de bloqueo administradas automáticamente por Bandata. No deben editarse manualmente; la interfaz web no permite editarlas. |
 | `SQUID_LOG_DIR`, `SQUID_LOG_FILE` | `pmsetup.sh`, `squidtool.sh`, `api.php`, `worker.php`, Squidreports, Squidmon | Squid log directory and `access.log` path | Directorio de logs de Squid y ruta de `access.log` |
 | `SQUID_MGR_HOST`, `SQUID_MGR_PORT` | `connections.php` | Where Squid's cache manager answers; Logview reads the requests in flight from it. `SQUID_MGR_PORT` defaults to `3128` and is shared with other projects | Dirección y puerto del administrador de caché de Squid; Logview consulta allí las solicitudes en curso. `SQUID_MGR_PORT` tiene valor inicial `3128` y se comparte con otros proyectos |
 | `SQUID_INTERCEPT_PORT` | Other projects | Squid intercept port, default `3129`. Shared key for other projects. | Puerto transparente de Squid, valor inicial `3129`. Clave compartida para otros proyectos. |
@@ -1278,6 +1279,19 @@ MAX_BANDWIDTH_MONTH=20G
         <li><b>Lista de usuarios:</b> Lista completa de usuarios registrados desde <code>realname.cfg</code> (excluyendo <code>skipuser.cfg</code>) de Squidreports.</li>
       </ul>
       El asistente responde en español o inglés, según el idioma de la consulta, y presenta la información en tablas y análisis detallados.
+    </td>
+  </tr>
+</table>
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <b>Panel published through a tunnel or reverse proxy.</b> To send LLM queries from a public HTTPS panel, declare its domain in <code>PANEL_DOMAINS</code>, in <code>/etc/proxymon/proxymon.env</code>. Otherwise, <code>worker.php</code> rejects those POST requests with <code>403</code>. Enter domains or subdomains separated by commas, without a scheme, port or path. Each valid domain authorizes its HTTPS origin on the default port, 443. A malformed entry is discarded and reported in the Apache error log. An empty value keeps only the local panel origins authorized; this key does not change Apache's loopback listener.
+      <pre><code>PANEL_DOMAINS=proxy.example.com</code></pre>
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <b>Panel publicado por túnel o proxy inverso.</b> Para enviar consultas al LLM desde un panel público HTTPS, declare su dominio en <code>PANEL_DOMAINS</code>, en <code>/etc/proxymon/proxymon.env</code>. Si no lo declara, <code>worker.php</code> rechaza esas peticiones POST con <code>403</code>. Escriba dominios o subdominios separados por comas, sin esquema, puerto ni ruta. Cada dominio válido autoriza su origen HTTPS en el puerto predeterminado, 443. Los valores malformados se descartan y se registran en el log de errores de Apache. Un valor vacío conserva únicamente los orígenes locales del panel; esta clave no cambia la escucha de Apache en loopback.
+      <pre><code>PANEL_DOMAINS=proxy.example.com</code></pre>
     </td>
   </tr>
 </table>
