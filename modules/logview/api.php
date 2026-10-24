@@ -90,12 +90,6 @@ function parse_line($line) {
     ];
 }
 
-function fmt_bytes($bytes) {
-    if ($bytes >= 1048576) return round($bytes / 1048576, 1) . ' MB';
-    if ($bytes >= 1024)    return round($bytes / 1024)       . ' KB';
-    return $bytes . ' B';
-}
-
 // ── Check file ───────────────────────────────────────────────────────────────
 
 if (!file_exists(LOG_FILE)) {

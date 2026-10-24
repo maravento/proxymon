@@ -99,7 +99,26 @@ fi
 # validation -- one variable per thing validated; use directly with =~
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
+UH_SINT='^(0|-?[1-9][0-9]*)$'
+UH_MAX=9223372036854775807
+UH_MIN=-9223372036854775808
 UH_BOOL='^(true|false)$'
+
+# validation - integer is representable as a signed 64-bit value
+uh_fits() {
+    local value="${1-}" limit
+    [[ "$value" =~ $UH_SINT ]] || return 1
+    if [[ "${value:0:1}" == - ]]; then
+        limit="${UH_MIN#-}"
+        value="${value#-}"
+    else
+        limit="$UH_MAX"
+    fi
+    (( ${#value} < ${#limit} )) && return 0
+    (( ${#value} > ${#limit} )) && return 1
+    [[ "$value" > "$limit" ]] && return 1
+    return 0
+}
 
 # ------------------------------------------------------------------------------
 # ENV
@@ -168,15 +187,9 @@ for env_key in MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH; do
     elif ! quota_bytes=$(LC_ALL=C numfmt --from=iec "${!env_key/,/.}" 2>/dev/null) \
         || [[ -z "$quota_bytes" ]]; then
         key_errors+=("$env_key invalid size, expected 500M, 1G or 1.5G")
-    elif [ "$env_key" = MAX_BANDWIDTH_DAY ] && ! {
-        [[ "$quota_bytes" =~ $UH_UINT ]] && {
-            [ "${#quota_bytes}" -lt 19 ] || {
-                [ "${#quota_bytes}" -eq 19 ] \
-                    && [[ "$quota_bytes" < 9223372036854775808 ]]
-            }
-        }
-    }; then
-        key_errors+=("$env_key exceeds Bash integer range")
+    elif [ "$env_key" = MAX_BANDWIDTH_DAY ] \
+        && ! uh_fits "$quota_bytes"; then
+        key_errors+=("$env_key exceeds the Bash integer range")
     fi
 done
 if (( ${#key_errors[@]} > 0 )); then
@@ -228,10 +241,75 @@ clear_list() {
         log "WARNING: cannot clear $(basename "$1") -alert"
     }
 }
+# ACL PREPARATION
+# Canonical block -- copied byte for byte into every script that creates a
+# directory or a list under /etc/acl. Prepare /etc/acl first, then only the
+# subdirectory and the lists this script needs. Never recursive.
+# Usage: acl_prepare <dir> <dir_mode> <file_mode> [file ...]
+acl_prepare() {
+    local acl_dir="$1" dir_mode="$2" file_mode="$3" acl_file
+    shift 3
+
+    # mkdir without -p fails when the directory already exists, so a success
+    # means this run created it and no concurrent run did.
+    if mkdir -m "$dir_mode" -- "$acl_dir" 2>/dev/null; then
+        if ! chown root:root -- "$acl_dir"; then
+            log "ERROR: cannot set owner of $acl_dir -abort"
+            exit 1
+        fi
+        log "WARNING: created ACL directory $acl_dir -alert"
+    elif [ -d "$acl_dir" ] && [ ! -L "$acl_dir" ]; then
+        acl_fix_perms "$acl_dir" "$dir_mode"
+    else
+        log "ERROR: $acl_dir is not a regular directory -abort"
+        exit 1
+    fi
+
+    for acl_file in "$@"; do
+        # Checked before the redirection: noclobber only protects regular
+        # files, and opening a FIFO for writing blocks until a reader shows up.
+        if [ -L "$acl_file" ] || { [ -e "$acl_file" ] && [ ! -f "$acl_file" ]; }; then
+            log "ERROR: $acl_file is not a regular file -abort"
+            exit 1
+        fi
+        # noclobber makes the redirection fail when the file already exists,
+        # and umask 077 keeps the new file closed until chmod sets its mode.
+        if (set -C; umask 077; : > "$acl_file") 2>/dev/null; then
+            if ! { chmod "$file_mode" -- "$acl_file" \
+                && chown root:root -- "$acl_file"; }; then
+                log "ERROR: cannot set perms of $(basename "$acl_file") -abort"
+                exit 1
+            fi
+            log "WARNING: created empty $(basename "$acl_file") -alert"
+        elif [ -f "$acl_file" ] && [ ! -L "$acl_file" ]; then
+            acl_fix_perms "$acl_file" "$file_mode"
+        else
+            log "ERROR: $acl_file is not a regular file -abort"
+            exit 1
+        fi
+    done
+}
+
+# Repairs mode and owner of an existing ACL object, per Autorreparación
+acl_fix_perms() {
+    local acl_path="$1" want_mode="$2" cur_mode cur_owner
+    cur_mode=$(stat -c '%a' -- "$acl_path" 2>/dev/null) || {
+        log "ERROR: cannot stat $acl_path -abort"; exit 1; }
+    cur_owner=$(stat -c '%U:%G' -- "$acl_path" 2>/dev/null) || {
+        log "ERROR: cannot stat $acl_path -abort"; exit 1; }
+    [[ "$cur_mode" == "$want_mode" && "$cur_owner" == "root:root" ]] && return 0
+    if ! { chmod "$want_mode" -- "$acl_path" \
+        && chown root:root -- "$acl_path"; }; then
+        log "ERROR: cannot fix $acl_path perms -abort"
+        exit 1
+    fi
+    log "INFO: $acl_path perms fixed -fixed"
+}
+
 # FILESYSTEM LAYOUT
 # Create folders if they don't exist
-[ -d "$ACL_PATH" ] || mkdir -p "$ACL_PATH"
-[ -d "$ACL_MAC_PATH" ] || mkdir -p "$ACL_MAC_PATH"
+acl_prepare "$ACL_PATH" 755 644
+acl_prepare "$ACL_MAC_PATH" 700 600
 [ -d "$ACL_BANDATA_PATH" ] || mkdir -p "$ACL_BANDATA_PATH"
 # Create ACL files if they don't exist
 touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
@@ -551,9 +629,7 @@ fi
 
 log "Applying Iptables Rules..."
 
-# Add a rule only when it is not there yet, and remember any failure. Without
-# this the script reported "bandata done" and exit zero even when no rule
-# could be applied, which reads exactly like a successful run.
+# Add a rule only when it is absent, and remember any failure.
 rules_failed=0
 iptables_rule() {
     iptables -C "$@" 2>/dev/null && return 0

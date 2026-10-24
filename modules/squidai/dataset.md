@@ -48,7 +48,7 @@ FILE: squidai/dataset.md
 | Español | English |
 |---------|---------|
 | Recibirás dos bloques JSON como contexto: REPORTE DE USUARIO y LISTA NEGRA. Estos son datos internos — NUNCA los reproduzcas ni los menciones en tu respuesta. Usa esos datos únicamente para generar el reporte formateado. | You will receive two JSON blocks as context: USER REPORT and BLACKLIST. These are internal data — NEVER reproduce or mention them in your response. Use that data only to generate the formatted report. |
-| El reporte tiene exactamente estas secciones en este orden, sin agregar ni cambiar títulos: 1) Perfil del usuario (nombre, IP, fecha, total MB, total dominios) 2) Top 10 dominios (tabla: Dominio, MB, Hits) 3) Análisis de lista negra (limpio o hits encontrados) 4) Incidentes de seguridad (solo si hits > 0: tabla con tipo, hits, severidad y top_targets) 5) Observaciones (máximo 3 líneas). No hay sección 6 ni "Informe Completo" ni ninguna sección adicional. | The report has exactly these sections in this order, without adding or changing titles: 1) User profile (name, IP, date, total MB, total domains) 2) Top 10 domains (table: Domain, MB, Hits) 3) Blacklist analysis (clean or hits found) 4) Security incidents (only if hits > 0: table with type, hits, severity and top_targets) 5) Observations (maximum 3 lines). There is no section 6, no "Full Report", and no additional sections. |
+| El reporte tiene exactamente estas secciones en este orden, sin agregar ni cambiar títulos: 1) Perfil del usuario (nombre, IP, fecha, total MB, total dominios) 2) Top 10 dominios (tabla: Domain, MB, Hits) 3) Análisis de lista negra (limpio o hits encontrados) 4) Incidentes de seguridad (solo si hits > 0: tabla con tipo, hits, severidad y top_targets) 5) Observaciones (máximo 3 líneas). No hay sección 6 ni "Informe Completo" ni ninguna sección adicional. | The report has exactly these sections in this order, without adding or changing titles: 1) User profile (name, IP, date, total MB, total domains) 2) Top 10 domains (table: Domain, MB, Hits) 3) Blacklist analysis (clean or hits found) 4) Security incidents (only if hits > 0: table with type, hits, severity and top_targets) 5) Observations (maximum 3 lines). There is no section 6, no "Full Report", and no additional sections. |
 | Consultar get_user_report en worker.php con la IP del usuario y la fecha seleccionada. Devuelve top 10 dominios con consumo. Cruzar con check_blacklist para verificar lista negra. Al final del reporte, si la respuesta incluye el campo security_incidents con hits > 0, mostrar una sección de "Incidentes de Seguridad" con el formato: IP · Usuario · Tipo · Hits · Severidad (🔴 CRITICAL / 🟠 HIGH / 🟡 MEDIUM / 🟢 LOW). Esta sección va después del análisis de lista negra y las observaciones. Debajo, mostrar el campo top_targets como "Top 5 destinos más frecuentes (de X intentos totales)" donde X es el valor de hits, listando cada IP con su conteo. Dejar claro que es solo el top 5 y que el total real es el campo hits. | Call get_user_report in worker.php with user IP and selected date. Returns top 10 domains with usage. Cross-check with check_blacklist for blocklist verification. At the end of the report, if the response includes the security_incidents field with hits > 0, show a "Security Incidents" section formatted as: IP · User · Type · Hits · Severity (🔴 CRITICAL / 🟠 HIGH / 🟡 MEDIUM / 🟢 LOW). This section goes after the blacklist analysis and observations. Below, show the top_targets field as "Top 5 most frequent destinations (out of X total attempts)" where X is the hits value, listing each IP with its count. Make clear it is only the top 5 and that the real total is the hits field. |
 
 ---
@@ -187,7 +187,7 @@ FILE: squidai/dataset.md
 
 | Español | English |
 |---------|---------|
-| Consultar get_blocked_domains en worker.php. Muestra tabla con IP, nombre, dominio, hits. No pasa por Gemini — se renderiza directamente. | Call get_blocked_domains in worker.php. Display table with IP, name, domain, hits. Does NOT go through Gemini — rendered directly. |
+| Consultar get_blocked_domains en worker.php. Muestra tabla con IP, Hostname, Hits, Domain, en ese orden y siempre en inglés. No pasa por Gemini — se renderiza directamente. | Call get_blocked_domains in worker.php. Display table with IP, Hostname, Hits, Domain, in that order and always in English. Does NOT go through Gemini — rendered directly. |
 
 ---
 
@@ -542,13 +542,17 @@ FILE: squidai/dataset.md
 
 ### Labels de tabla | Table labels
 
+| Español | English |
+|---------|---------|
+| Los encabezados IP, Hostname, Hits y Domain permanecen en inglés, independientemente del idioma del navegador. La tabla de accesos a dominios utiliza ese orden. | The IP, Hostname, Hits and Domain headers remain in English regardless of browser language. The domain-access table uses that order. |
+
 | clave | es | en |
 |-------|----|----|
-| labelName     | Nombre      | Name         |
-| labelHits     | Visitas     | Hits         |
+| labelName     | Hostname    | Hostname     |
+| labelHits     | Hits        | Hits         |
 | labelPattern  | Patrón / Tipo | Pattern / Type |
 | labelSeverity | Severidad   | Severity     |
-| labelDomain   | Dominio     | Domain       |
+| labelDomain   | Domain      | Domain       |
 
 ### Queries con fecha hoy | Today queries
 

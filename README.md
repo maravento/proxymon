@@ -151,7 +151,7 @@ proxymon/
 │   │   ├── proxymonenv.sh        # Shared configuration reader; sourced, not executed
 │   │   └── squidtool.sh          # Log search and traffic reports
 │   ├── squid/                    # squid.conf template, deployed only on a fresh Squid
-│   └── vhost/                    # Apache vhosts, installed to sites-available
+│   └── web/                      # Apache vhosts, installed to sites-available
 └── pmsetup.sh                  # Installer: install, update, uninstall
 ```
 
@@ -279,7 +279,7 @@ sudo bash pmsetup.sh --help   # or -h
 |----------|---------|--------------|-------------|
 | `WEB_ROOT`, `CONFIG_DIR` | `pmsetup.sh`, `pmbk.sh` | Web application and root-script directories. Defaults: `/var/www/proxymon` and `/etc/proxymon`. | Directorios de la aplicación web y los scripts de root. Valores iniciales: `/var/www/proxymon` y `/etc/proxymon`. |
 | `PANEL_PORT`, `WARNING_PORT` | `pmsetup.sh`, `squidtool.sh`, `worker.php`, `bandata.sh` | Panel and warning ports. Defaults: `18080` and `18081`. Apache keeps the panel on loopback and the warning page on `SERVER_IP`. | Puertos del panel y los avisos. Valores iniciales: `18080` y `18081`. Apache mantiene el panel en localhost y los avisos en `SERVER_IP`. |
-| `BACKUP_DIR` | `pmbk.sh` | Backup destination. Default: `/etc/bak/proxymon`. | Destino de las copias de seguridad. Valor inicial: `/etc/bak/proxymon`. |
+| `BACKUP_DIR` | `pmbk.sh` | Backup destination. Default: `/etc/bak/proxymon`. Changing this default is not recommended. | Destino de las copias de seguridad. Valor inicial: `/etc/bak/proxymon`. No se recomienda modificar este valor. |
 | `TOOL_REPORT_DIR` | `pmsetup.sh`, `squidtool.sh`, `pmbk.sh` | Directory for generated traffic and log-search HTML reports, served through Apache's Squidtool alias. | Directorio de informes HTML de tráfico y búsqueda, publicado mediante el alias Squidtool de Apache. |
 | `SQUIDTOOL_MIN_HITS` | `squidtool.sh` | Minimum requests per row in traffic reports without an IP filter. Default: `20`, written automatically without a prompt. Changing this default is not recommended. Reports for one IP show all rows. Accepts nonnegative integers without leading zeros. | Mínimo de solicitudes por fila en informes de tráfico sin filtro de IP. Valor inicial: `20`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Los informes de una IP muestran todas las filas. Acepta enteros no negativos sin ceros iniciales. |
 | `SQUIDTOOL_ALERT_THRESHOLD` | `squidtool.sh` | Request threshold for highlighting and counting traffic rows as alerts. Default: `300`, written automatically without a prompt. Changing this default is not recommended. Accepts nonnegative integers without leading zeros. | Umbral de solicitudes para resaltar y contar filas de tráfico como alertas. Valor inicial: `300`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Acepta enteros no negativos sin ceros iniciales. |
@@ -334,6 +334,8 @@ sudo bash pmsetup.sh --help   # or -h
 
 ## SCOPE
 
+---
+
 | In scope | Dentro del alcance |
 | --- | --- |
 | Monitor and analyze traffic recorded by Squid through live views, historical reports and log queries. Reports cover only traffic that passes through Squid. | Supervisar y analizar el tráfico registrado por Squid mediante vistas en tiempo real, informes históricos y consultas de registros. Los informes incluyen únicamente el tráfico que pasa por Squid. |
@@ -344,6 +346,30 @@ sudo bash pmsetup.sh --help   # or -h
 | Integration with DHCP servers or reading their configuration or leases. DHCP name resolution is unsupported because replacing IP identifiers with names can affect Bandata quotas. Display names can be associated through `realname.cfg` without replacing those identifiers. | Integración con servidores DHCP o lectura de su configuración o concesiones. La resolución de nombres mediante DHCP no está soportada porque sustituir las IP por nombres puede afectar las cuotas de Bandata. Los nombres visibles pueden asociarse mediante `realname.cfg` sin sustituir esos identificadores. |
 | Monitoring traffic that does not pass through Squid. | Supervisión del tráfico que no pasa por Squid. |
 | Full IPv6 support. Support is partial: Squidreports Analyze can group IPv6 client addresses using configured IPv6 CIDRs; SquidAI recognizes bracketed IPv6 literals in CONNECT destinations; the Squidmon PDF client filter accepts IPv6 address characters. These features do not provide IPv6 network configuration or IPv6 quota enforcement through Bandata. | Soporte completo de IPv6. El soporte es parcial: Squidreports Analyze puede agrupar direcciones IPv6 de clientes mediante redes CIDR IPv6 configuradas; SquidAI reconoce direcciones IPv6 entre corchetes en destinos CONNECT; el filtro de clientes del PDF de Squidmon admite caracteres de direcciones IPv6. Estas funciones no proporcionan configuración de redes IPv6 ni aplicación de cuotas IPv6 mediante Bandata. |
+
+### LOGS
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Each module reads the Squid log according to what it does, so their historical coverage differs. The retention on disk is set by <code>rotate</code> in <code>/etc/logrotate.d/squid</code>, which the installer sets to seven weekly rotations.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Cada módulo lee el registro de Squid según su función, así que su cobertura histórica es distinta. La retención en disco la define <code>rotate</code> en <code>/etc/logrotate.d/squid</code>, que el instalador fija en siete rotaciones semanales.
+    </td>
+  </tr>
+</table>
+
+| Module | Reads | Lee | Coverage / Cobertura |
+| --- | --- | --- | --- |
+| Squidmon | `access.log` | `access.log` | Recent activity / Actividad reciente |
+| Logview | `access.log` | `access.log` | Recent activity / Actividad reciente |
+| SquidAI | Squidreports reports, `access.log` and `access.log.1` | Informes de Squidreports, `access.log` y `access.log.1` | Full history by report, two weeks by log / Histórico completo por informe, dos semanas por registro |
+| `squidtool.sh` | `access.log` and every rotated file | `access.log` y todos los rotados | Full retention / Retención completa |
+
+| Out of scope | Fuera del alcance |
+| --- | --- |
+| Reading compressed rotated logs from the web modules. Squidmon and Logview show recent activity and do not answer questions by date, so they never open a rotated file. SquidAI reads the last uncompressed rotated file, which keeps its answers correct right after a rotation without the cost of decompressing six more weeks on every query. For the full retention period use `squidtool.sh`. | Lectura de registros rotados comprimidos desde los módulos web. Squidmon y Logview muestran actividad reciente y no responden preguntas por fecha, así que nunca abren un rotado. SquidAI lee el último rotado sin comprimir, lo que mantiene correctas sus respuestas justo después de una rotación sin el costo de descomprimir seis semanas más en cada consulta. Para el periodo de retención completo use `squidtool.sh`. |
 
 ## MODULES
 
@@ -552,10 +578,10 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?(?=[/?#]|$)=Block IP
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>• Squidmon reads only the current <code>access.log</code>; it does not process rotated files. The same applies to Logview and SquidAI.<br><br>• Rotation in Proxymon is weekly. A rotation leaves <code>access.log</code> empty, so the modules lose the hours that moved to the rotated file. Weekly limits that gap to one day out of seven.<br><br>• Rotation always happens at 00:00, imposed by the <code>logrotate</code> timer. Do not configure <code>size</code> or <code>maxsize</code>: those split the current day, and Squidreports rebuilds each day from a single file.<br><br>• The installer also adds a <code>prerotate</code> hook to <code>/etc/logrotate.d/squid</code>. It closes the previous day's report before <code>access.log</code> is rotated. When that file already defines its own <code>prerotate</code>, the installer reports it and leaves it untouched.<br><br>• Disable Squid's internal rotation with <code>logfile_rotate 0</code>.<br><br>• In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.</p>
+      <p>• Squidmon reads only the current <code>access.log</code>; it does not process rotated files. The same applies to Logview. SquidAI also reads the uncompressed rotated files (<code>access.log.1</code>, <code>access.log.2</code>, ...), but never the compressed <code>.gz</code> ones.<br><br>• Rotation in Proxymon is weekly. A rotation leaves <code>access.log</code> empty, so Squidmon and Logview lose the hours that moved to the rotated file. Weekly limits that gap to one day out of seven.<br><br>• Rotation always happens at 00:00, imposed by the <code>logrotate</code> timer. Do not configure <code>size</code> or <code>maxsize</code>: those split the current day, and Squidreports rebuilds each day from a single file.<br><br>• The installer also adds a <code>prerotate</code> hook to <code>/etc/logrotate.d/squid</code>. It closes the previous day's report before <code>access.log</code> is rotated. When that file already defines its own <code>prerotate</code>, the installer reports it and leaves it untouched.<br><br>• Disable Squid's internal rotation with <code>logfile_rotate 0</code>.<br><br>• In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>• Squidmon solo lee el <code>access.log</code> actual; no procesa los archivos rotados. Lo mismo ocurre con Logview y SquidAI.<br><br>• La rotación en Proxymon es semanal. Una rotación deja vacío el <code>access.log</code>, por lo que los módulos pierden las horas que pasaron al archivo rotado. La frecuencia semanal limita ese hueco a un día de cada siete.<br><br>• La rotación ocurre siempre a las 00:00, impuesta por el temporizador de <code>logrotate</code>. No configure <code>size</code> ni <code>maxsize</code>: parten el día en curso, y Squidreports reconstruye cada día a partir de un solo archivo.<br><br>• El instalador añade además un bloque <code>prerotate</code> a <code>/etc/logrotate.d/squid</code>. Cierra el informe del día anterior antes de rotar <code>access.log</code>. Si ese archivo ya define su propio <code>prerotate</code>, el instalador lo informa y no lo modifica.<br><br>• Desactive la rotación interna de Squid con <code>logfile_rotate 0</code>.<br><br>• En <code>/etc/logrotate.d/squid</code>, puede conservar siete rotaciones con <code>rotate 7</code>.</p>
+      <p>• Squidmon solo lee el <code>access.log</code> actual; no procesa los archivos rotados. Lo mismo ocurre con Logview. SquidAI lee además los rotados sin comprimir (<code>access.log.1</code>, <code>access.log.2</code>, ...), pero nunca los comprimidos <code>.gz</code>.<br><br>• La rotación en Proxymon es semanal. Una rotación deja vacío el <code>access.log</code>, por lo que Squidmon y Logview pierden las horas que pasaron al archivo rotado. La frecuencia semanal limita ese hueco a un día de cada siete.<br><br>• La rotación ocurre siempre a las 00:00, impuesta por el temporizador de <code>logrotate</code>. No configure <code>size</code> ni <code>maxsize</code>: parten el día en curso, y Squidreports reconstruye cada día a partir de un solo archivo.<br><br>• El instalador añade además un bloque <code>prerotate</code> a <code>/etc/logrotate.d/squid</code>. Cierra el informe del día anterior antes de rotar <code>access.log</code>. Si ese archivo ya define su propio <code>prerotate</code>, el instalador lo informa y no lo modifica.<br><br>• Desactive la rotación interna de Squid con <code>logfile_rotate 0</code>.<br><br>• En <code>/etc/logrotate.d/squid</code>, puede conservar siete rotaciones con <code>rotate 7</code>.</p>
     </td>
   </tr>
 </table>
@@ -807,7 +833,7 @@ sudo netdiscover
 >
 > Analyze lee automáticamente la configuración de red instalada; no necesita copiar una red de ejemplo. Los alias adicionales siguen siendo opcionales en `squidreports.cfg`. Las estadísticas por subred usan la misma configuración al regenerarse.
 
-#### Manual Public Suffix List update / Actualización manual de Public Suffix List
+#### Manual Public Suffix List update
 
 | Description | Descripción |
 |---|---|
@@ -1479,7 +1505,11 @@ LLM_RESPONSE_FORMAT=openai</code></pre>
 sudo /etc/proxymon/tools/squidtool.sh
 ```
 
+> Both functions read `access.log` and every rotated file, compressed or not, so they cover the full retention period set in `/etc/logrotate.d/squid`.
+>
 > Each function generates an HTML report and replaces the previous report of the same type, so only the latest result is kept. The reports are written to `TOOL_REPORT_DIR` (`/etc/proxymon/tools/reports` by default), outside the Apache webroot, and the panel serves them read-only under the same loopback-only restriction. Tool activity is logged beside the script (`CONFIG_DIR/tools/squidtool.log`).
+>
+> Las dos funciones leen `access.log` y todos los rotados, comprimidos o no, así que cubren todo el periodo de retención definido en `/etc/logrotate.d/squid`.
 >
 > Cada función genera un informe HTML y reemplaza el anterior del mismo tipo; solo se conserva el resultado más reciente. Los informes se escriben en `TOOL_REPORT_DIR` (`/etc/proxymon/tools/reports` por defecto), fuera del webroot de Apache, y el panel los publica en modo lectura con la misma restricción a loopback. La herramienta registra su actividad junto al script (`CONFIG_DIR/tools/squidtool.log`).
 

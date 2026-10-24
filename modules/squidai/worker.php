@@ -77,7 +77,6 @@ function msg($key, $fallback = null) {
 }
 // ───────────────────────────────────────────────────────────────────
 
-
 // ── ROUTE CONFIGURATION ──────────────────────────────────────────
 function readEnvFile(string $path): array {
     $vars = [];
@@ -130,7 +129,11 @@ define('BLOCKPATTERNS',   $aclSquidPath . '/blockpatterns.txt');
 define('SQUID_LOG_DIR',   $proxymonEnv['SQUID_LOG_DIR']  ?? throw new RuntimeException('SQUID_LOG_DIR missing in proxymon.env'));
 define('SQUID_LOG_FILE',  $proxymonEnv['SQUID_LOG_FILE'] ?? throw new RuntimeException('SQUID_LOG_FILE missing in proxymon.env'));
 define('CACHE_PATH',      $proxymonEnv['CACHE_PATH']     ?? throw new RuntimeException('CACHE_PATH missing in proxymon.env'));
-define('MAX_LOG_LINES_SCAN',    2000000);
+// The scan budget belongs to the request: getUserReport() runs two readers in
+// a row and both spend the same max_execution_time. A quarter of that limit
+// stays in reserve for building and encoding the response.
+$maxExecution = (int) ini_get('max_execution_time');
+define('LOG_SCAN_DEADLINE',     $maxExecution > 0 ? microtime(true) + $maxExecution * 0.75 : INF);
 define('MAX_REQUEST_BYTES',     1048576);
 // ───────────────────────────────────────────────────────────────────
 
@@ -139,13 +142,12 @@ define('MAX_REQUEST_BYTES',     1048576);
 // responses from this endpoint. Same-origin calls (the normal case — the
 // panel calling its own worker.php) aren't affected by this at all, since
 // browsers don't apply CORS checks to same-origin requests.
-$serverIp = $proxymonEnv['SERVER_IP'] ?? '';
 $panelPort = filter_var($proxymonEnv['PANEL_PORT'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
 if ($panelPort === false) { http_response_code(500); exit('Invalid PANEL_PORT in proxymon.env'); }
-$allowedOrigins = ['http://127.0.0.1:' . $panelPort];
-if ($serverIp !== '') {
-    $allowedOrigins[] = 'http://' . $serverIp . ':' . $panelPort;
-}
+$allowedOrigins = [
+    'http://127.0.0.1:' . $panelPort,
+    'http://localhost:' . $panelPort,
+];
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($requestOrigin, $allowedOrigins, true)) {
     header('Access-Control-Allow-Origin: ' . $requestOrigin);
@@ -244,7 +246,6 @@ function cachedJson(string $key, int $ttl, callable $producer): void {
     // Locking unavailable — fall back to computing directly rather than blocking
     echo json_encode($producer());
 }
-
 
 // Thrown when a log reader fails or times out. A query that could not read
 // its sources must not answer "no incidents": that is a security conclusion
@@ -739,10 +740,8 @@ function getDeniedDirectIps(string $ip, string $date): array {
         if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
         $logSources++;
 
-        $lineCount = 0;
         while (($line = fgets($handle)) !== false) {
-            $lineCount++;
-            if ($lineCount > MAX_LOG_LINES_SCAN) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
+            if (microtime(true) > LOG_SCAN_DEADLINE) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
 
             $parts = preg_split('/\s+/', trim($line));
             if (count($parts) < 7) continue;
@@ -895,10 +894,8 @@ function parseAccessLog(string $ip, string $date): array {
         $logSources++;
 
         // For large files, read in chunks
-        $lineCount = 0;
         while (($line = fgets($fh)) !== false) {
-            $lineCount++;
-            if ($lineCount > MAX_LOG_LINES_SCAN) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
+            if (microtime(true) > LOG_SCAN_DEADLINE) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
 
             $line = trim($line);
             if (!$line) continue;
@@ -1103,7 +1100,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         foreach (readLinesLocked(BLOCKDOMAINS) as $line) {
             $line = trim($line);
             if ($line && $line[0] !== '#') {
-                $blockedDomains[] = normalizeBlockedDomain($line);
+                $blockedDomains[normalizeBlockedDomain($line)] = true;
             }
         }
     }
@@ -1131,10 +1128,8 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
         $logSources++;
 
-        $lineCount = 0;
         while (($line = fgets($handle)) !== false) {
-            $lineCount++;
-            if ($lineCount > MAX_LOG_LINES_SCAN) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
+            if (microtime(true) > LOG_SCAN_DEADLINE) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
 
             $parts = preg_split('/\s+/', trim($line));
             if (count($parts) < 7) continue;
@@ -1211,11 +1206,15 @@ function getBlockedByType(string $type, string $date = 'today'): array {
             // 🔹 FILTER FOR BLOCKED DOMAINS
             if ($type === 'domains') {
                 $matchedDomain = false;
-                foreach ($blockedDomains as $blocked) {
-                    if ($domain === $blocked || str_ends_with($domain, '.' . $blocked)) {
+                $candidate = $domain;
+                while (true) {
+                    if (isset($blockedDomains[$candidate])) {
                         $matchedDomain = true;
                         break;
                     }
+                    $dot = strpos($candidate, '.');
+                    if ($dot === false) break;
+                    $candidate = substr($candidate, $dot + 1);
                 }
                 if (!$matchedDomain) continue;
             }

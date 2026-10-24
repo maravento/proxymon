@@ -220,6 +220,19 @@ FILE: squidai/index.html
       font-size: 13.5px;
       line-height: 1.65;
       max-width: 680px;
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    .msg.has-table { width: 100%; max-width: none; }
+    .msg.has-table .bubble { flex: 1; max-width: none; }
+
+    .bubble td.name-cell { white-space: nowrap; }
+    .bubble td.domain-cell { width: 100%; }
+
+    @media (max-width: 640px) {
+      .bubble td.name-cell { white-space: normal; width: 30%; }
+      .bubble td.domain-cell { width: auto; }
     }
 
     .msg.user .bubble {
@@ -287,6 +300,7 @@ FILE: squidai/index.html
     }
 
     .bubble th {
+      overflow-wrap: anywhere;
       text-align: left;
       padding: 5px 10px;
       border-bottom: 1px solid var(--border);
@@ -297,10 +311,24 @@ FILE: squidai/index.html
     }
 
     .bubble td {
+      overflow-wrap: anywhere;
       padding: 5px 10px;
       border-bottom: 1px solid rgba(48,54,61,0.5);
       font-family: var(--mono);
       font-size: 12px;
+    }
+
+    .bubble td.ip-cell {
+      width: calc(15ch + 20px);
+      min-width: calc(15ch + 20px);
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }
+
+    .bubble th.hits-cell, .bubble td.hits-cell {
+      width: 1%;
+      white-space: nowrap;
+      overflow-wrap: normal;
     }
 
     .bubble tr:last-child td { border-bottom: none; }
@@ -814,6 +842,7 @@ function appendMessage(role, html, withButtons) {
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.innerHTML = html;
+  if (bubble.querySelector('table')) div.classList.add('has-table');
 
   if (role === 'user') {
     div.appendChild(bubble);
@@ -956,7 +985,7 @@ async function processQuery(userText) {
         pendingConfirmation = { type: 'user_profile', user: matches[0], usersData };
         removeTyping();
         const html = `<p>${t.userFoundOne(intent.userName)}</p>
-          <table><tr><th>IP</th><th>Name</th></tr>
+          <table><tr><th>IP</th><th>${t.labelName}</th></tr>
           <tr><td>${escHtml(matches[0].ip)}</td><td>${escHtml(matches[0].name)}</td></tr></table>
           <p>${t.userConfirmQuestion}</p>
           <div class="confirm-btns">
@@ -973,7 +1002,7 @@ async function processQuery(userText) {
       removeTyping();
       let rows = matches.map((u, i) => `<tr><td><button class="confirm-btn" onclick="selectUser(${i})">${i+1}</button></td><td>${escHtml(u.ip)}</td><td>${escHtml(u.name)}</td></tr>`).join('');
       const html = `<p>${t.userFoundMany(intent.userName)}</p>
-        <table><tr><th>#</th><th>IP</th><th>Name</th></tr>${rows}</table>
+        <table><tr><th>#</th><th>IP</th><th>${t.labelName}</th></tr>${rows}</table>
         <p>${t.userSelectPrompt}</p>`;
       appendMessage('ai', html);
       btn.disabled = false;
@@ -1055,7 +1084,7 @@ async function processQuery(userText) {
         response += `<p>${t.thresholdNone(thresholdGb)}</p>`;
       } else {
         const rows = filtered.map(u => `<tr><td>${escHtml(u.ip)}</td><td>${escHtml(u.name)}</td><td>${escHtml(u.bytes_human)}</td></tr>`).join('');
-        response += `<table><thead><tr><th>IP</th><th>Name</th><th>Usage</th></tr></thead><tbody>${rows}</tbody></table>`;
+        response += `<table><thead><tr><th>IP</th><th>${t.labelName}</th><th>Usage</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
 
       response += `<p>${t.thresholdAnotherDate}</p><div class="confirm-btns">${dateBtns}</div>`;
@@ -1228,7 +1257,7 @@ async function handleConfirmationReply(text) {
         pendingConfirmation = { type: 'user_profile', user: matches[0] };
         const html = `<p>${t.userFound}</p>
           <table>
-            <tr><th>IP</th><th>Name</th></tr>
+            <tr><th>IP</th><th>${t.labelName}</th></tr>
             <tr><td>${escHtml(matches[0].ip)}</td><td>${escHtml(matches[0].name)}</td></tr>
           </table>
           <p>${t.userConfirmQuestion}</p>
@@ -1246,7 +1275,7 @@ async function handleConfirmationReply(text) {
     let rows = matches.map((u, i) => `<tr><td><button class="confirm-btn" onclick="selectUser(${i})">${i+1}</button></td><td>${escHtml(u.ip)}</td><td>${escHtml(u.name)}</td></tr>`).join('');
     const html = `<p>${t.userFoundSeveral(text.trim())}</p>
       <table>
-        <tr><th>#</th><th>IP</th><th>Name</th></tr>
+        <tr><th>#</th><th>IP</th><th>${t.labelName}</th></tr>
         ${rows}
       </table>
       <p>${t.userSelectPrompt}</p>`;
@@ -1355,7 +1384,7 @@ window.checkThresholdDate = async function(dateFolder, thresholdGb) {
         <td>${u.bytes_human}</td>
       </tr>`).join('');
     appendMessage('ai', `<p>${t.thresholdExceeded(thresholdGb, dateLabel)}</p>
-      <table><thead><tr><th>IP</th><th>Name</th><th>Usage</th></tr></thead>
+      <table><thead><tr><th>IP</th><th>${t.labelName}</th><th>Usage</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`);
   }
@@ -2080,11 +2109,11 @@ function renderBlockTable(data, title, mode) {
       const sev = inc.severity === 'CRITICAL' ? ' style="color:var(--red);font-weight:600"'
                 : inc.severity === 'HIGH'     ? ' style="color:var(--amber)"' : '';
       const pat = `<code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--accent)">${escHtml(inc.pattern || inc.domain || '')}</code>`;
-      return `<tr><td>${inc.ip}</td><td>${escHtml(inc.name)}</td><td>${pat}</td><td${sev}>${inc.hits}</td></tr>`;
+      return `<tr><td class="ip-cell">${inc.ip}</td><td class="name-cell">${escHtml(inc.name)}</td><td class="hits-cell"${sev}>${inc.hits}</td><td class="domain-cell">${pat}</td></tr>`;
     }).join('');
     return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
       <table>
-        <thead><tr><th>IP</th><th>${nameLabel}</th><th>Pattern</th><th>${hitsLabel}</th></tr></thead>
+        <thead><tr><th>IP</th><th>${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>Pattern</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
@@ -2096,17 +2125,17 @@ function renderBlockTable(data, title, mode) {
               : inc.severity === 'HIGH'     ? ' style="color:var(--amber)"' : '';
     domainList.forEach((dom, i) => {
       rows += `<tr>
-        <td>${i === 0 ? inc.ip : ''}</td>
-        <td>${i === 0 ? escHtml(inc.name) : ''}</td>
-        <td style="font-family:var(--mono);font-size:12px">${escHtml(dom)}</td>
-        <td${sev}>${i === 0 ? inc.hits : ''}</td>
+        <td class="ip-cell">${i === 0 ? inc.ip : ''}</td>
+        <td class="name-cell">${i === 0 ? escHtml(inc.name) : ''}</td>
+        <td class="hits-cell"${sev}>${i === 0 ? inc.hits : ''}</td>
+        <td class="domain-cell" style="font-family:var(--mono);font-size:12px">${escHtml(dom)}</td>
       </tr>`;
     });
   }
   const colLabel = mode === 'tlds' ? 'TLD' : t.labelDomain;
   return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
     <table>
-      <thead><tr><th>IP</th><th>${nameLabel}</th><th>${colLabel}</th><th>${hitsLabel}</th></tr></thead>
+      <thead><tr><th>IP</th><th>${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>${colLabel}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }

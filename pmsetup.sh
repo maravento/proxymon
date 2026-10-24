@@ -250,26 +250,27 @@ deploy_squid_template() {
     systemctl stop squid &>/dev/null || true
     failure_message="cannot initialize Squid cache directories"
     if ! squid -z &>/dev/null; then
-        warn "cannot create squid cache store, service not started -alert"
+        warn "cannot create Squid cache; Squid not started -alert"
         return 0
     fi
     if systemctl restart squid &>/dev/null; then
         info "squid running with the deployed squid.conf"
     else
-        warn "squid did not start, check 'journalctl -u squid' -alert"
+        warn "Squid start failed; run journalctl -u squid -alert"
     fi
 }
 
-# Squidmon, Logview and SquidAI read only the current access.log. A rotation
-# leaves it empty, so they lose the hours moved to the rotated file. Weekly
-# limits that gap to one day out of seven.
+# Squidmon and Logview read only the current access.log, so a rotation leaves
+# them without the activity moved to the rotated file. SquidAI also reads the
+# first rotated file, which keeps its answers by date correct across that
+# boundary. Weekly rotation keeps the gap of the first two modules bounded.
 set_squid_logrotate() {
     local failure_message="cannot update Squid logrotate settings"
     local rotate_file=/etc/logrotate.d/squid
     local hook="runuser -u www-data -- $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
 
     if [ ! -f "$rotate_file" ]; then
-        warn "$rotate_file not found, rotation left unchanged -alert"
+        warn "Squid logrotate missing; rotation unchanged -alert"
         return 0
     fi
     cp -f "$rotate_file"{,.bak} &>/dev/null || true
@@ -287,6 +288,28 @@ set_squid_logrotate() {
             info "$rotate_file set to weekly -fixed"
         else
             warn "cannot set weekly in ${rotate_file#/etc/} -alert"
+        fi
+    fi
+    failure_message="cannot edit Squid logrotate settings"
+    sed -i '/^[[:space:]]*nocreate$/d' "$rotate_file"
+    if grep -qE '^[[:space:]]*create[[:space:]]+0640[[:space:]]+proxy[[:space:]]+proxy$' "$rotate_file"; then
+        info "${rotate_file#/etc/} creates the log as 0640 proxy -skip"
+    elif ! grep -qE '^[[:space:]]*sharedscripts' "$rotate_file"; then
+        warn "squid has no sharedscripts, create not added -alert"
+    else
+        failure_message="cannot edit Squid logrotate settings"
+        sed -i '/^[[:space:]]*sharedscripts/a \    create 0640 proxy proxy' "$rotate_file"
+        info "${rotate_file#/etc/} set to create 0640 proxy -fixed"
+    fi
+    if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$rotate_file"; then
+        info "$rotate_file already rotate 7 -skip"
+    else
+        failure_message="cannot edit Squid logrotate settings"
+        sed -i -E 's/^([[:space:]]*)rotate[[:space:]]+[0-9]+$/\1rotate 7/' "$rotate_file"
+        if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$rotate_file"; then
+            info "$rotate_file set to rotate 7 -fixed"
+        else
+            warn "cannot set rotate 7 in ${rotate_file#/etc/} -alert"
         fi
     fi
     local size_directive size_directives=""
@@ -345,6 +368,71 @@ check_port() {
 # ------------------------------------------------------------------------------
 # FUNCTIONS
 # ------------------------------------------------------------------------------
+
+# ACL PREPARATION
+# Canonical block -- copied byte for byte into every script that creates a
+# directory or a list under /etc/acl. Prepare /etc/acl first, then only the
+# subdirectory and the lists this script needs. Never recursive.
+# Usage: acl_prepare <dir> <dir_mode> <file_mode> [file ...]
+acl_prepare() {
+    local acl_dir="$1" dir_mode="$2" file_mode="$3" acl_file
+    shift 3
+
+    # mkdir without -p fails when the directory already exists, so a success
+    # means this run created it and no concurrent run did.
+    if mkdir -m "$dir_mode" -- "$acl_dir" 2>/dev/null; then
+        if ! chown root:root -- "$acl_dir"; then
+            log "ERROR: cannot set owner of $acl_dir -abort"
+            exit 1
+        fi
+        log "WARNING: created ACL directory $acl_dir -alert"
+    elif [ -d "$acl_dir" ] && [ ! -L "$acl_dir" ]; then
+        acl_fix_perms "$acl_dir" "$dir_mode"
+    else
+        log "ERROR: $acl_dir is not a regular directory -abort"
+        exit 1
+    fi
+
+    for acl_file in "$@"; do
+        # Checked before the redirection: noclobber only protects regular
+        # files, and opening a FIFO for writing blocks until a reader shows up.
+        if [ -L "$acl_file" ] || { [ -e "$acl_file" ] && [ ! -f "$acl_file" ]; }; then
+            log "ERROR: $acl_file is not a regular file -abort"
+            exit 1
+        fi
+        # noclobber makes the redirection fail when the file already exists,
+        # and umask 077 keeps the new file closed until chmod sets its mode.
+        if (set -C; umask 077; : > "$acl_file") 2>/dev/null; then
+            if ! { chmod "$file_mode" -- "$acl_file" \
+                && chown root:root -- "$acl_file"; }; then
+                log "ERROR: cannot set perms of $(basename "$acl_file") -abort"
+                exit 1
+            fi
+            log "WARNING: created empty $(basename "$acl_file") -alert"
+        elif [ -f "$acl_file" ] && [ ! -L "$acl_file" ]; then
+            acl_fix_perms "$acl_file" "$file_mode"
+        else
+            log "ERROR: $acl_file is not a regular file -abort"
+            exit 1
+        fi
+    done
+}
+
+# Repairs mode and owner of an existing ACL object, per Autorreparación
+acl_fix_perms() {
+    local acl_path="$1" want_mode="$2" cur_mode cur_owner
+    cur_mode=$(stat -c '%a' -- "$acl_path" 2>/dev/null) || {
+        log "ERROR: cannot stat $acl_path -abort"; exit 1; }
+    cur_owner=$(stat -c '%U:%G' -- "$acl_path" 2>/dev/null) || {
+        log "ERROR: cannot stat $acl_path -abort"; exit 1; }
+    [[ "$cur_mode" == "$want_mode" && "$cur_owner" == "root:root" ]] && return 0
+    if ! { chmod "$want_mode" -- "$acl_path" \
+        && chown root:root -- "$acl_path"; }; then
+        log "ERROR: cannot fix $acl_path perms -abort"
+        exit 1
+    fi
+    log "INFO: $acl_path perms fixed -fixed"
+}
 
 # ACL download
 get_acl() {
@@ -495,6 +583,25 @@ check_repo() {
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
+UH_SINT='^(0|-?[1-9][0-9]*)$'
+UH_MAX=9223372036854775807
+UH_MIN=-9223372036854775808
+
+# validation - integer is representable as a signed 64-bit value
+uh_fits() {
+    local value="${1-}" limit
+    [[ "$value" =~ $UH_SINT ]] || return 1
+    if [[ "${value:0:1}" == - ]]; then
+        limit="${UH_MIN#-}"
+        value="${value#-}"
+    else
+        limit="$UH_MAX"
+    fi
+    (( ${#value} < ${#limit} )) && return 0
+    (( ${#value} > ${#limit} )) && return 1
+    [[ "$value" > "$limit" ]] && return 1
+    return 0
+}
 
 # ------------------------------------------------------------------------------
 # ENV
@@ -625,14 +732,8 @@ create_proxymon_env() {
             read -rp "$prompt_text" user_answer || return 1
             user_answer=${user_answer:-$default_value}
             if quota_bytes=$(LC_ALL=C numfmt --from=iec "${user_answer/,/.}" 2>/dev/null); then
-                if [ "$check_bash_range" = true ] && ! {
-                    [[ "$quota_bytes" =~ $UH_UINT ]] && {
-                        [ "${#quota_bytes}" -lt 19 ] || {
-                            [ "${#quota_bytes}" -eq 19 ] \
-                                && [[ "$quota_bytes" < 9223372036854775808 ]]
-                        }
-                    }
-                }; then
+                if [ "$check_bash_range" = true ] \
+                    && ! uh_fits "$quota_bytes"; then
                     info "daily quota exceeds Bash integer range -retry" >&2
                     continue
                 fi
@@ -742,10 +843,10 @@ SQUIDTOOL_ALERT_THRESHOLD=300
 # Bandata
 REPORT_IP_GLOB=${report_glob}
 ACL_BANDATA_PATH=${CONFIG_DIR}/bandata/acl
-ALLOW_LIST=\$ACL_BANDATA_PATH/allowdata.txt
-BLOCK_LIST_DAY=\$ACL_BANDATA_PATH/banday.txt
-BLOCK_LIST_WEEK=\$ACL_BANDATA_PATH/banweek.txt
-BLOCK_LIST_MONTH=\$ACL_BANDATA_PATH/banmonth.txt
+ALLOW_LIST=${CONFIG_DIR}/bandata/acl/allowdata.txt
+BLOCK_LIST_DAY=${CONFIG_DIR}/bandata/acl/banday.txt
+BLOCK_LIST_WEEK=${CONFIG_DIR}/bandata/acl/banweek.txt
+BLOCK_LIST_MONTH=${CONFIG_DIR}/bandata/acl/banmonth.txt
 MAX_BANDWIDTH_DAY=${bw_day}
 MAX_BANDWIDTH_WEEK=${bw_week}
 MAX_BANDWIDTH_MONTH=${bw_month}
@@ -756,6 +857,7 @@ HOTSPOT_PATH=${hotspot_dir}
 UPDATE_REALNAME=${update_realname_flag}
 
 # Backup
+# Changing these defaults is not recommended
 BACKUP_DIR=${BACKUP_DIR}
 # =============================================================================
 ENVEOF
@@ -854,7 +956,7 @@ do_install() {
     create_proxymon_env
     load_proxymon_env "$proxymon_env" || abort "cannot load proxymon.env -abort"
     # modules/ is served by Apache. config/ is only
-    # read or executed by root, so it lives outside the web tree. vhost/ is
+    # read or executed by root, so it lives outside the web tree. web/ is
     # not project content: Apache reads it from its own directory.
     failure_message="cannot create $(basename "$WEB_ROOT")"
     mkdir -p "$WEB_ROOT"
@@ -873,15 +975,15 @@ do_install() {
 
     log "Configuring Apache..."
 
-    if [[ -f "config/vhost/proxymon.conf" ]]; then
+    if [[ -f "config/web/proxymon.conf" ]]; then
         failure_message="cannot copy proxymon.conf"
-        cp -f config/vhost/proxymon.conf /etc/apache2/sites-available/proxymon.conf
+        cp -f config/web/proxymon.conf /etc/apache2/sites-available/proxymon.conf
         info "Proxymon virtualhost configured"
     fi
 
-    if [[ -f "config/vhost/warning.conf" ]]; then
+    if [[ -f "config/web/warning.conf" ]]; then
         failure_message="cannot copy warning.conf"
-        cp -f config/vhost/warning.conf /etc/apache2/sites-available/warning.conf
+        cp -f config/web/warning.conf /etc/apache2/sites-available/warning.conf
         info "Warning virtualhost configured"
     fi
 
@@ -925,12 +1027,9 @@ do_install() {
     # ACL_BANDATA_PATH is not created here: it ships inside config/bandata/acl/
     # with its 4 files already present, copied to $CONFIG_DIR above and
     # given root ownership by the "Setting Permissions" step below.
-    failure_message="cannot create ACL directories"
-    mkdir -p "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
-    failure_message="cannot set permissions on ACL directories"
-    chmod 755 "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
-    failure_message="cannot set owner of ACL directories"
-    chown root:root "$ACL_PATH" "$ACL_MAC_PATH" "$ACL_SQUID_PATH"
+    acl_prepare "$ACL_PATH" 755 644
+    acl_prepare "$ACL_MAC_PATH" 700 600
+    acl_prepare "$ACL_SQUID_PATH" 755 644
     info "ACL directories created"
 
     # Create Squidreports report directory if it does not exist
@@ -954,30 +1053,27 @@ do_install() {
     # and out), and a soft failure just skips that one file with a warning.
 
     if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/blackweb/refs/heads/master/bwupdate/lst/blocktlds.txt "$ACL_SQUID_PATH/blocktlds.txt"; then
-        failure_message="cannot set permissions on blocktlds.txt"
-        chmod 644 "$ACL_SQUID_PATH/blocktlds.txt"
-        failure_message="cannot set owner of blocktlds.txt"
-        chown root:root "$ACL_SQUID_PATH/blocktlds.txt"
+        acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blocktlds.txt"
     else
         warn "blocktlds.txt download failed -alert"
+        [ -f "$ACL_SQUID_PATH/blocktlds.txt" ] \
+            && acl_fix_perms "$ACL_SQUID_PATH/blocktlds.txt" 644
     fi
 
     if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/blackweb/refs/heads/master/bwupdate/lst/debugbl.txt "$ACL_SQUID_PATH/blockdomains.txt"; then
-        failure_message="cannot set permissions on blockdomains.txt"
-        chmod 644 "$ACL_SQUID_PATH/blockdomains.txt"
-        failure_message="cannot set owner of blockdomains.txt"
-        chown root:root "$ACL_SQUID_PATH/blockdomains.txt"
+        acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blockdomains.txt"
     else
         warn "blockdomains.txt download failed -alert"
+        [ -f "$ACL_SQUID_PATH/blockdomains.txt" ] \
+            && acl_fix_perms "$ACL_SQUID_PATH/blockdomains.txt" 644
     fi
 
     if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/vault/refs/heads/master/gateproxy/acl/squid/blockpatterns.txt "$ACL_SQUID_PATH/blockpatterns.txt"; then
-        failure_message="cannot set permissions on blockpatterns.txt"
-        chmod 644 "$ACL_SQUID_PATH/blockpatterns.txt"
-        failure_message="cannot set owner of blockpatterns.txt"
-        chown root:root "$ACL_SQUID_PATH/blockpatterns.txt"
+        acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blockpatterns.txt"
     else
         warn "blockpatterns.txt download failed -alert"
+        [ -f "$ACL_SQUID_PATH/blockpatterns.txt" ] \
+            && acl_fix_perms "$ACL_SQUID_PATH/blockpatterns.txt" 644
     fi
 
     failure_message="cannot update the project cron file"
@@ -1009,11 +1105,18 @@ do_install() {
       -e 's/^\s*max_input_time\s*=.*/max_input_time = 120/' \
       -e 's/^;\s*max_input_time\s*=.*/max_input_time = 120/' \
       -e 's/^\s*;*\s*memory_limit\s*=.*/memory_limit = 1024M/' \
-      -e 's/^\s*;*\s*post_max_size\s*=.*/post_max_size = 64M/' \
+      -e 's/^\s*;*\s*post_max_size\s*=.*/post_max_size = 72M/' \
       -e 's/^\s*;*\s*upload_max_filesize\s*=.*/upload_max_filesize = 64M/' \
       -e 's/^\s*;*\s*opcache.memory_consumption\s*=.*/opcache.memory_consumption = 256/' \
       -e 's/^\s*;*\s*realpath_cache_size\s*=.*/realpath_cache_size = 16M/' \
-      -e 's/^\s*;*\s*allow_url_fopen\s*=.*/allow_url_fopen = On/' \
+      -e 's/^\s*;*\s*allow_url_fopen\s*=.*/allow_url_fopen = Off/' \
+      -e 's/^\s*;*\s*expose_php\s*=.*/expose_php = Off/' \
+      -e 's/^\s*;*\s*display_errors\s*=.*/display_errors = Off/' \
+      -e 's/^\s*;*\s*display_startup_errors\s*=.*/display_startup_errors = Off/' \
+      -e 's/^\s*;*\s*log_errors\s*=.*/log_errors = On/' \
+      -e 's/^\s*;*\s*session.use_strict_mode\s*=.*/session.use_strict_mode = 1/' \
+      -e 's/^\s*;*\s*session.cookie_httponly\s*=.*/session.cookie_httponly = 1/' \
+      -e 's/^\s*;*\s*session.cookie_samesite\s*=.*/session.cookie_samesite = Strict/' \
      /etc/php/$php_version/apache2/php.ini
 
     # Hardening
@@ -1383,7 +1486,7 @@ do_update() {
     info "updated web code in $WEB_ROOT"
 
     # The root scripts, copied one by one. config/bandata/acl/ is live data
-    # and config/vhost/ is Apache configuration, so neither is touched.
+    # and config/web/ is Apache configuration, so neither is touched.
     failure_message="cannot create $(basename "$CONFIG_DIR")"
     mkdir -p "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools"
     failure_message="cannot copy bandata.sh"
@@ -1481,7 +1584,6 @@ do_uninstall() {
     if [ -f "$rotate_file" ] && grep -qE "^[[:space:]]*${hook//./\\.}[[:space:]]*$" "$rotate_file"; then
         failure_message="cannot edit Squid logrotate settings"
         sed -i "\|^[[:space:]]*${hook//./\\.}[[:space:]]*$|d" "$rotate_file"
-        info "squid rotation hook removed from $rotate_file"
     fi
 
     failure_message="cannot remove proxymon"
@@ -1619,9 +1721,11 @@ do_uninstall() {
     info "Proxymon log files removed"
 
     failure_message="cannot remove bandata.log*"
-    rm -f /etc/logrotate.d/proxymon
-    rm -f /etc/logrotate.d/bandata /var/log/bandata.log*
-    info "Bandata logrotate config and log files removed"
+    rm -f /etc/logrotate.d/proxymon && info "Removed /etc/logrotate.d/proxymon"
+    rm -f /etc/logrotate.d/bandata /var/log/bandata.log* && {
+        info "Removed /etc/logrotate.d/bandata"
+        info "Bandata log files removed"
+    }
 
     systemctl restart cron || abort "cannot restart cron -abort"
     systemctl daemon-reload || abort "cannot reload systemd configuration -abort"
