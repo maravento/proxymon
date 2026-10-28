@@ -39,10 +39,10 @@ Only tested on Ubuntu 24.04/26.04 LTS. Other versions or distributions are not t
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> installs Apache, PHP and <code>libjson-xs-perl</code> when they are missing. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases.<br><br>• Install the supporting packages below before running <code>pmsetup.sh</code>. It checks them and stops at the first missing package.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
+      <p>• <code>pmsetup.sh</code> installs Apache, PHP and <code>libjson-xs-perl</code> when they are missing. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• Install the supporting packages below before running <code>pmsetup.sh</code>. It checks them and stops at the first missing package.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> instala Apache, PHP y <code>libjson-xs-perl</code> cuando faltan. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos.<br><br>• Instale los paquetes auxiliares de abajo antes de ejecutar <code>pmsetup.sh</code>. Los comprueba y se detiene al encontrar el primer paquete ausente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
+      <p>• <code>pmsetup.sh</code> instala Apache, PHP y <code>libjson-xs-perl</code> cuando faltan. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• Instale los paquetes auxiliares de abajo antes de ejecutar <code>pmsetup.sh</code>. Los comprueba y se detiene al encontrar el primer paquete ausente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
     </td>
   </tr>
 </table>
@@ -141,6 +141,7 @@ proxymon/
 │   ├── warning/                  # Captive portal warning page
 │   └── index.html                # Main page with the module tabs
 ├── config/                     # Root-only files, installed to /etc/proxymon
+│   ├── update-files.txt          # Required web code files checked before update
 │   ├── bandata/                  # Data usage control (bandata.sh and its ACLs)
 │   ├── tools/                    # Maintenance scripts
 │   │   ├── pmbk.sh               # Backup tool
@@ -203,7 +204,28 @@ sudo bash pmsetup.sh --help   # or -h
 
 ---
 
+### Update checks
+
+| Step | Description | Descripción |
+|---|---|---|
+| Before copying | The installer checks all required source files and destinations, write access, available space, immutable attributes and relevant locks. | El instalador comprueba todos los orígenes y destinos, escritura, espacio disponible, atributos inmutables y bloqueos relevantes. |
+| Backup | The installer invokes `pmbk.sh`. If `pmbk.sh` fails, the installer aborts before pausing consumers or replacing files, without writing `done`. | El instalador invoca `pmbk.sh`. Si `pmbk.sh` falla, el instalador aborta antes de pausar procesos o reemplazar archivos, sin escribir `done`. |
+| Pause | The installer pauses its cron file and stops affected services and daemons. It verifies they have stopped and waits for running jobs before replacing files. If a pause fails before any replacement, the installer attempts to resume the previous consumers and schedule. | El instalador pausa su archivo cron y detiene los servicios y demonios afectados. Comprueba su detención y espera que terminen las tareas en ejecución antes de reemplazar archivos. Si falla una pausa antes de reemplazar archivos, el instalador intenta reanudar los procesos y la programación anteriores. |
+| Copy | The installer repeats the checks immediately before copying. It verifies every replacement and its file contents. If a replacement fails, it aborts without `done`; it does not resume the consumers or restore the backup. The paused schedule remains at `/etc/cron.d/proxymon.update-disabled`. | El instalador repite las comprobaciones inmediatamente antes de copiar. Comprueba cada reemplazo y el contenido copiado. Si falla un reemplazo, aborta sin `done`; no reanuda los procesos ni restaura el respaldo. La programación pausada permanece en `/etc/cron.d/proxymon.update-disabled`. |
+| Finish | The installer regenerates its complete cron file and resumes the consumers that were active. It writes `done` only after successful completion. | El instalador regenera su archivo cron completo y reanuda los procesos que estaban activos. Escribe `done` únicamente si termina correctamente. |
+
 ### Installer behavior
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      When several interfaces are available, select the LAN interface from the list. Installation aborts with <code>ERROR: ... -abort</code> if the selected LAN has no configured IPv4 address. Select an address when several exist. The network and mask come from that address and its actual prefix. These installers do not configure network interfaces. Explicit interface/address values supplied by a parent installer reuse its selection.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Si existen varias interfaces, selecciona LAN desde la lista. La instalación aborta con <code>ERROR: ... -abort</code> si LAN no tiene IPv4 configurada. Selecciona una dirección cuando existan varias. La red y máscara proceden de esa dirección y su prefijo real. Estos instaladores no configuran interfaces. Los valores explícitos enviados por otro instalador reutilizan su selección.
+    </td>
+  </tr>
+</table>
 
 #### `update` Behavior
 
@@ -263,7 +285,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `LAN` | `bandata.sh` | LAN interface the quota rules apply to | Interfaz LAN a la que se aplican las reglas de cuota |
 | `SERVER_IP` | `pmsetup.sh`, `worker.php` | Server's own IPv4; excluded from the reports | IPv4 del servidor; se excluye de los informes |
 | `RANGE` | `pmsetup.sh`, `squidreports.pl`, `analytics.cgi` | LAN network in CIDR notation. Used by Analyze and regenerated subnet statistics. Unmatched addresses remain individual. Missing, empty or invalid values stop these consumers. Does not configure Apache access. | Red LAN en formato CIDR. La utilizan Analyze y las estadísticas por subred regeneradas. Las direcciones sin coincidencia permanecen individuales. Un valor ausente, vacío o inválido detiene estos consumidores. No configura el acceso de Apache. |
-| `REPORT_IP_GLOB` | `bandata.sh` | Glob that matches the client IPs inside a Squidreports report | Patrón de nombres de archivo que selecciona las IP de cliente en los informes de Squidreports |
+| `REPORT_IP_GLOB` | `bandata.sh` | Filename glob derived from the actual LAN prefix: `/16` → `192.168.*.*`, `/24` or `/25` → `192.168.10.*` in these examples. Bandata applies `RANGE` as an exact network filter | Patrón calculado desde el prefijo LAN real: `/16` → `192.168.*.*`, `/24` o `/25` → `192.168.10.*` en estos ejemplos. Bandata aplica `RANGE` como filtro exacto de red |
 | `SQUIDREPORTS_DIR` | `bandata.sh`, Squidreports | Squidreports installation directory | Directorio de instalación de Squidreports |
 | `REPORT_PATH` | `bandata.sh`, `worker.php`, Squidreports, `pmbk.sh` | Directory holding the daily Squidreports reports | Directorio con los informes diarios de Squidreports |
 | `REALNAME_CFG`, `SKIPUSERS_CFG` | `bandata.sh`, `worker.php`, Squidreports | Squidreports hostname mappings and excluded-user list | Correspondencia entre IP y nombres de equipo, y lista de usuarios excluidos de Squidreports |
@@ -299,7 +321,7 @@ sudo bash pmsetup.sh --help   # or -h
 
 | Description | Descripción |
 |---|---|
-| Shared Bash file installed at `CONFIG_DIR/tools/proxymonenv.sh`. It is loaded automatically with `source` by `pmsetup.sh`, `bandata.sh`, `squidtool.sh` and `pmbk.sh`. Do not run it separately or schedule it in cron.<br><br>Provides `load_proxymon_env` to read general configuration from `proxymon.env`, resolve references between keys and check the file owner and permissions. It does not modify configuration files or load the LLM credentials file. | Archivo Bash compartido instalado en `CONFIG_DIR/tools/proxymonenv.sh`. Lo cargan automáticamente mediante `source` los scripts `pmsetup.sh`, `bandata.sh`, `squidtool.sh` y `pmbk.sh`. No se ejecuta por separado ni se programa en cron.<br><br>Proporciona `load_proxymon_env` para leer la configuración general de `proxymon.env`, resolver referencias entre claves y comprobar el propietario y los permisos del archivo. No modifica archivos de configuración ni carga el archivo de credenciales del LLM. |
+| <ul><li>Shared Bash file installed at <code>CONFIG_DIR/tools/proxymonenv.sh</code>. It is loaded automatically with <code>source</code> by <code>pmsetup.sh</code>, <code>bandata.sh</code>, <code>squidtool.sh</code> and <code>pmbk.sh</code>. Do not run it separately or schedule it in cron.</li><li>Provides <code>load_proxymon_env</code> to read general configuration from <code>proxymon.env</code>, resolve references between keys and check the file owner and permissions. It does not modify configuration files or load the LLM credentials file.</li></ul> | <ul><li>Archivo Bash compartido instalado en <code>CONFIG_DIR/tools/proxymonenv.sh</code>. Lo cargan automáticamente mediante <code>source</code> los scripts <code>pmsetup.sh</code>, <code>bandata.sh</code>, <code>squidtool.sh</code> y <code>pmbk.sh</code>. No se ejecuta por separado ni se programa en cron.</li><li>Proporciona <code>load_proxymon_env</code> para leer la configuración general de <code>proxymon.env</code>, resolver referencias entre claves y comprobar el propietario y los permisos del archivo. No modifica archivos de configuración ni carga el archivo de credenciales del LLM.</li></ul> |
 
 ### LOGS
 
@@ -370,9 +392,16 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?(?=[/?#]|$)=Block IP
 regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|peer_id=|porn|psiphon|torrent|ultrasurf)=Blocked Patterns
 ```
 
-| Description | Descripción |
-|---|---|
-| To change the lists, enter each full path in the **Config** section, one per line, followed by `=` and its label. Squidmon opens exactly that path and searches no directory. If you move a list, edit its line in **Config**. | Para cambiar las listas, indique en la sección **Config** la ruta completa de cada archivo, una por línea, seguida de `=` y su etiqueta. Squidmon abre esa ruta y no busca en ninguna carpeta. Si cambia la ubicación de una lista, actualice su entrada en **Config**. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      To change the lists, enter each full path in the <strong>Config</strong> section, one per line, followed by <code>=</code> and its label. Squidmon opens exactly that path and searches no directory. If you move a list, edit its line in <strong>Config</strong>.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Para cambiar las listas, indique en la sección <strong>Config</strong> la ruta completa de cada archivo, una por línea, seguida de <code>=</code> y su etiqueta. Squidmon abre esa ruta y no busca en ninguna carpeta. Si cambia la ubicación de una lista, actualice su entrada en <strong>Config</strong>.
+    </td>
+  </tr>
+</table>
 
 ```bash
 sudo nano /etc/proxymon/proxymon.env
@@ -382,9 +411,16 @@ ACL_PATH=/etc/acl
 
 ##### ACL Rules
 
-| Description | Descripción |
-|---|---|
-| For a rule to block traffic, it must be defined in both Squidmon configuration and `squid.conf`. Here is an example using the default ACLs: | Para que una regla bloquee tráfico, debe estar definida tanto en la configuración de Squidmon como en `squid.conf`. Este es un ejemplo con las ACL predeterminadas: |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      For a rule to block traffic, it must be defined in both Squidmon configuration and <code>squid.conf</code>. Here is an example using the default ACLs:
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Para que una regla bloquee tráfico, debe estar definida tanto en la configuración de Squidmon como en <code>squid.conf</code>. Este es un ejemplo con las ACL predeterminadas:
+    </td>
+  </tr>
+</table>
 
 ```bash
 sudo nano /etc/squid/squid.conf
@@ -454,9 +490,16 @@ http_access deny workdays blockpatterns
 <a href="https://www.maravento.com/"><img src="./img/squidmon-traffic-clients-filter.png" width="713" alt="squidmon filter"></a>
 </p>
 
-| Description | Descripción |
-|---|---|
-| Expand a client IP to see the blocked URLs, the matching ACL rule (for example, **Blocked Sites**), and how many times each URL was requested. This helps identify browsing patterns and adjust access rules. | Al desplegar una IP, puede consultar las URL bloqueadas, la regla de ACL que coincidió —por ejemplo, **Blocked Sites**— y cuántas veces se solicitó cada URL. Estos datos ayudan a reconocer patrones de navegación y ajustar las reglas de acceso. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Expand a client IP to see the blocked URLs, the matching ACL rule (for example, <strong>Blocked Sites</strong>), and how many times each URL was requested. This helps identify browsing patterns and adjust access rules.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Al desplegar una IP, puede consultar las URL bloqueadas, la regla de ACL que coincidió —por ejemplo, <strong>Blocked Sites</strong>— y cuántas veces se solicitó cada URL. Estos datos ayudan a reconocer patrones de navegación y ajustar las reglas de acceso.
+    </td>
+  </tr>
+</table>
 
 ##### Patterns
 
@@ -464,9 +507,16 @@ http_access deny workdays blockpatterns
 <a href="https://www.maravento.com/"><img src="./img/squidmon-patterns.png" width="713" alt="squidmon patterns"></a>
 </p>
 
-| Description | Descripción |
-|---|---|
-| If a Squid ACL uses `url_regex`, Squidmon cannot read it from a file. Enter the expression directly in the module's **Config** section, as shown here: | Si una ACL de Squid usa `url_regex`, Squidmon no puede leerla desde un archivo. Copie su expresión directamente en la sección **Config** del módulo, como en este ejemplo: |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      If a Squid ACL uses <code>url_regex</code>, Squidmon cannot read it from a file. Enter the expression directly in the module's <strong>Config</strong> section, as shown here:
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Si una ACL de Squid usa <code>url_regex</code>, Squidmon no puede leerla desde un archivo. Copie su expresión directamente en la sección <strong>Config</strong> del módulo, como en este ejemplo:
+    </td>
+  </tr>
+</table>
 
 ```bash
 regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|peer_id=|porn|psiphon|torrent|ultrasurf)=Blocked Patterns
@@ -508,9 +558,16 @@ sudo sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
 <a href="https://www.maravento.com/"><img src="./img/squidreports-tab.png" width="707" alt="squidreports report"></a>
 </p>
 
-| Description | Descripción |
-|---|---|
-| **Squidreports** parses `access.log` and writes one folder per day under `/var/www/proxymon/squidreports/report/`. The daily view provides user details, top sites, large downloads and the additional reports described below. | **Squidreports** analiza `access.log` y escribe una carpeta por día en `/var/www/proxymon/squidreports/report/`. La vista diaria permite consultar detalles por usuario, sitios más visitados, descargas grandes y los informes adicionales descritos a continuación. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <strong>Squidreports</strong> parses <code>access.log</code> and writes one folder per day under <code>/var/www/proxymon/squidreports/report/</code>. The daily view provides user details, top sites, large downloads and the additional reports described below.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <strong>Squidreports</strong> analiza <code>access.log</code> y escribe una carpeta por día en <code>/var/www/proxymon/squidreports/report/</code>. La vista diaria permite consultar detalles por usuario, sitios más visitados, descargas grandes y los informes adicionales descritos a continuación.
+    </td>
+  </tr>
+</table>
 
 ##### Initial Report
 
@@ -634,10 +691,10 @@ sudo nano /var/www/proxymon/squidreports/skipuser.cfg
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-     Use one of the following tools to discover devices on your local network. Replace the example IP range where applicable:
+     Use one of the following tools to discover devices on your local network. Replace both the address and prefix with the actual LAN network. The `/24` shown below is only an example:
     </td>
     <td style="width: 50%; vertical-align: top;">
-     Utilice una de las siguientes herramientas para detectar dispositivos en su red local. Sustituya el rango de IP del ejemplo cuando corresponda:
+     Utilice una de las siguientes herramientas para detectar dispositivos en su red local. Sustituya la dirección y el prefijo por la red LAN real. El `/24` siguiente es solamente un ejemplo:
     </td>
   </tr>
 </table>
@@ -660,9 +717,16 @@ sudo netdiscover
 
 ##### Report Data
 
-| Description | Descripción |
-|---|---|
-| Squidreports preserves the base report formats and paths used by Bandata. Additional metrics are stored separately under `reportstats/YYYYMMDD/` (the configured report path followed by `stats`). Detail reads the original reports and these additional metrics. Existing additional metrics in old report folders remain readable until that date is regenerated. **Analyze** displays historical statistics and charts. Charts are generated on request, without saving images or HTML pages. | Squidreports conserva los formatos y las rutas de los informes base utilizados por Bandata. Las métricas adicionales se guardan por separado en `reportstats/YYYYMMDD/` (la ruta configurada de informes seguida de `stats`). Detail lee los informes originales y estas métricas adicionales. Las métricas adicionales existentes en carpetas antiguas siguen siendo legibles hasta regenerar esa fecha. **Analyze** muestra estadísticas históricas y gráficos. Los gráficos se generan bajo petición, sin guardar imágenes ni páginas HTML. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Squidreports preserves the base report formats and paths used by Bandata. Additional metrics are stored separately under <code>reportstats/YYYYMMDD/</code> (the configured report path followed by <code>stats</code>). Detail reads the original reports and these additional metrics. Existing additional metrics in old report folders remain readable until that date is regenerated. <strong>Analyze</strong> displays historical statistics and charts. Charts are generated on request, without saving images or HTML pages.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Squidreports conserva los formatos y las rutas de los informes base utilizados por Bandata. Las métricas adicionales se guardan por separado en <code>reportstats/YYYYMMDD/</code> (la ruta configurada de informes seguida de <code>stats</code>). Detail lee los informes originales y estas métricas adicionales. Las métricas adicionales existentes en carpetas antiguas siguen siendo legibles hasta regenerar esa fecha. <strong>Analyze</strong> muestra estadísticas históricas y gráficos. Los gráficos se generan bajo petición, sin guardar imágenes ni páginas HTML.
+    </td>
+  </tr>
+</table>
 
 ##### Detailed Report
 
@@ -795,9 +859,16 @@ $perusertrafficlimit = 1000*1024*1024;
 <a href="https://www.maravento.com/"><img src="./img/squidreports-menu.png" width="275" alt="squidreports menu"></a>
 </p>
 
-| Description | Descripción |
-|---|---|
-| In **General Statistics**, open **Tools** on the right side of the header to copy or print the table, or export it as PDF, XLSX, or CSV. | En **General Statistics**, abra **Tools**, a la derecha del encabezado, para copiar o imprimir la tabla y exportarla como PDF, XLSX o CSV. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      In <strong>General Statistics</strong>, open <strong>Tools</strong> on the right side of the header to copy or print the table, or export it as PDF, XLSX, or CSV.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      En <strong>General Statistics</strong>, abra <strong>Tools</strong>, a la derecha del encabezado, para copiar o imprimir la tabla y exportarla como PDF, XLSX o CSV.
+    </td>
+  </tr>
+</table>
 
 ##### Reports
 
@@ -888,7 +959,7 @@ sudo nano /etc/cron.d/proxymon
 2026-10-19 16:00:01 Applying Iptables Rules...
 2026-10-19 16:00:01 INFO: group.cfg updated
 2026-10-19 16:00:01 INFO: Quota rules applied; blocked IPs: 5
-2026-10-19 16:00:01 bandata done at: 2026-10-19 16:00:01
+2026-10-19 16:00:01 bandata done
 ```
 
 ###### Warning Portal
@@ -1010,17 +1081,18 @@ MAX_BANDWIDTH_MONTH=20G
 <a href="https://www.maravento.com/"><img src="./img/logview-panel.png" width="713" alt="Logview panel"></a>
 </p>
 
-| Description | Descripción |
-|---|---|
-| **Logview** contains two internal tabs: **Log** for access logs and **Live** for active requests. Both views remain inside Logview. The Log/Live buttons share the controls row; the Log search field has a compact width.<br><br>Dark is the default theme for Log and Live. The shared theme selection is saved in the browser and applied before displaying the content when Logview reloads. Live uses the same selection when opened, including when its refresh is paused. | **Logview** contiene dos pestañas internas: **Log** para los registros de acceso y **Live** para las solicitudes en curso. Ambas vistas permanecen dentro de Logview. Los botones Log/Live comparten la fila de controles; el campo de búsqueda de Log tiene un ancho reducido.<br><br>El tema oscuro es el predeterminado de Log y Live. La selección de tema compartido se guarda en el navegador y se aplica antes de mostrar el contenido al recargar Logview. Live adopta esa selección al abrirse, incluso con su actualización pausada. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <strong>Logview</strong> contains two internal tabs: <strong>Log</strong> for access logs and <strong>Live</strong> for active requests. Both views remain inside Logview. The Log/Live buttons share the controls row; the Log search field has a compact width.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <strong>Logview</strong> contiene dos pestañas internas: <strong>Log</strong> para los registros de acceso y <strong>Live</strong> para las solicitudes en curso. Ambas vistas permanecen dentro de Logview. Los botones Log/Live comparten la fila de controles; el campo de búsqueda de Log tiene un ancho reducido.
+    </td>
+  </tr>
+</table>
 
-##### Log View
-
-| Description | Descripción |
-| --- | --- |
-| • **Log** opens by default and displays new entries from `/var/log/squid/access.log` in a table that refreshes periodically.<br><br>• Search the loaded entries, filter by cache code or HTTP status, and sort columns. | • **Log** abre por defecto y muestra las nuevas entradas de `/var/log/squid/access.log` en una tabla que se actualiza periódicamente.<br><br>• Puede buscar entre las entradas cargadas, filtrar por código de caché o estado HTTP y ordenar las columnas. |
-
-###### Theme control
+##### Theme Control
 
 <p align="center">
 <a href="https://www.maravento.com/"><img src="./img/logview-themes.png" width="713" alt="Logview: light and dark themes / temas claro y oscuro"></a>
@@ -1028,7 +1100,13 @@ MAX_BANDWIDTH_MONTH=20G
 
 | Control | Description | Descripción |
 | --- | --- | --- |
-| <img src="./img/logview-darkmodebutton.png" width="60" alt="Theme toggle"> | Shared theme toggle at the right of the dashboard header, beside the local date and time. Switches both views between light and dark themes. | Botón de tema compartido a la derecha de la cabecera, junto a la fecha y hora local. Alterna ambas vistas entre los temas claro y oscuro. |
+| <img src="./img/logview-darkmodebutton.png" width="60" alt="Theme toggle"> | <ul><li>Shared theme toggle at the right of the dashboard header, beside the local date and time. Switches both views between light and dark themes.</li><li>Dark is the default theme for Log and Live. The shared theme selection is saved in the browser and applied before displaying the content when Logview reloads. Live uses the same selection when opened, including when its refresh is paused.</li></ul> | <ul><li>Botón de tema compartido a la derecha de la cabecera, junto a la fecha y hora local. Alterna ambas vistas entre los temas claro y oscuro.</li><li>El tema oscuro es el predeterminado de Log y Live. La selección de tema compartido se guarda en el navegador y se aplica antes de mostrar el contenido al recargar Logview. Live adopta esa selección al abrirse, incluso con su actualización pausada.</li></ul> |
+
+##### Access Logs (Log)
+
+| Description | Descripción |
+| --- | --- |
+| • **Log** opens by default and displays new entries from `/var/log/squid/access.log` in a table that refreshes periodically.<br><br>• Search the loaded entries, filter by cache code or HTTP status, and sort columns. | • **Log** abre por defecto y muestra las nuevas entradas de `/var/log/squid/access.log` en una tabla que se actualiza periódicamente.<br><br>• Puede buscar entre las entradas cargadas, filtrar por código de caché o estado HTTP y ordenar las columnas. |
 
 ###### Controls
 
@@ -1063,7 +1141,7 @@ MAX_BANDWIDTH_MONTH=20G
 | <img src="./img/logview-fulllog.png" width="97"> | Select this option to search the full log. | Seleccione esta opción para buscar en el registro completo. |
 | <img src="./img/logview-livelog.png" width="93"> | Select this option to return to the live view. | Seleccione esta opción para volver a la vista en tiempo real. |
 
-##### Live View
+##### Active Requests (Live)
 
 <p align="center">
 <a href="https://www.maravento.com/"><img src="./img/logview-sqstat.png" width="713" alt="Logview Live"></a>
@@ -1071,8 +1149,7 @@ MAX_BANDWIDTH_MONTH=20G
 
 | Description | Descripción |
 | --- | --- |
-| **Live** displays active Squid requests, grouped by client IP, current and average speeds, duration and speed subtotals. | **Live** muestra las solicitudes activas de Squid, agrupadas por IP de cliente, velocidad actual y media, duración y subtotales de velocidad. |
-| Live queries Squid's Cache Manager using `SQUID_MGR_HOST`, `SQUID_MGR_PORT` and `SQUID_MGR_PASSWD` from `proxymon.env`. Refresh defaults to five seconds; Stop pauses it. Refresh is stored per browser session. | Live consulta el administrador de caché de Squid mediante `SQUID_MGR_HOST`, `SQUID_MGR_PORT` y `SQUID_MGR_PASSWD` de `proxymon.env`. Se actualiza cada cinco segundos por defecto; Stop pausa la actualización. El intervalo se conserva por sesión del navegador. |
+| <ul><li><strong>Live</strong> displays active Squid requests, grouped by client IP, current and average speeds, duration and speed subtotals.</li><li>Live queries Squid's Cache Manager using <code>SQUID_MGR_HOST</code>, <code>SQUID_MGR_PORT</code> and <code>SQUID_MGR_PASSWD</code> from <code>proxymon.env</code>. Refresh defaults to five seconds; Stop pauses it. Refresh is stored per browser session.</li></ul> | <ul><li><strong>Live</strong> muestra las solicitudes activas de Squid, agrupadas por IP de cliente, velocidad actual y media, duración y subtotales de velocidad.</li><li>Live consulta el administrador de caché de Squid mediante <code>SQUID_MGR_HOST</code>, <code>SQUID_MGR_PORT</code> y <code>SQUID_MGR_PASSWD</code> de <code>proxymon.env</code>. Se actualiza cada cinco segundos por defecto; Stop pausa la actualización. El intervalo se conserva por sesión del navegador.</li></ul> |
 
 #### AI
 
@@ -1106,9 +1183,16 @@ MAX_BANDWIDTH_MONTH=20G
 
 ##### Security Incidents
 
-| Description | Descripción |
-|---|---|
-| For security incident detection, SquidAI uses `/etc/acl/squid/blockpatterns.txt` and direct IPv4 detection. Severity depends on the pattern type and number of matches; results can be classified as **CRITICAL**, **HIGH**, **MEDIUM**, or **LOW**. | Para la detección de incidentes de seguridad, SquidAI utiliza `/etc/acl/squid/blockpatterns.txt` y detección de IPv4 directa. La severidad depende del tipo de patrón y del número de coincidencias; los resultados pueden clasificarse como **CRITICAL**, **HIGH**, **MEDIUM** o **LOW**. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      For security incident detection, SquidAI uses <code>/etc/acl/squid/blockpatterns.txt</code> and direct IPv4 detection. Severity depends on the pattern type and number of matches; results can be classified as <strong>CRITICAL</strong>, <strong>HIGH</strong>, <strong>MEDIUM</strong>, or <strong>LOW</strong>.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/acl/squid/blockpatterns.txt</code> y detección de IPv4 directa. La severidad depende del tipo de patrón y del número de coincidencias; los resultados pueden clasificarse como <strong>CRITICAL</strong>, <strong>HIGH</strong>, <strong>MEDIUM</strong> o <strong>LOW</strong>.
+    </td>
+  </tr>
+</table>
 
 ##### API Configuration
 
@@ -1147,15 +1231,29 @@ MAX_BANDWIDTH_MONTH=20G
 
 ### TOOLS
 
-| Description | Descripción |
-|---|---|
-| Command-line utilities are installed in `/etc/proxymon/tools` and run from a terminal. The HTML reports they generate can be viewed from the panel. | Las utilidades de consola se instalan en `/etc/proxymon/tools` y se ejecutan desde la terminal. Los informes HTML que generan se pueden consultar desde el panel. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Command-line utilities are installed in <code>/etc/proxymon/tools</code> and run from a terminal. The HTML reports they generate can be viewed from the panel.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Las utilidades de consola se instalan en <code>/etc/proxymon/tools</code> y se ejecutan desde la terminal. Los informes HTML que generan se pueden consultar desde el panel.
+    </td>
+  </tr>
+</table>
 
 #### Squidtool
 
-| Description | Descripción |
-|---|---|
-| Squidtool is a command-line utility with two functions: generate a traffic report and search Squid logs. Run it with: | Squidtool es una utilidad de consola con dos funciones: generar un informe de tráfico y buscar términos en los registros de Squid. Se ejecuta con: |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Squidtool is a command-line utility with two functions: generate a traffic report and search Squid logs. Run it with:
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Squidtool es una utilidad de consola con dos funciones: generar un informe de tráfico y buscar términos en los registros de Squid. Se ejecuta con:
+    </td>
+  </tr>
+</table>
 
 ```bash
 sudo /etc/proxymon/tools/squidtool.sh
@@ -1175,9 +1273,16 @@ sudo /etc/proxymon/tools/squidtool.sh
 <a href="https://www.maravento.com/"><img src="./img/squidtool-traffic.png" width="713" alt="squidtool traffic"></a>
 </p>
 
-| Description | Descripción |
-|---|---|
-| Analyzes the requests recorded by Squid, grouping them by **client IP and requested domain**. It allows selecting a single IP or analyzing every IP, and defining the period to review. The analysis covers the current `access.log` and its rotated or compressed files. Requests are counted and sorted from the most active to the least. When every IP is analyzed, entries below 20 requests are excluded. Entries reaching or exceeding 300 requests are shown as alerts. The result is written to `squid_traffic.html`. | Analiza las solicitudes registradas por Squid, agrupándolas por **IP de cliente y dominio solicitado**. Permite seleccionar una IP concreta o analizar todas las IP y definir el período que se desea revisar. El análisis incluye el `access.log` actual y sus archivos rotados o comprimidos. Las solicitudes se contabilizan y se ordenan de mayor a menor actividad. Cuando se analizan todas las IP, se excluyen las entradas con menos de 20 solicitudes. Las entradas que alcanzan o superan las 300 solicitudes se muestran como alertas. El resultado se genera en `squid_traffic.html`. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Analyzes the requests recorded by Squid, grouping them by <strong>client IP and requested domain</strong>. It allows selecting a single IP or analyzing every IP, and defining the period to review. The analysis covers the current <code>access.log</code> and its rotated or compressed files. Requests are counted and sorted from the most active to the least. When every IP is analyzed, entries below 20 requests are excluded. Entries reaching or exceeding 300 requests are shown as alerts. The result is written to <code>squid_traffic.html</code>.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Analiza las solicitudes registradas por Squid, agrupándolas por <strong>IP de cliente y dominio solicitado</strong>. Permite seleccionar una IP concreta o analizar todas las IP y definir el período que se desea revisar. El análisis incluye el <code>access.log</code> actual y sus archivos rotados o comprimidos. Las solicitudes se contabilizan y se ordenan de mayor a menor actividad. Cuando se analizan todas las IP, se excluyen las entradas con menos de 20 solicitudes. Las entradas que alcanzan o superan las 300 solicitudes se muestran como alertas. El resultado se genera en <code>squid_traffic.html</code>.
+    </td>
+  </tr>
+</table>
 
 ##### Log Search
 
@@ -1207,9 +1312,16 @@ sudo /etc/proxymon/tools/squidtool.sh
 
 ### PROXYMON LOGS
 
-| Description | Descripción |
-|---|---|
-| Project log: `/var/log/proxymon.log`. Installation and update configure daily rotation in `/etc/logrotate.d/proxymon`, keeping seven previous files plus the active log. Compression starts on the next rotation. Empty logs are not rotated; missing logs are tolerated. Squid and Apache keep their own policies. | Log del proyecto: `/var/log/proxymon.log`. La instalación y la actualización configuran rotación diaria en `/etc/logrotate.d/proxymon`. Se conservan siete archivos anteriores y el activo. La compresión comienza en la siguiente rotación. Los logs vacíos no se rotan; los ausentes se toleran. Squid y Apache conservan sus propias políticas. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Project log: <code>/var/log/proxymon.log</code>. Installation and update configure daily rotation in <code>/etc/logrotate.d/proxymon</code>, keeping seven previous files plus the active log. Compression starts on the next rotation. Empty logs are not rotated; missing logs are tolerated. Squid and Apache keep their own policies.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Log del proyecto: <code>/var/log/proxymon.log</code>. La instalación y la actualización configuran rotación diaria en <code>/etc/logrotate.d/proxymon</code>. Se conservan siete archivos anteriores y el activo. La compresión comienza en la siguiente rotación. Los logs vacíos no se rotan; los ausentes se toleran. Squid y Apache conservan sus propias políticas.
+    </td>
+  </tr>
+</table>
 
 ```bash
 /var/log/apache2/proxymon_access.log
@@ -1221,9 +1333,16 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
 
 #### Message examples
 
-| Description | Descripción |
-|---|---|
-| Processing messages keep their timestamp and have no level or flag. `STATUS` is a viewer label, not text written in the log. Three trailing dots are reserved for these lines; other messages have no final period. | Los mensajes de procesamiento conservan la fecha y no llevan nivel ni flag. `STATUS` es una etiqueta del visor; no se escribe en el log. Los tres puntos finales se reservan para estas líneas; los demás mensajes no llevan punto final. |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Processing messages keep their timestamp and have no level or flag. <code>STATUS</code> is a viewer label, not text written in the log. Three trailing dots are reserved for these lines; other messages have no final period.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Los mensajes de procesamiento conservan la fecha y no llevan nivel ni flag. <code>STATUS</code> es una etiqueta del visor; no se escribe en el log. Los tres puntos finales se reservan para estas líneas; los demás mensajes no llevan punto final.
+    </td>
+  </tr>
+</table>
 
 ```text
 2026-10-17 12:00:00 Updating PHP...
@@ -1286,6 +1405,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
         <li>May include third-party components.</li>
         <li>Does not accept Pull Requests. Changes must be proposed via Issues.</li>
         <li>This project does not support backward compatibility. New versions may require configuration changes or reinstallation.</li>
+        <li>Adding custom tasks to the project's cron file is not recommended because each installation or update rewrites it.</li>
       </ul>
     </td>
     <td style="width: 50%; vertical-align: top;">
@@ -1294,6 +1414,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
         <li>Puede incluir componentes de terceros.</li>
         <li>No acepta Pull Requests. Los cambios deben proponerse mediante Issues.</li>
         <li>Este proyecto no soporta retrocompatibilidad. Las nuevas versiones pueden requerir cambios de configuración o una reinstalación.</li>
+        <li>No se recomienda programar tareas propias en el cron del proyecto, ya que se reescribe en cada instalación o actualización.</li>
       </ul>
     </td>
   </tr>

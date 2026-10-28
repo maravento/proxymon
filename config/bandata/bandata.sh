@@ -97,6 +97,7 @@ fi
 # ------------------------------------------------------------------------------
 
 # validation -- one variable per thing validated; use directly with =~
+UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
 UH_SINT='^(0|-?[1-9][0-9]*)$'
@@ -104,7 +105,12 @@ UH_MAX=9223372036854775807
 UH_MIN=-9223372036854775808
 UH_BOOL='^(true|false)$'
 
-# validation - integer is representable as a signed 64-bit value
+# ------------------------------------------------------------------------------
+# FUNCTIONS
+# ------------------------------------------------------------------------------
+
+# INTEGER RANGE
+# Check signed Bash integer limits
 uh_fits() {
     local value="${1-}" limit
     [[ "$value" =~ $UH_SINT ]] || return 1
@@ -117,6 +123,28 @@ uh_fits() {
     (( ${#value} < ${#limit} )) && return 0
     (( ${#value} > ${#limit} )) && return 1
     [[ "$value" > "$limit" ]] && return 1
+    return 0
+}
+
+# LAN REPORTS
+# Filter report filenames using the configured IPv4 network
+report_in_lan() {
+    local report_ip="${1##*/}" report_ip_int
+    local octet_1 octet_2 octet_3 octet_4
+    [[ "$report_ip" =~ $UH_IPV4 ]] || return 1
+    IFS=. read -r octet_1 octet_2 octet_3 octet_4 <<< "$report_ip"
+    report_ip_int=$(( (octet_1 << 24) + (octet_2 << 16) + (octet_3 << 8) + octet_4 ))
+    (( (report_ip_int & report_mask) == report_network_int ))
+}
+
+list_lan_reports() {
+    local report_candidates report_candidate
+    report_candidates=$(find "$@" -maxdepth 1 -type f -name "$REPORT_IP_GLOB") || return 1
+    while IFS= read -r report_candidate; do
+        if report_in_lan "$report_candidate"; then
+            printf '%s\n' "$report_candidate" || return 1
+        fi
+    done <<< "$report_candidates"
     return 0
 }
 
@@ -161,7 +189,7 @@ load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abo
 # KEY CHECK
 # Collect every failure first, then decide -- a single abort reports them all
 key_errors=()
-for env_key in WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG \
+for env_key in RANGE WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG \
                SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_BANDATA_PATH \
                ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH \
                WARNING_HTML BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME; do
@@ -169,6 +197,8 @@ for env_key in WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REAL
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
+    elif [ "$env_key" = RANGE ] && ! [[ "${!env_key}" =~ $UH_CIDR ]]; then
+        key_errors+=("$env_key invalid IPv4/prefix")
     elif [ "$env_key" = WARNING_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
         key_errors+=("$env_key invalid port")
     elif { [ "$env_key" = BANDATA_HOTSPOT ] || [ "$env_key" = UPDATE_REALNAME ]; } \
@@ -207,6 +237,14 @@ if [ ! -e "/sys/class/net/$LAN" ]; then
     log "ERROR: interface '$LAN' does not exist -abort"
     exit 1
 fi
+# LAN REPORTS
+# Match report filenames against both the configured pattern and IPv4 network
+report_network="${RANGE%/*}"
+report_prefix="${RANGE#*/}"
+IFS=. read -r report_octet_1 report_octet_2 report_octet_3 report_octet_4 <<< "$report_network"
+report_mask=$(( (0xFFFFFFFF << (32 - report_prefix)) & 0xFFFFFFFF ))
+report_network_int=$(( ((report_octet_1 << 24) + (report_octet_2 << 16) + (report_octet_3 << 8) + report_octet_4) & report_mask ))
+
 # Byte forms of the three limits, derived from keys KEY CHECK already validated
 max_bw_day=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_DAY/,/.}")
 max_bw_week=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_WEEK/,/.}")
@@ -216,7 +254,7 @@ max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}")
 # MAIN
 # ------------------------------------------------------------------------------
 
-log "bandata start..."
+log "EVENT: bandata start..."
 
 # PREFLIGHT CHECKS
 # Self-heal: remove orphaned .tmp files left by a previous run that failed
@@ -269,7 +307,7 @@ acl_prepare() {
         # Checked before the redirection: noclobber only protects regular
         # files, and opening a FIFO for writing blocks until a reader shows up.
         if [ -L "$acl_file" ] || { [ -e "$acl_file" ] && [ ! -f "$acl_file" ]; }; then
-            log "ERROR: $acl_file is not a regular file -abort"
+            log "ERROR: $(basename "$acl_file") is not a regular file -abort"
             exit 1
         fi
         # noclobber makes the redirection fail when the file already exists,
@@ -284,7 +322,7 @@ acl_prepare() {
         elif [ -f "$acl_file" ] && [ ! -L "$acl_file" ]; then
             acl_fix_perms "$acl_file" "$file_mode"
         else
-            log "ERROR: $acl_file is not a regular file -abort"
+            log "ERROR: $(basename "$acl_file") is not a regular file -abort"
             exit 1
         fi
     done
@@ -300,7 +338,7 @@ acl_fix_perms() {
     [[ "$cur_mode" == "$want_mode" && "$cur_owner" == "root:root" ]] && return 0
     if ! { chmod "$want_mode" -- "$acl_path" \
         && chown root:root -- "$acl_path"; }; then
-        log "ERROR: cannot fix $acl_path perms -abort"
+        log "ERROR: cannot fix $(basename "$acl_path") perms -abort"
         exit 1
     fi
     log "INFO: $acl_path perms fixed -fixed"
@@ -310,9 +348,8 @@ acl_fix_perms() {
 # Create folders if they don't exist
 acl_prepare "$ACL_PATH" 755 644
 acl_prepare "$ACL_MAC_PATH" 700 600
-[ -d "$ACL_BANDATA_PATH" ] || mkdir -p "$ACL_BANDATA_PATH"
-# Create ACL files if they don't exist
-touch "$ALLOW_LIST" "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
+acl_prepare "$ACL_BANDATA_PATH" 700 600 "$ALLOW_LIST" \
+    "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
 
 if [ "$BANDATA_HOTSPOT" = true ] && [ ! -d "$HOTSPOT_PATH" ]; then
     log "ERROR: BANDATA_HOTSPOT=true but $HOTSPOT_PATH missing -abort"
@@ -323,7 +360,7 @@ fi
 # BANDAY
 # ------------------------------------------------------------------------------
 
-log "Running Bandata Day..."
+log "EVENT: Running Bandata Day..."
 
 # path to day report
 day_logs_dir=$REPORT_PATH/$(date +"%Y%m%d")
@@ -342,6 +379,7 @@ else
             cd "$day_logs_dir" || { log "WARNING: cannot cd into $day_logs_dir -alert" >&2; exit 1; }
             shopt -s nullglob
             for report_file in $REPORT_IP_GLOB; do
+                report_in_lan "$report_file" || continue
                 # A failing awk can still print a partial total, so its status
                 # decides. Ending the subshell clears the day, as the flow asks.
                 user_bytes=$(awk '$1=="total:" {print $2}' "$report_file") || {
@@ -406,7 +444,7 @@ fi
 # "+1 month -1 day"). Not portable to BSD/macOS date. This project
 # targets Linux only (already requires ipset/iptables).
 
-log "Running Bandata Week..."
+log "EVENT: Running Bandata Week..."
 
 if [ "$today_dow" -eq 1 ]; then
     week_dirs=()
@@ -421,8 +459,7 @@ if [ "$today_dow" -eq 1 ]; then
     else
         # Each reading decides, because a partial list would total only part of
         # the week. Any failure clears the week, as the flow asks.
-        if ! report_files=$(find "${week_dirs[@]}" -maxdepth 1 -type f \
-            -name "$REPORT_IP_GLOB"); then
+        if ! report_files=$(list_lan_reports "${week_dirs[@]}"); then
             log "WARNING: cannot read weekly reports, week cleared -alert"
             : > "$BLOCK_LIST_WEEK"
         elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
@@ -475,7 +512,7 @@ fi
 # BANMONTH
 # ------------------------------------------------------------------------------
 
-log "Running Bandata Month..."
+log "EVENT: Running Bandata Month..."
 
 # Build weekday directories for current month (excluding weekends)
 month_prefix=$(date +"%Y%m")
@@ -495,8 +532,7 @@ if [ ${#month_dirs[@]} -eq 0 ]; then
 else
     # Each reading decides, as in the week: a partial list would total only
     # part of the month. Any failure clears the month, as the flow asks.
-    if ! report_files=$(find "${month_dirs[@]}" -maxdepth 1 -type f \
-        -name "$REPORT_IP_GLOB"); then
+    if ! report_files=$(list_lan_reports "${month_dirs[@]}"); then
         log "WARNING: cannot read monthly reports, month cleared -alert"
         : > "$BLOCK_LIST_MONTH"
     elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
@@ -545,7 +581,7 @@ fi
 # IPSET RULES
 # ------------------------------------------------------------------------------
 
-log "Running Ipset/Iptables Rules..."
+log "EVENT: Running Ipset/Iptables Rules..."
 # Every preparation step decides whether the new set may be published. A
 # failed create or flush leaves bandata_new holding the previous contents,
 # and swapping that in would reinstate blocks that are no longer current.
@@ -627,7 +663,7 @@ else
     ipset destroy bandata_new 2>/dev/null || true
 fi
 
-log "Applying Iptables Rules..."
+log "EVENT: Applying Iptables Rules..."
 
 # Add a rule only when it is absent, and remember any failure.
 rules_failed=0
@@ -872,4 +908,4 @@ else
     log "WARNING: cannot read bandata; block count unavailable -alert"
 fi
 
-log "bandata done at: $(date '+%Y-%m-%d %H:%M:%S')"
+log "EVENT: bandata done"

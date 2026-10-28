@@ -18,20 +18,6 @@
 ################################################################################
 
 set -Euo pipefail
-report_failure() {
-    local failure_text="$failure_message"
-    if (( ${#failure_text} <= 46 )); then
-        failure_text+=" -abort"
-    fi
-    if declare -F err >/dev/null; then
-        err "$failure_text"
-    else
-        echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: $failure_text" >&2
-    fi
-}
-
-failure_message="cannot initialize Proxymon"
-trap 'report_failure; exit 1' ERR
 
 # ------------------------------------------------------------------------------
 # REQUIREMENTS
@@ -42,6 +28,20 @@ if [ "$(id -u)" != "0" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
     exit 1
 fi
+
+# error handling
+report_failure() {
+    local failure_text="$failure_message"
+    failure_text+=" -abort"
+    if declare -F err >/dev/null; then
+        err "$failure_text"
+    else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: $failure_text" >&2
+    fi
+}
+
+failure_message="cannot initialize Proxymon"
+trap 'report_failure; exit 1' ERR
 
 # prevent overlapping runs
 script_lock="/var/lock/$(basename "$0" .sh).lock"
@@ -75,9 +75,6 @@ info() { log "INFO: $*"; }
 warn() { log "WARNING: $*"; }
 err()  { log "ERROR: $*"; }
 abort() { err "$*"; exit 1; }
-
-source "$script_dir/config/tools/proxymonenv.sh"
-proxymon_env="/etc/proxymon/proxymon.env"
 
 configure_locations() {
     unset WEB_ROOT CONFIG_DIR BACKUP_DIR PANEL_PORT WARNING_PORT
@@ -366,8 +363,381 @@ check_port() {
 }
 
 # ------------------------------------------------------------------------------
+# VARIABLES
+# ------------------------------------------------------------------------------
+
+proxymon_env="/etc/proxymon/proxymon.env"
+
+# validation -- one variable per thing validated; use directly with =~
+UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
+UH_UINT='^(0|[1-9][0-9]*)$'
+UH_SINT='^(0|-?[1-9][0-9]*)$'
+UH_MAX=9223372036854775807
+UH_MIN=-9223372036854775808
+
+# ------------------------------------------------------------------------------
 # FUNCTIONS
 # ------------------------------------------------------------------------------
+
+# check internet
+check_internet() {
+    local max_attempts=24 attempt=1
+
+    while (( attempt <= max_attempts )); do
+        if getent hosts www.google.com >/dev/null 2>&1; then
+            return 0
+        fi
+        if (( attempt == 1 )); then
+            log "INFO: waiting for internet..."
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+
+    log "ERROR: no internet connection -abort"
+    exit 1
+}
+
+# UPDATE CHECKS
+update_error() {
+    if declare -F err >/dev/null; then
+        err "$* -abort"
+    else
+        log "ERROR: $* -abort"
+    fi
+    exit 1
+}
+
+update_reset() {
+    update_cron_file="$1"
+    update_files=()
+    update_jobs=()
+    update_services=()
+    update_stopped_services=()
+    update_daemons=()
+    update_copying=0
+    update_cron_paused=0
+    update_cron_existed=0
+    update_cron_already_paused=0
+}
+
+update_file() {
+    update_files+=("$1" "$2" "$3" "$4")
+    case "$2" in *.sh|*.py|*.pl) update_jobs+=("$2") ;; esac
+}
+
+update_target() {
+    update_files+=("" "$1" "${2:-644}" "${3:-root:root}")
+}
+
+update_preflight() {
+    command -v python3 >/dev/null 2>&1 || update_error "python3 is required for update checks"
+    local check_message
+    if check_message=$(python3 - "${update_files[@]}" <<'UPDATE_PY'
+import array, errno, fcntl, os, stat, sys, tempfile
+items = [sys.argv[i:i + 4] for i in range(1, len(sys.argv), 4)]
+space, probes = {}, set()
+def fail(message):
+    print(message)
+    raise SystemExit(1)
+def flags(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        try:
+            value = array.array('L', [0])
+            try:
+                fcntl.ioctl(fd, 0x80086601, value, True)
+            except OSError as exc:
+                if exc.errno not in (errno.ENOTTY, errno.EOPNOTSUPP, errno.EINVAL):
+                    raise
+            else:
+                if value[0] & 0x30:
+                    protection = []
+                    if value[0] & 0x10:
+                        protection.append('immutable')
+                    if value[0] & 0x20:
+                        protection.append('append-only')
+                    fail(os.path.basename(path) + ' is ' + ' and '.join(protection))
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        fail(exc.strerror.lower() + ': ' + os.path.basename(path))
+for source, target, mode, owner in items:
+    if source:
+        try:
+            st = os.lstat(source)
+            if not stat.S_ISREG(st.st_mode):
+                fail('source is not a file: ' + os.path.basename(source))
+            with open(source, 'rb') as stream:
+                stream.read(1)
+        except OSError as exc:
+            fail('cannot read source: ' + os.path.basename(source))
+for source, target, mode, owner in items:
+    target = os.path.abspath(target)
+    directory = mode.startswith('d')
+    try:
+        parent = target if directory else os.path.dirname(target)
+        if os.path.lexists(target):
+            st = os.lstat(target)
+            if (directory and not stat.S_ISDIR(st.st_mode)) or (not directory and not stat.S_ISREG(st.st_mode)):
+                fail(('dst is not a folder: ' if directory else 'dst is not a file: ') + os.path.basename(target))
+            flags(target)
+            if not directory:
+                fd = os.open(target, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                finally:
+                    os.close(fd)
+        while not os.path.exists(parent):
+            if os.path.lexists(parent):
+                fail('folder is a symbolic link: ' + parent)
+            parent = os.path.dirname(parent)
+        if not os.path.isdir(parent):
+            fail('not a folder: ' + parent)
+        current = parent
+        while current != '/':
+            if os.path.islink(current):
+                fail('folder is a symbolic link: ' + current)
+            flags(current)
+            current = os.path.dirname(current)
+        fs = os.statvfs(parent)
+        if fs.f_flag & os.ST_RDONLY:
+            fail('filesystem is read-only: ' + parent)
+        if parent not in probes:
+            fd, probe = tempfile.mkstemp(prefix='update-check-', dir=parent)
+            try:
+                os.write(fd, b'update check\n')
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+                os.unlink(probe)
+            probes.add(parent)
+        device = os.stat(parent).st_dev
+        required = os.stat(source).st_size if source else 4096
+        needed, available, label = space.get(device, (0, fs.f_bavail * fs.f_frsize, parent))
+        space[device] = (needed + required + 4096, available, label)
+        if fs.f_favail == 0:
+            fail('no free inodes for dst: ' + os.path.basename(target))
+    except OSError as exc:
+        fail('cannot write dst: ' + os.path.basename(target))
+for needed, available, label in space.values():
+    if available < needed:
+        fail('not enough space to update: ' + label)
+UPDATE_PY
+    ); then
+        :
+    else
+        update_error "$check_message"
+    fi
+}
+
+update_backup() {
+    [ -f "$1" ] && [ -r "$1" ] || update_error "backup script not readable: $(basename "$1")"
+    bash "$1" || update_error "backup failed: $(basename "$1")"
+}
+
+update_begin() {
+    export UPDATE_CRON_OWNER="$$"
+    trap 'update_cleanup "$?"' EXIT
+    local disabled="${update_cron_file}.update-disabled"
+    [ ! -L "${update_cron_file}.lock" ] || update_error "invalid cron lock: $update_cron_file"
+    (umask 077; : >> "${update_cron_file}.lock") || update_error "cannot open cron lock: $update_cron_file"
+    exec 203>"${update_cron_file}.lock" || update_error "cannot open cron lock: $update_cron_file"
+    flock -n 203 || update_error "cron file is being changed: $(basename "$update_cron_file")"
+    if [ -e "$disabled" ] || [ -L "$disabled" ]; then
+        [ -f "$disabled" ] && [ ! -L "$disabled" ] || update_error "invalid paused cron: $(basename "$disabled")"
+        [ ! -e "$update_cron_file" ] || update_error "both active and paused cron exist: $(basename "$update_cron_file")"
+        update_cron_already_paused=1
+        update_cron_paused=1
+    elif [ -e "$update_cron_file" ]; then
+        mv -T -- "$update_cron_file" "$disabled" || update_error "cannot pause cron: $update_cron_file"
+        update_cron_existed=1
+        update_cron_paused=1
+    else
+        (umask 077; set -C; : > "$disabled") || update_error "cannot pause cron: $update_cron_file"
+        update_cron_paused=1
+    fi
+    exec 203>&-
+}
+
+update_pids() {
+    python3 - "$1" <<'UPDATE_PIDS'
+import os, sys
+wanted = os.path.realpath(sys.argv[1])
+for entry in os.scandir('/proc'):
+    if not entry.name.isdigit() or int(entry.name) == os.getpid():
+        continue
+    try:
+        with open(entry.path + '/cmdline', 'rb') as stream:
+            args = [os.fsdecode(value) for value in stream.read().split(b'\0') if value]
+        if args and any(os.path.realpath(value) == wanted for value in args if value.startswith('/')):
+            print(entry.name)
+    except (OSError, ValueError):
+        continue
+UPDATE_PIDS
+}
+
+update_wait() {
+    local script="$1" pids attempt
+    for attempt in {1..30}; do
+        pids=$(update_pids "$script") || update_error "cannot inspect processes: $(basename "$script")"
+        [ -z "$pids" ] && return 0
+        sleep 1
+    done
+    update_error "process still running: $(basename "$script")"
+}
+
+update_stop_daemon() {
+    local script="$1" pids
+    pids=$(update_pids "$script") || update_error "cannot inspect processes: $script"
+    if [ -n "$pids" ]; then
+        update_daemons+=("$script")
+        bash "$script" --stop || update_error "cannot stop daemon: $script"
+        update_wait "$script"
+    fi
+}
+
+update_stop_service() {
+    local unit="$1" state load_state
+    load_state=$(systemctl show -p LoadState --value "$unit") || update_error "cannot inspect service: $unit"
+    [ "$load_state" != not-found ] || return 0
+    state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect service: $unit"
+    case "$state" in
+        active|reloading|activating|deactivating) update_services+=("$unit") ;;
+        inactive|failed) ;;
+        *) update_error "unexpected service state: $unit ($state)" ;;
+    esac
+    update_stopped_services+=("$unit")
+    systemctl stop "$unit" || update_error "cannot stop service: $unit"
+    state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect stopped: $unit"
+    [ "$state" = inactive ] || {
+        log "ERROR: $unit state: $state"
+        update_error "$unit did not stop"
+    }
+}
+
+update_wait_jobs() {
+    local script unit state
+    for script in "${update_jobs[@]}"; do
+        update_wait "$script"
+    done
+    for unit in "${update_stopped_services[@]}"; do
+        state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect stopped: $unit"
+        [ "$state" = inactive ] || update_error "service restarted in update: $unit"
+    done
+}
+
+update_apply() {
+    update_preflight
+    update_copying=1
+    local i source target mode owner
+    for ((i=0; i<${#update_files[@]}; i+=4)); do
+        source="${update_files[i]}"
+        target="${update_files[i+1]}"
+        mode="${update_files[i+2]}"
+        owner="${update_files[i+3]}"
+        if [[ "$mode" == d* ]]; then
+            install -d -m "${mode#d}" -o "${owner%:*}" -g "${owner#*:}" -- "$target" \
+                || update_error "cannot prepare directory: $target"
+            continue
+        fi
+        if [ -z "$source" ]; then
+            if [ ! -d "$(dirname "$target")" ]; then
+                install -d -m 755 -o root -g root -- "$(dirname "$target")" \
+                    || update_error "cannot prepare destination parent: $(basename "$target")"
+            fi
+            continue
+        fi
+        install -D -m "$mode" -o "${owner%:*}" -g "${owner#*:}" -- "$source" "$target" \
+            || update_error "cannot replace file: $(basename "$target")"
+        cmp -s -- "$source" "$target" || {
+            local compared_file
+            compared_file=$(basename "$target")
+            if (( ${#compared_file} <= 19 )); then
+                update_error "src and dst do not match: $compared_file"
+            fi
+            log "ERROR: src and dst: $compared_file"
+            update_error "src and dst do not match"
+        }
+        info "updated $(basename "$target")"
+    done
+}
+
+update_resume() {
+    local unit script state
+    for unit in "${update_services[@]}"; do
+        systemctl start "$unit" || update_error "cannot start service: $unit"
+        state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect started: $unit"
+        [ "$state" = active ] || {
+            log "ERROR: $unit state: $state"
+            update_error "$unit did not start"
+        }
+    done
+    for script in "${update_daemons[@]}"; do
+        bash "$script" --start || update_error "cannot start daemon: $script"
+        [ -n "$(update_pids "$script")" ] || update_error "daemon did not start: $script"
+    done
+}
+
+update_finish() {
+    update_resume
+    rm -f -- "${update_cron_file}.update-disabled" || update_error "cannot finish cron update: $(basename "$update_cron_file")"
+    trap - EXIT
+    unset UPDATE_CRON_OWNER
+}
+
+update_cleanup() {
+    local status="$1" unit script
+    trap - EXIT
+    if (( update_copying == 0 )); then
+        for unit in "${update_services[@]}"; do
+            systemctl start "$unit" || warn "cannot resume $unit -alert"
+        done
+        for script in "${update_daemons[@]}"; do
+            bash "$script" --start || warn "cannot resume $(basename "$script") -alert"
+        done
+        if (( update_cron_paused && ! update_cron_already_paused )); then
+            if (( update_cron_existed )); then
+                mv -T -- "${update_cron_file}.update-disabled" "$update_cron_file" \
+                    || warn "cannot restore paused cron -alert"
+            else
+                rm -f -- "${update_cron_file}.update-disabled" || warn "cannot clear paused cron -alert"
+            fi
+        fi
+    else
+        if rm -f -- "$update_cron_file"; then
+            warn "update failed; cron remains disabled -alert"
+        else
+            warn "cannot keep project cron paused -alert"
+        fi
+        for unit in "${update_services[@]}"; do
+            systemctl stop "$unit" || warn "cannot keep $unit stopped -alert"
+        done
+        for script in "${update_daemons[@]}"; do
+            bash "$script" --stop || warn "cannot keep $(basename "$script") stopped -alert"
+        done
+    fi
+    (( status != 0 )) || status=1
+    exit "$status"
+}
+
+# INTEGER RANGE
+# Check signed Bash integer limits
+uh_fits() {
+    local value="${1-}" limit
+    [[ "$value" =~ $UH_SINT ]] || return 1
+    if [[ "${value:0:1}" == - ]]; then
+        limit="${UH_MIN#-}"
+        value="${value#-}"
+    else
+        limit="$UH_MAX"
+    fi
+    (( ${#value} < ${#limit} )) && return 0
+    (( ${#value} > ${#limit} )) && return 1
+    [[ "$value" > "$limit" ]] && return 1
+    return 0
+}
 
 # ACL PREPARATION
 # Canonical block -- copied byte for byte into every script that creates a
@@ -397,7 +767,7 @@ acl_prepare() {
         # Checked before the redirection: noclobber only protects regular
         # files, and opening a FIFO for writing blocks until a reader shows up.
         if [ -L "$acl_file" ] || { [ -e "$acl_file" ] && [ ! -f "$acl_file" ]; }; then
-            log "ERROR: $acl_file is not a regular file -abort"
+            log "ERROR: $(basename "$acl_file") is not a regular file -abort"
             exit 1
         fi
         # noclobber makes the redirection fail when the file already exists,
@@ -412,7 +782,7 @@ acl_prepare() {
         elif [ -f "$acl_file" ] && [ ! -L "$acl_file" ]; then
             acl_fix_perms "$acl_file" "$file_mode"
         else
-            log "ERROR: $acl_file is not a regular file -abort"
+            log "ERROR: $(basename "$acl_file") is not a regular file -abort"
             exit 1
         fi
     done
@@ -428,7 +798,7 @@ acl_fix_perms() {
     [[ "$cur_mode" == "$want_mode" && "$cur_owner" == "root:root" ]] && return 0
     if ! { chmod "$want_mode" -- "$acl_path" \
         && chown root:root -- "$acl_path"; }; then
-        log "ERROR: cannot fix $acl_path perms -abort"
+        log "ERROR: cannot fix $(basename "$acl_path") perms -abort"
         exit 1
     fi
     log "INFO: $acl_path perms fixed -fixed"
@@ -575,38 +945,104 @@ check_repo() {
     fi
 }
 
-# ------------------------------------------------------------------------------
-# VARIABLES
-# ------------------------------------------------------------------------------
-
-# validation -- one variable per thing validated; use directly with =~
-UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
-UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
-UH_UINT='^(0|[1-9][0-9]*)$'
-UH_SINT='^(0|-?[1-9][0-9]*)$'
-UH_MAX=9223372036854775807
-UH_MIN=-9223372036854775808
-
-# validation - integer is representable as a signed 64-bit value
-uh_fits() {
-    local value="${1-}" limit
-    [[ "$value" =~ $UH_SINT ]] || return 1
-    if [[ "${value:0:1}" == - ]]; then
-        limit="${UH_MIN#-}"
-        value="${value#-}"
-    else
-        limit="$UH_MAX"
+# LAN SELECTION
+# Select an existing interface and one of its configured IPv4 addresses
+choose_lan_interface() {
+    local preset_iface="${1:-}" excluded_iface="${2:-}"
+    local iface_name iface_choice iface_index iface_addrs
+    local -a lan_candidates=()
+    if [ -n "$preset_iface" ]; then
+        ip link show dev "$preset_iface" >/dev/null 2>&1 || {
+            log "ERROR: LAN interface '$preset_iface' not found -abort"
+            exit 1
+        }
+        [ "$preset_iface" != "$excluded_iface" ] || {
+            log "ERROR: LAN and WAN must differ -abort"
+            exit 1
+        }
+        lan_iface_answer="$preset_iface"
+        return 0
     fi
-    (( ${#value} < ${#limit} )) && return 0
-    (( ${#value} > ${#limit} )) && return 1
-    [[ "$value" > "$limit" ]] && return 1
-    return 0
+    while IFS= read -r iface_name; do
+        [ "$iface_name" = "$excluded_iface" ] && continue
+        lan_candidates+=("$iface_name")
+    done < <(ip -br link show | awk '$1 != "lo" {sub(/@.*/, "", $1); print $1}')
+    (( ${#lan_candidates[@]} > 0 )) || {
+        log "ERROR: no LAN interface available -abort"
+        exit 1
+    }
+    if (( ${#lan_candidates[@]} == 1 )); then
+        lan_iface_answer="${lan_candidates[0]}"
+        return 0
+    fi
+    echo "Available LAN interfaces:"
+    for iface_index in "${!lan_candidates[@]}"; do
+        iface_name="${lan_candidates[$iface_index]}"
+        iface_addrs=$(ip -4 -o addr show dev "$iface_name" scope global | awk '{print $4}' | paste -sd' ')
+        printf ' [%d] %s (%s)\n' "$((iface_index + 1))" "$iface_name" "${iface_addrs:-no IPv4}"
+    done
+    while true; do
+        read -r -p "Select LAN interface number: " iface_choice || {
+            log "ERROR: cannot read LAN interface selection -abort"
+            exit 1
+        }
+        if [[ "$iface_choice" =~ $UH_UINT ]] && [ "${#iface_choice}" -le 5 ] \
+           && [ "$iface_choice" -ge 1 ] && [ "$iface_choice" -le "${#lan_candidates[@]}" ]; then
+            lan_iface_answer="${lan_candidates[$((iface_choice - 1))]}"
+            return 0
+        fi
+        log "INFO: invalid LAN interface selection -retry"
+    done
 }
 
-# ------------------------------------------------------------------------------
-# ENV
-# ------------------------------------------------------------------------------
+read_lan_ipv4() {
+    local selected_iface="$1" preset_ip="${2:-}" ipv4_choice ipv4_index candidate_cidr
+    local -a lan_addresses=()
+    mapfile -t lan_addresses < <(ip -4 -o addr show dev "$selected_iface" scope global | awk '{print $4}')
+    (( ${#lan_addresses[@]} > 0 )) || {
+        log "ERROR: LAN '$selected_iface' has no IPv4 address -abort"
+        exit 1
+    }
+    for candidate_cidr in "${lan_addresses[@]}"; do
+        [[ "$candidate_cidr" =~ $UH_CIDR ]] || {
+            log "ERROR: LAN '$selected_iface' has invalid IPv4/prefix -abort"
+            exit 1
+        }
+    done
+    if [ -n "$preset_ip" ]; then
+        for candidate_cidr in "${lan_addresses[@]}"; do
+            if [ "${candidate_cidr%/*}" = "$preset_ip" ]; then
+                lan_cidr_answer="$candidate_cidr"
+                return 0
+            fi
+        done
+        log "ERROR: requested IPv4 is not configured on LAN -abort"
+        exit 1
+    fi
+    if (( ${#lan_addresses[@]} == 1 )); then
+        lan_cidr_answer="${lan_addresses[0]}"
+        return 0
+    fi
+    echo "IPv4 addresses on LAN '$selected_iface':"
+    for ipv4_index in "${!lan_addresses[@]}"; do
+        printf ' [%d] %s\n' "$((ipv4_index + 1))" "${lan_addresses[$ipv4_index]}"
+    done
+    while true; do
+        read -r -p "Select LAN IPv4 number: " ipv4_choice || {
+            log "ERROR: cannot read LAN IPv4 selection -abort"
+            exit 1
+        }
+        if [[ "$ipv4_choice" =~ $UH_UINT ]] && [ "${#ipv4_choice}" -le 5 ] \
+           && [ "$ipv4_choice" -ge 1 ] && [ "$ipv4_choice" -le "${#lan_addresses[@]}" ]; then
+            lan_cidr_answer="${lan_addresses[$((ipv4_choice - 1))]}"
+            return 0
+        fi
+        log "INFO: invalid LAN IPv4 selection -retry"
+    done
+}
 
+# ENV FILE
+# Create the project configuration file
 create_proxymon_env() {
     local failure_message="cannot create proxymon.env"
     local env_file="/etc/proxymon/proxymon.env"
@@ -649,75 +1085,23 @@ create_proxymon_env() {
     local unattended=false
     [ -n "${PROXYMON_LAN:-}" ] && unattended=true
 
-    # LAN interface
-    if [ "$unattended" = true ]; then
-        [ -e "/sys/class/net/$PROXYMON_LAN" ] || abort "PROXYMON_LAN='$PROXYMON_LAN' not found on this system -abort"
-        lan_answer="$PROXYMON_LAN"
-        echo "LAN interface: $lan_answer (preset)"
-    else
-        echo "Available network interfaces:"
-        failure_message="cannot read the network interface addresses"
-        ip -o -4 addr show scope global | awk '{printf "  %-12s %s\n", $2, $4}'
-        failure_message="cannot find the default LAN interface"
-        lan_default=$(ip -o link | awk -F': ' '$2 != "lo" {print $2; exit}') || { report_failure; exit 1; }
-        lan_default=${lan_default:-eth0}
-        while true; do
-            failure_message="cannot read the LAN interface choice"
-            read -rp "LAN interface (default: $lan_default): " lan_answer
-            lan_answer=${lan_answer:-$lan_default}
-            if [ -e "/sys/class/net/$lan_answer" ]; then
-                break
-            fi
-            echo "Interface '$lan_answer' not found on this system. Try again"
-        done
-    fi
-
-    # Server IP -- PROXYMON_SERVER_IP takes precedence when the caller
-    # supplies it. Otherwise it comes from the interface chosen above.
-    failure_message="cannot collect network interface addresses"
-    mapfile -t iface_ips < <(ip -o -4 addr show dev "$lan_answer" scope global | awk '{print $4}' | cut -d/ -f1)
-    if [ -n "${PROXYMON_SERVER_IP:-}" ]; then
-        [[ "$PROXYMON_SERVER_IP" =~ $UH_IPV4 ]] || abort "PROXYMON_SERVER_IP='$PROXYMON_SERVER_IP' is not a valid IPv4 address -abort"
-        server_ip_answer="$PROXYMON_SERVER_IP"
-        echo "Server IP for LAN: $server_ip_answer (preset)"
-    else
-        case "${#iface_ips[@]}" in
-            0)
-                abort "interface '$lan_answer' has no IPv4 address configured -abort"
-                ;;
-            1)
-                server_ip_answer="${iface_ips[0]}"
-                echo "Server IP for LAN: $server_ip_answer (from $lan_answer)"
-                ;;
-            *)
-                if [ "$unattended" = true ]; then
-                    server_ip_answer="${iface_ips[0]}"
-                    echo "Server IP for LAN: $server_ip_answer (first of ${#iface_ips[@]} on $lan_answer)"
-                else
-                    echo "Interface '$lan_answer' has multiple IPv4 addresses:"
-                    PS3="Select IP number: "
-                    select server_ip_answer in "${iface_ips[@]}"; do
-                        [ -n "$server_ip_answer" ] && break
-                    done
-                    unset PS3
-                fi
-                ;;
-        esac
-    fi
-
-    # Glob pattern used to match per-IP report filenames under REPORT_PATH
-    # (e.g. bandata.sh's "for file in $REPORT_IP_GLOB"). This is NOT a
-    # network range -- it's a filename-matching pattern derived from the
-    # server's own /24, since report files are named after client IPs.
-    failure_message="cannot calculate the report IP pattern"
-    report_glob="$(echo "$server_ip_answer" | cut -d'.' -f1-3).*" || { report_failure; exit 1; }
-
-    # Real network range (CIDR) for the LAN this server serves -- used to
-    # restrict the web panel to LAN clients. Derived from the same /24
-    # assumption as above. For a non-standard subnet, edit RANGE manually
-    # in /etc/proxymon/proxymon.env after installation.
-    failure_message="cannot calculate the LAN address range"
-    lan_range="$(echo "$server_ip_answer" | cut -d'.' -f1-3).0/24" || { report_failure; exit 1; }
+    choose_lan_interface "${PROXYMON_LAN:-}"
+    lan_answer="$lan_iface_answer"
+    read_lan_ipv4 "$lan_answer" "${PROXYMON_SERVER_IP:-}"
+    server_ip_answer="${lan_cidr_answer%/*}"
+    local -a lan_network_values
+    mapfile -t lan_network_values < <(python3 -c '
+import ipaddress, sys
+network = ipaddress.IPv4Interface(sys.argv[1]).network
+octets = str(network.network_address).split(".")
+fixed = network.prefixlen // 8
+print(network)
+print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
+' "$lan_cidr_answer")
+    [ "${#lan_network_values[@]}" -eq 2 ] || abort "cannot calculate LAN network -abort"
+    lan_range="${lan_network_values[0]}"
+    report_glob="${lan_network_values[1]}"
+    info "LAN interface: $lan_answer ($lan_cidr_answer)"
 
     # Bandwidth limits -- validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
     read_bandwidth() {
@@ -877,34 +1261,60 @@ ENVEOF
 # INSTALL
 # ------------------------------------------------------------------------------
 
-# CRON_D
-# Add or replace one line in the project's single cron.d file
-cron_d_set() {
-    local match="$1" line="$2"
+# CRON FILE
+# Publish the complete project schedule after preparing it successfully.
+cron_d_write() (
     local cron_file="/etc/cron.d/proxymon"
     local cron_tmp
 
-    cron_tmp=$(mktemp) || return 1
-    if [ -f "$cron_file" ]; then
-        grep -vF "$match" "$cron_file" > "$cron_tmp" || {
-            [ "$?" -eq 1 ] || { rm -f "$cron_tmp"; return 1; }
-        }
+    [ "$#" -gt 0 ] || return 1
+    [ ! -L "${cron_file}.lock" ] || return 1
+    (umask 077; : >> "${cron_file}.lock") || return 1
+    exec 201>"${cron_file}.lock" || return 1
+    flock -x 201 || return 1
+    if [ -e "${cron_file}.update-disabled" ] && [ "${UPDATE_CRON_OWNER:-}" != "$$" ]; then
+        return 1
     fi
-    if [ -n "$line" ]; then
-        printf '%s\n' "$line" >> "$cron_tmp" || {
-            rm -f "$cron_tmp"
-            return 1
-        }
+    [ ! -L "$cron_file" ] || return 1
+    [ ! -e "$cron_file" ] || [ -f "$cron_file" ] || return 1
+
+    cron_tmp=$(mktemp "${cron_file}.XXXXXX") || return 1
+    trap 'rm -f -- "$cron_tmp"' EXIT
+    {
+        printf '%s\n' '# Managed by the project installer; manual changes are replaced.'
+        printf '%s\n' 'SHELL=/bin/bash' 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+        printf '%s\n' "$@"
+    } > "$cron_tmp" || return 1
+    chmod 644 "$cron_tmp" && chown root:root "$cron_tmp" || return 1
+    mv -fT -- "$cron_tmp" "$cron_file" || return 1
+)
+
+# PROJECT SCHEDULE
+# Publish all tasks defined by this project
+register_project_cron() {
+    cron_d_write \
+        "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today" \
+        "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock" \
+        "*/5 * * * * root $CONFIG_DIR/bandata/bandata.sh" \
+        "@monthly root $CONFIG_DIR/tools/pmbk.sh"
+}
+
+# APACHE LOGROTATE
+# Apache keeps 14 rotations by default; the projects keep 7
+set_apache_logrotate() {
+    local apache_rotate="/etc/logrotate.d/apache2"
+    [ -f "$apache_rotate" ] || { warn "apache2 has no logrotate file -alert"; return 0; }
+    if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$apache_rotate"; then
+        info "${apache_rotate#/etc/} already rotate 7 -skip"
+        return 0
     fi
-    if [ -s "$cron_tmp" ]; then
-        if ! install -m 644 -o root -g root "$cron_tmp" "$cron_file"; then
-            rm -f "$cron_tmp"
-            return 1
-        fi
+    cp -f "$apache_rotate"{,.bak} &>/dev/null || true
+    sed -i -E 's/^([[:space:]]*)rotate[[:space:]]+[0-9]+$/\1rotate 7/' "$apache_rotate"
+    if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$apache_rotate"; then
+        info "${apache_rotate#/etc/} set to rotate 7 -fixed"
     else
-        rm -f "$cron_file"
+        warn "cannot set rotate 7 in ${apache_rotate#/etc/} -alert"
     fi
-    rm -f "$cron_tmp"
 }
 
 install_project_logrotate() {
@@ -930,6 +1340,7 @@ EOF
     chown root:root "$rotate_file" || return 1
     chmod 644 "$rotate_file" || return 1
     info "updated $rotate_file"
+    set_apache_logrotate
 }
 
 do_install() {
@@ -941,6 +1352,8 @@ do_install() {
     if [[ -d "$WEB_ROOT" ]]; then
         abort "proxymon already installed -abort"
     fi
+    failure_message="cannot check the internet connection"
+    check_internet
     failure_message="cannot install Apache and PHP packages"
     install_apache2
     failure_message="cannot install Squid packages"
@@ -976,7 +1389,7 @@ do_install() {
     info "updated squidreports/domain-suffixes-update.sh"
     info "updated squidreports/proxymonenv.sh"
 
-    log "Configuring Apache..."
+    log "EVENT: Configuring Apache..."
 
     if [[ -f "config/web/proxymon.conf" ]]; then
         failure_message="cannot copy proxymon.conf"
@@ -992,9 +1405,9 @@ do_install() {
 
     [ -f /etc/apache2/ports.conf.bak ] || cp -f /etc/apache2/ports.conf{,.bak} &>/dev/null || true
 
-    log "Configuring Squid Monitor..."
+    log "EVENT: Configuring Squid Monitor..."
 
-    log "Configuring Squidreports..."
+    log "EVENT: Configuring Squidreports..."
     if "$WEB_ROOT/squidreports/squidreports.pl" today; then
         info "initial squidreports report generated"
     else
@@ -1004,7 +1417,7 @@ do_install() {
     failure_message="cannot update Apache site locations"
     configure_apache_locations
 
-    log "Configuring ACL directories and files..."
+    log "EVENT: Configuring ACL directories and files..."
     # Load env to get ACL paths defined by create_proxymon_env()
     # Verify ownership/permissions before sourcing -- this file is executed
     # as root, so it must not be writable by anyone other than root.
@@ -1027,12 +1440,14 @@ do_install() {
     load_proxymon_env "$env_file_path" || abort "cannot load proxymon.env -abort"
 
     # Create ACL directories
-    # ACL_BANDATA_PATH is not created here: it ships inside config/bandata/acl/
-    # with its 4 files already present, copied to $CONFIG_DIR above and
-    # given root ownership by the "Setting Permissions" step below.
+    # ACL_BANDATA_PATH ships inside config/bandata/acl/ with its 4 files
+    # already present, copied to $CONFIG_DIR above. Only its permissions are
+    # set here, through the same block, because only root reads those lists.
     acl_prepare "$ACL_PATH" 755 644
     acl_prepare "$ACL_MAC_PATH" 700 600
     acl_prepare "$ACL_SQUID_PATH" 755 644
+    acl_prepare "$ACL_BANDATA_PATH" 700 600 "$ALLOW_LIST" \
+        "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
     info "ACL directories created"
 
     # Create Squidreports report directory if it does not exist
@@ -1079,17 +1494,7 @@ do_install() {
             && acl_fix_perms "$ACL_SQUID_PATH/blockpatterns.txt" 644
     fi
 
-    failure_message="cannot update the project cron file"
-    cron_d_set "$CONFIG_DIR/bandata/bandata.sh" "*/5 * * * * root $CONFIG_DIR/bandata/bandata.sh"
-
-    # Squidreports runs as www-data. In /etc/cron.d the user is a field of
-    # the line, so it lives in the project's own file.
-    failure_message="cannot update the project cron file"
-    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
-    failure_message="cannot update the project cron file"
-    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
-
-    log "Updating Prefork MPM..."
+    log "EVENT: Updating Prefork MPM..."
     [ -f /etc/apache2/mods-available/mpm_prefork.conf.bak ] || cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null || true
     failure_message="cannot edit mpm_prefork.conf"
     sed -i \
@@ -1100,7 +1505,7 @@ do_install() {
       -e 's/^\(MaxConnectionsPerChild[[:space:]]*\)0/\11000/' \
     /etc/apache2/mods-available/mpm_prefork.conf
 
-    log "Updating PHP..."
+    log "EVENT: Updating PHP..."
     [ -f /etc/php/$php_version/apache2/php.ini.bak ] || cp -f /etc/php/$php_version/apache2/php.ini{,.bak} &>/dev/null || true
     failure_message="cannot edit Apache php.ini"
     sed -i \
@@ -1123,7 +1528,7 @@ do_install() {
      /etc/php/$php_version/apache2/php.ini
 
     # Hardening
-    log "Updating Apache2 Security..."
+    log "EVENT: Updating Apache2 Security..."
     if [ -f /etc/apache2/conf-available/security.conf ]; then
         [ -f /etc/apache2/conf-available/security.conf.bak ] || cp -f /etc/apache2/conf-available/security.conf{,.bak} &>/dev/null || true
     else
@@ -1169,7 +1574,7 @@ do_install() {
     failure_message="cannot enable Apache security configuration"
     a2enconf security &>/dev/null
 
-    log "Configuring SquidAI..."
+    log "EVENT: Configuring SquidAI..."
     failure_message="cannot create $(basename "$CONFIG_DIR")"
     mkdir -p "$CONFIG_DIR" "$(dirname "$LLM_ENV_FILE")"
     if [ ! -f "$LLM_ENV_FILE" ]; then
@@ -1258,7 +1663,7 @@ EOF
     info "SquidAI config directory created: $CONFIG_DIR/"
     info "Edit $LLM_ENV_FILE and set your LLM credentials"
 
-    log "Setting Permissions..."
+    log "EVENT: Setting Permissions..."
     find "$WEB_ROOT" -type d -exec chmod 755 {} +
     find "$WEB_ROOT" -type f -exec chmod 644 {} +
     find "$WEB_ROOT" -type f -name "*.cgi" -exec chmod +x {} +
@@ -1274,8 +1679,11 @@ EOF
     failure_message="cannot set owner of Squid Monitor config"
     chown -h www-data:www-data "$SQUIDMON_CONFIG"
 
-    find "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools" -type d -exec chmod 755 {} +
-    find "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools" -type f -exec chmod 644 {} +
+    # acl/ is pruned: its permissions belong to the ACL block, per rules.md 14
+    find "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools" -path "$ACL_BANDATA_PATH" \
+        -prune -o -type d -exec chmod 755 {} +
+    find "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools" -path "$ACL_BANDATA_PATH" \
+        -prune -o -type f -exec chmod 644 {} +
     failure_message="cannot set permissions on bandata.sh"
     chmod 755 "$CONFIG_DIR/bandata/bandata.sh"
     failure_message="cannot set permissions on pmbk.sh"
@@ -1300,7 +1708,7 @@ EOF
     failure_message="cannot set permissions on squid.conf"
     chmod 644 /etc/squid/squid.conf
 
-    log "Setting Logs..."
+    log "EVENT: Setting Logs..."
     failure_message="cannot create Apache log files"
     touch /var/log/apache2/{warning_access,warning_error,proxymon_access,proxymon_error}.log
     failure_message="cannot set owner of Apache log files"
@@ -1320,7 +1728,7 @@ EOF
     fi
     shopt -u nullglob
 
-    log "Enabling Apache Modules..."
+    log "EVENT: Enabling Apache Modules..."
     a2dismod mpm_event 2>/dev/null || true
     # mod_cgid requires a threaded MPM (worker/event) and is incompatible
     # with mpm_prefork enabled below. Use mod_cgi instead.
@@ -1337,14 +1745,14 @@ EOF
         abort "cannot enable Apache module '$apache_mod', check it is installed -abort"
     done
 
-    log "Enabling Apache Sites..."
+    log "EVENT: Enabling Apache Sites..."
     a2ensite proxymon.conf || abort "cannot enable proxymon.conf -abort"
     a2ensite warning.conf || abort "cannot enable warning.conf -abort"
 
-    log "Restarting Cron..."
+    log "EVENT: Restarting Cron..."
     systemctl restart cron || abort "cannot restart cron -abort"
 
-    log "Restarting Apache2..."
+    log "EVENT: Restarting Apache2..."
     systemctl daemon-reload || abort "cannot reload systemd configuration -abort"
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
         a2dissite proxymon.conf 2>/dev/null || true
@@ -1360,9 +1768,7 @@ EOF
     failure_message="cannot list enabled Apache sites"
     a2query -s
 
-    if [ -x "$CONFIG_DIR/tools/pmbk.sh" ]; then
-        "$CONFIG_DIR/tools/pmbk.sh" --install || warn "pmbk.sh: monthly backup setup failed -alert"
-    fi
+    register_project_cron || abort "cannot write proxymon cron -abort"
 
     info "Proxy Monitor installed successfully"
     # The panel is bound to loopback above and proxymon.conf allows 127.0.0.1
@@ -1444,114 +1850,53 @@ secure_web_code() (
 # entries. Copies every file under modules/ except web_preserved_paths.
 
 do_update() {
-    local failure_message="cannot finish the Proxymon update"
-    failure_message="cannot read locations from proxymon.env"
     configure_locations
-    if [[ ! -d "$WEB_ROOT" ]]; then
-        abort "proxymon not installed -abort"
-    fi
-
-    local configured_port old_ports
-    old_ports=$(sed -nE 's/^<VirtualHost [^:]+:([0-9]+)>$/\1/p' /etc/apache2/sites-available/proxymon.conf /etc/apache2/sites-available/warning.conf 2>/dev/null || true)
-    for configured_port in "$PANEL_PORT" "$WARNING_PORT"; do
-        if ! grep -qx "$configured_port" <<< "$old_ports"; then
-            if grep -qE "^Listen ([^[:space:]]*:)?${configured_port}([[:space:]]|$)" /etc/apache2/ports.conf; then
-                abort "port $configured_port already belongs to Apache -abort"
-            fi
-            failure_message="cannot check the required network port"
-            check_port tcp "$configured_port" "configured application port"
-        fi
+    [ -d "$WEB_ROOT" ] || abort "proxymon is not installed -abort"
+    [ -f /etc/apache2/ports.conf ] && [ ! -L /etc/apache2/ports.conf ] \
+        || update_error "required destination missing or invalid: /etc/apache2/ports.conf"
+    update_reset /etc/cron.d/proxymon
+    local file rel mode
+    [ -r "$script_dir/config/update-files.txt" ] || update_error "missing source: config/update-files.txt"
+    while IFS= read -r rel || [ -n "$rel" ]; do
+        [ -n "$rel" ] || continue
+        [[ "$rel" != /* && "$rel" != *..* ]] || update_error "invalid module path in update-files.txt"
+        mode=644
+        case "$rel" in *.cgi|squidreports/squidreports.pl|squidreports/domain-suffixes-update.sh) mode=755 ;; esac
+        update_file "$script_dir/modules/$rel" "$WEB_ROOT/$rel" "$mode" root:root
+    done < "$script_dir/config/update-files.txt"
+    for file in bandata/bandata.sh tools/pmbk.sh tools/proxymonenv.sh tools/squidtool.sh; do
+        mode=755
+        [ "$file" != tools/proxymonenv.sh ] || mode=644
+        update_file "$script_dir/config/$file" "$CONFIG_DIR/$file" "$mode" root:root
     done
-
-    failure_message="cannot check required repository files"
-    check_repo
-
-    systemctl stop apache2 || abort "cannot stop apache2 -abort"
-    info "apache2 stopped for update"
-    trap 'systemctl start apache2 >/dev/null 2>&1 || true' EXIT
-
-    if bash "$script_dir/config/tools/pmbk.sh"; then
-        info "backup taken with pmbk.sh"
-    else
-        abort "pmbk.sh: backup failed -abort"
-    fi
-
-    secure_web_code "$WEB_ROOT" 1 || abort "cannot update web code -abort"
-    failure_message="cannot deploy the suffix updater"
-    install -m 644 -o root -g root config/tools/proxymonenv.sh "$WEB_ROOT/squidreports/proxymonenv.sh"
-    chmod 755 "$WEB_ROOT/squidreports/domain-suffixes-update.sh"
-    info "updated squidreports/domain-suffixes-update.sh"
-    info "updated squidreports/proxymonenv.sh"
-    failure_message="cannot remove weekly.cgi"
-    rm -f -- "$WEB_ROOT/squidreports/weekly.cgi"
-    failure_message="cannot remove ip2name.dhcp"
-    rm -f -- "$WEB_ROOT/squidreports/ip2name/ip2name.dhcp"
-    info "updated web code in $WEB_ROOT"
-
-    # The root scripts, copied one by one. config/bandata/acl/ is live data
-    # and config/web/ is Apache configuration, so neither is touched.
-    failure_message="cannot create $(basename "$CONFIG_DIR")"
-    mkdir -p "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools"
-    failure_message="cannot copy bandata.sh"
-    cp -f config/bandata/bandata.sh "$CONFIG_DIR/bandata/bandata.sh"
-    info "updated bandata/bandata.sh"
-    failure_message="cannot copy pmbk.sh"
-    cp -f config/tools/pmbk.sh "$CONFIG_DIR/tools/pmbk.sh"
-    info "updated tools/pmbk.sh"
-    failure_message="cannot copy proxymonenv.sh"
-    install -m 644 -o root -g root config/tools/proxymonenv.sh "$CONFIG_DIR/tools/proxymonenv.sh"
-    info "updated tools/proxymonenv.sh"
-    failure_message="cannot remove proxymon-env.sh"
-    rm -f -- "$CONFIG_DIR/tools/proxymon-env.sh"
-    failure_message="cannot copy squidtool.sh"
-    cp -f config/tools/squidtool.sh "$CONFIG_DIR/tools/squidtool.sh"
-    info "updated tools/squidtool.sh"
-
-    for data_dir in "$REPORT_PATH" "$REPORT_STATS_PATH"; do
-        [ -d "$data_dir" ] || install -d -m 755 -o www-data -g www-data "$data_dir"
-    done
-
-    [ -d "$TOOL_REPORT_DIR" ] || install -d -m 755 -o root -g root "$TOOL_REPORT_DIR"
-
-    info "ACL lists and reports were not changed -skip"
-
-    failure_message="cannot set permissions on bandata.sh"
-    chmod 755 "$CONFIG_DIR/bandata/bandata.sh"
-    failure_message="cannot set permissions on pmbk.sh"
-    chmod 755 "$CONFIG_DIR/tools/pmbk.sh"
-    failure_message="cannot set permissions on squidtool.sh"
-    chmod 755 "$CONFIG_DIR/tools/squidtool.sh"
-    failure_message="cannot set owner of bandata.sh"
-    chown root:root "$CONFIG_DIR/bandata/bandata.sh"
-    failure_message="cannot set owner of pmbk.sh"
-    chown root:root "$CONFIG_DIR/tools/pmbk.sh"
-    failure_message="cannot set owner of squidtool.sh"
-    chown root:root "$CONFIG_DIR/tools/squidtool.sh"
-    info "updated scripts are executable and owned by root"
-
-    failure_message="cannot update Apache site locations"
+    update_file "$script_dir/config/tools/proxymonenv.sh" "$WEB_ROOT/squidreports/proxymonenv.sh" 644 root:root
+    update_target /etc/apache2/ports.conf
+    update_target /etc/apache2/sites-available/proxymon.conf
+    update_target /etc/apache2/sites-available/warning.conf
+    update_target /var/log/proxymon.log 640 root:adm
+    update_target /etc/logrotate.d/squid.bak
+    update_target /etc/logrotate.d/squid
+    update_target /etc/logrotate.d/proxymon
+    update_target "$REPORT_PATH" d755 www-data:www-data
+    update_target "$REPORT_STATS_PATH" d755 www-data:www-data
+    update_target "$TOOL_REPORT_DIR" d755 root:root
+    update_target "$update_cron_file"
+    update_target "${update_cron_file}.lock" 600
+    update_preflight
+    update_backup "$script_dir/config/tools/pmbk.sh"
+    update_begin
+    update_stop_service apache2
+    update_wait_jobs
+    update_apply
+    secure_web_code "$WEB_ROOT" 0 || update_error "cannot set web code permissions"
+    rm -f -- "$WEB_ROOT/squidreports/weekly.cgi" "$WEB_ROOT/squidreports/ip2name/ip2name.dhcp" \
+        || update_error "cannot remove obsolete web code"
     configure_apache_locations
-    failure_message="cannot update Squid logrotate settings"
     set_squid_logrotate
-    install_project_logrotate || abort "cannot configure proxymon log rotation -abort"
-    failure_message="cannot update the project cron file"
-    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl today" "*/10 * * * * www-data $WEB_ROOT/squidreports/squidreports.pl today"
-    failure_message="cannot update the project cron file"
-    cron_d_set "$WEB_ROOT/squidreports/squidreports.pl yesterday" "5 0 * * * www-data $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
-    failure_message="cannot update the project cron file"
-    cron_d_set "$CONFIG_DIR/bandata/bandata.sh" "*/5 * * * * root $CONFIG_DIR/bandata/bandata.sh"
-    failure_message="cannot update the project cron file"
-    cron_d_set "$CONFIG_DIR/tools/pmbk.sh" "@monthly root $CONFIG_DIR/tools/pmbk.sh"
-    apache2ctl configtest || abort "Apache configuration invalid -abort"
-
-    trap - EXIT
-    if systemctl start apache2; then
-        info "apache2 started"
-    else
-        err "Apache failed to start -abort"
-        exit 1
-    fi
-
+    install_project_logrotate || update_error "cannot configure proxymon log rotation"
+    apache2ctl configtest || update_error "Apache configuration invalid"
+    register_project_cron || update_error "cannot regenerate proxymon cron"
+    update_finish
     info "Proxy Monitor updated successfully"
 }
 
@@ -1569,7 +1914,7 @@ do_uninstall() {
     fi
     failure_message="cannot read locations from proxymon.env"
     configure_locations
-    log "Uninstalling Proxy Monitor..."
+    log "EVENT: Uninstalling Proxy Monitor..."
 
     if [[ ! -d "$WEB_ROOT" ]] && [[ ! -d "$CONFIG_DIR" ]]; then
         info "Proxy Monitor is not installed"
@@ -1590,7 +1935,7 @@ do_uninstall() {
     fi
 
     failure_message="cannot remove proxymon"
-    rm -f /etc/cron.d/proxymon
+    rm -f /etc/cron.d/proxymon /etc/cron.d/proxymon.update-disabled
     info "proxymon cron entries removed"
 
     if command -v iptables >/dev/null 2>&1; then
@@ -1787,11 +2132,19 @@ USAGE_END
 }
 
 # ------------------------------------------------------------------------------
+# ENV
+# ------------------------------------------------------------------------------
+
+# LOAD_CONF
+# Load the shared configuration reader
+source "$script_dir/config/tools/proxymonenv.sh"
+
+# ------------------------------------------------------------------------------
 # ACTIONS
 # ------------------------------------------------------------------------------
 
 # Run the action given on the command line, or fall back to the menu
-log "pmsetup start..."
+log "EVENT: pmsetup start..."
 
 case "${1:-}" in
     --install) do_install ;;
@@ -1800,11 +2153,11 @@ case "${1:-}" in
     "") show_menu ;;
     -h|--help) usage ;;
     *)
-        err "unknown option $1 -abort"
+        err "invalid option -abort"
         failure_message="cannot display installer usage"
         usage
         exit 1
         ;;
 esac
 
-log "pmsetup done at: $(date '+%Y-%m-%d %H:%M:%S')"
+log "EVENT: pmsetup done"

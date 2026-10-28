@@ -534,6 +534,6 @@ show_menu() {
 # END
 # ------------------------------------------------------------------------------
 
-log "squidtool start..."
+log "EVENT: squidtool start..."
 show_menu
-log "squidtool done at: $(date '+%Y-%m-%d %H:%M:%S')"
+log "EVENT: squidtool done"

@@ -48,12 +48,68 @@ if ! flock -n 200; then
     exit 1
 fi
 
-for dep_pkg in curl python3 coreutils util-linux; do
+for dep_pkg in curl python3 coreutils util-linux iproute2 libc-bin; do
     if [ "$(dpkg-query -W -f='${db:Status-Status}' "$dep_pkg" 2>/dev/null)" != installed ]; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
     fi
 done
+
+# check ipv4 interfaces
+list_ifaces() {
+    ip -br link show 2>/dev/null | awk '$1 != "lo" {sub(/@.*/, "", $1); printf "%s %s\n", $1, ($2 == "UP") ? "UP" : "DOWN"}'
+}
+
+list_ipv4_ifaces() {
+    local iface state
+    while read -r iface state; do
+        [ "$state" = UP ] || continue
+        if ip -4 -o addr show dev "$iface" scope global 2>/dev/null \
+            | awk '$4 != "" {found=1} END {exit !found}'; then
+            printf '%s\n' "$iface"
+        fi
+    done < <(list_ifaces)
+}
+
+check_ipv4_interfaces() {
+    local max_attempts=24 attempt=1
+
+    while (( attempt <= max_attempts )); do
+        if [ -n "$(list_ipv4_ifaces)" ]; then
+            return 0
+        fi
+        if (( attempt == 1 )); then
+            log "INFO: waiting for an interface with IPv4..."
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+
+    log "ERROR: no interface with IPv4 -abort"
+    exit 1
+}
+
+# check internet
+check_internet() {
+    local max_attempts=24 attempt=1
+
+    while (( attempt <= max_attempts )); do
+        if getent hosts www.google.com >/dev/null 2>&1; then
+            return 0
+        fi
+        if (( attempt == 1 )); then
+            log "INFO: waiting for internet..."
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+
+    log "ERROR: no internet connection -abort"
+    exit 1
+}
+
+check_ipv4_interfaces
+check_internet
 
 # ------------------------------------------------------------------------------
 # VARIABLES
@@ -143,7 +199,7 @@ unset key_errors key_error env_key
 # UPDATE
 # ------------------------------------------------------------------------------
 
-log "domain-suffixes-update start..."
+log "EVENT: domain-suffixes-update start..."
 
 if [ "$#" -ne 0 ]; then
     log "ERROR: no arguments are accepted -abort"
@@ -263,7 +319,7 @@ if [ -f "$suffix_file" ]; then
     compare_status=$?
     if [ "$compare_status" -eq 0 ]; then
         log "INFO: domain-suffixes.txt is current -skip"
-        log "domain-suffixes-update done at: $(date '+%Y-%m-%d %H:%M:%S')"
+        log "EVENT: domain-suffixes-update done"
         exit 0
     elif [ "$compare_status" -gt 1 ]; then
         log "ERROR: cannot compare domain-suffixes.txt -abort"
@@ -291,4 +347,4 @@ log "INFO: updated domain-suffixes.txt"
 # END
 # ------------------------------------------------------------------------------
 
-log "domain-suffixes-update done at: $(date '+%Y-%m-%d %H:%M:%S')"
+log "EVENT: domain-suffixes-update done"
