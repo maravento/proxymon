@@ -30,11 +30,34 @@ FILE: README.md
 
 ---
 
-Only tested on Ubuntu 24.04/26.04 LTS. Other versions or distributions are not tested and are used at your own risk.
+### Compatibility
 
-|   CPU   |   RAM   |   Storage   |   Dependencies   |
-| :-----: | :-----: | :---------: | :--------------: |
-| Intel Core i5/Xeon/AMD Ryzen 5 (≥ 3.0 GHz) | 16 GB | 2 GB SSD | Squid Cache v6.13, Apache v2.4.58, PHP 8.3.6 |
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      Only tested on Ubuntu 24.04/26.04 LTS. Other versions or distributions are not tested and are used at your own risk.
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      Solo probado en Ubuntu 24.04/26.04 LTS. Otras versiones o distribuciones no están probadas y se usan bajo tu responsabilidad.
+    </td>
+  </tr>
+</table>
+
+### Hardware
+
+|   CPU   |   RAM   |   Storage   |
+| :-----: | :-----: | :---------: |
+| Intel Core i5/Xeon/AMD Ryzen 5 (≥ 3.0 GHz) | 16 GB | 2 GB SSD |
+
+### Software
+
+| Component | Version |
+| :-------: | :-----: |
+| Squid Cache | v6.13 |
+| Apache | v2.4.58 |
+| PHP | 8.3.6 |
+
+### Packages
 
 <table width="100%">
   <tr>
@@ -219,10 +242,10 @@ sudo bash pmsetup.sh --help   # or -h
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      When several interfaces are available, select the LAN interface from the list. Installation aborts with <code>ERROR: ... -abort</code> if the selected LAN has no configured IPv4 address. Select an address when several exist. The network and mask come from that address and its actual prefix. These installers do not configure network interfaces. Explicit interface/address values supplied by a parent installer reuse its selection.
+      Only interfaces with an UP link and global IPv4 are candidates. With none, abort; with one, select LAN automatically; with several, ask for LAN and omit the others. A caller can provide <code>PROXYMON_LAN</code>; validate it against the candidates and reuse it without asking for the interface. With several LAN IPv4 addresses, ask which to use unless <code>PROXYMON_SERVER_IP</code> supplies a configured address. An existing <code>proxymon.env</code> is preserved without repeating network selection. Derive the network and mask from the selected address and its actual prefix. The installer does not configure network interfaces.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Si existen varias interfaces, selecciona LAN desde la lista. La instalación aborta con <code>ERROR: ... -abort</code> si LAN no tiene IPv4 configurada. Selecciona una dirección cuando existan varias. La red y máscara proceden de esa dirección y su prefijo real. Estos instaladores no configuran interfaces. Los valores explícitos enviados por otro instalador reutilizan su selección.
+      Solo son candidatas las interfaces con enlace UP e IPv4 global. Sin candidatas, aborta; con una, selecciona LAN automáticamente; con varias, pregunta LAN y omite las demás. Otro instalador puede proporcionar <code>PROXYMON_LAN</code>; se valida contra las candidatas y se reutiliza sin preguntar la interfaz. Con varias IPv4 en LAN, pregunta cuál utilizar salvo que <code>PROXYMON_SERVER_IP</code> indique una dirección configurada. Un <code>proxymon.env</code> existente se conserva sin repetir la selección de red. Calcula red y máscara desde la dirección seleccionada y su prefijo real. El instalador no configura las interfaces de red.
     </td>
   </tr>
 </table>
@@ -231,7 +254,7 @@ sudo bash pmsetup.sh --help   # or -h
 
 | Description | Descripción |
 | --- | --- |
-| • `update` updates the web content under `WEB_ROOT`, the root scripts under `CONFIG_DIR` and their permissions.<br><br>• Preserves PHP configuration, ACL lists and both configuration files (`proxymon.env` and the LLM `.env`) unchanged. Applies these values to Apache paths, Listen directives and the parser, Bandata and backup cron entries; retains other virtualhost directives.<br><br>• Stops Apache, creates a backup with `pmbk.sh`, replaces the code and restarts Apache.<br><br>• Application code and its directories are owned by `root`; preserved data and configuration retain their ownership.<br><br>• Does not change the ownership or permissions of the shared `/var/www` directory.<br><br>• Rejects symbolic links in code directories and replaces code files without following destination links.<br><br>• The copy excludes the preserved files and directories listed below. | • `update` actualiza el contenido web de `WEB_ROOT`, los scripts ejecutados como root de `CONFIG_DIR` y sus permisos.<br><br>• Conserva la configuración de PHP, las listas ACL y ambos archivos de configuración (`proxymon.env` y `.env` del LLM) sin modificaciones. Aplica estos valores a las rutas de Apache, sus directivas Listen y las entradas de cron del parser, Bandata y copias; mantiene las demás directivas de los virtualhosts.<br><br>• Detiene Apache, crea una copia de seguridad con `pmbk.sh`, reemplaza el código y vuelve a iniciar Apache.<br><br>• El código de la aplicación y sus directorios pertenecen a `root`; los datos y la configuración preservados conservan sus propietarios.<br><br>• No cambia el propietario ni los permisos del directorio compartido `/var/www`.<br><br>• Rechaza enlaces simbólicos en directorios de código y reemplaza archivos de código sin seguir enlaces de destino.<br><br>• La copia excluye los archivos y directorios preservados que se enumeran a continuación. |
+| • `update` updates the web content under `WEB_ROOT`, the root scripts under `CONFIG_DIR` and their permissions.<br><br>• Preserves PHP configuration, ACL lists and both configuration files (`proxymon.env` and the LLM `.env`) unchanged. Applies these values to Apache paths, Listen directives and the parser, Bandata and backup cron entries; retains other virtualhost directives.<br><br>• Creates a backup with `pmbk.sh` before stopping Apache, replaces the code and resumes Apache according to its recorded state.<br><br>• Application code and its directories are owned by `root`; preserved data and configuration retain their ownership.<br><br>• Does not change the ownership or permissions of the shared `/var/www` directory.<br><br>• Rejects symbolic links in code directories and replaces code files without following destination links.<br><br>• The copy excludes the preserved files and directories listed below. | • `update` actualiza el contenido web de `WEB_ROOT`, los scripts ejecutados como root de `CONFIG_DIR` y sus permisos.<br><br>• Conserva la configuración de PHP, las listas ACL y ambos archivos de configuración (`proxymon.env` y `.env` del LLM) sin modificaciones. Aplica estos valores a las rutas de Apache, sus directivas Listen y las entradas de cron del parser, Bandata y copias; mantiene las demás directivas de los virtualhosts.<br><br>• Crea una copia de seguridad con `pmbk.sh` antes de detener Apache, reemplaza el código y reanuda Apache según su estado registrado.<br><br>• El código de la aplicación y sus directorios pertenecen a `root`; los datos y la configuración preservados conservan sus propietarios.<br><br>• No cambia el propietario ni los permisos del directorio compartido `/var/www`.<br><br>• Rechaza enlaces simbólicos en directorios de código y reemplaza archivos de código sin seguir enlaces de destino.<br><br>• La copia excluye los archivos y directorios preservados que se enumeran a continuación. |
 
 | Path | Description | Descripción |
 | ---- | ------------ | ----------- |

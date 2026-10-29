@@ -356,7 +356,7 @@ check_conflicts() {
 # port in use
 check_port() {
     local proto="$1" port="$2" role="$3"
-    if [ -n "$(ss -lnH "-${proto,,}" "sport = :$port" 2>/dev/null)" ]; then
+    if [ -n "$(ss -lnH "--${proto,,}" "sport = :$port" 2>/dev/null)" ]; then
         err "${proto^^} port $port in use by another $role"
         abort "stop that service before installing -abort"
     fi
@@ -369,7 +369,6 @@ check_port() {
 proxymon_env="/etc/proxymon/proxymon.env"
 
 # validation -- one variable per thing validated; use directly with =~
-UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
 UH_SINT='^(0|-?[1-9][0-9]*)$'
@@ -415,7 +414,6 @@ update_reset() {
     update_jobs=()
     update_services=()
     update_stopped_services=()
-    update_daemons=()
     update_copying=0
     update_cron_paused=0
     update_cron_existed=0
@@ -588,16 +586,6 @@ update_wait() {
     update_error "process still running: $(basename "$script")"
 }
 
-update_stop_daemon() {
-    local script="$1" pids
-    pids=$(update_pids "$script") || update_error "cannot inspect processes: $script"
-    if [ -n "$pids" ]; then
-        update_daemons+=("$script")
-        bash "$script" --stop || update_error "cannot stop daemon: $script"
-        update_wait "$script"
-    fi
-}
-
 update_stop_service() {
     local unit="$1" state load_state
     load_state=$(systemctl show -p LoadState --value "$unit") || update_error "cannot inspect service: $unit"
@@ -665,7 +653,7 @@ update_apply() {
 }
 
 update_resume() {
-    local unit script state
+    local unit state
     for unit in "${update_services[@]}"; do
         systemctl start "$unit" || update_error "cannot start service: $unit"
         state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect started: $unit"
@@ -673,10 +661,6 @@ update_resume() {
             log "ERROR: $unit state: $state"
             update_error "$unit did not start"
         }
-    done
-    for script in "${update_daemons[@]}"; do
-        bash "$script" --start || update_error "cannot start daemon: $script"
-        [ -n "$(update_pids "$script")" ] || update_error "daemon did not start: $script"
     done
 }
 
@@ -688,14 +672,11 @@ update_finish() {
 }
 
 update_cleanup() {
-    local status="$1" unit script
+    local status="$1" unit
     trap - EXIT
     if (( update_copying == 0 )); then
         for unit in "${update_services[@]}"; do
             systemctl start "$unit" || warn "cannot resume $unit -alert"
-        done
-        for script in "${update_daemons[@]}"; do
-            bash "$script" --start || warn "cannot resume $(basename "$script") -alert"
         done
         if (( update_cron_paused && ! update_cron_already_paused )); then
             if (( update_cron_existed )); then
@@ -713,9 +694,6 @@ update_cleanup() {
         fi
         for unit in "${update_services[@]}"; do
             systemctl stop "$unit" || warn "cannot keep $unit stopped -alert"
-        done
-        for script in "${update_daemons[@]}"; do
-            bash "$script" --stop || warn "cannot keep $(basename "$script") stopped -alert"
         done
     fi
     (( status != 0 )) || status=1
@@ -945,28 +923,44 @@ check_repo() {
     fi
 }
 
+# IFACES
+# List network interfaces other than loopback
+list_ifaces() {
+    ip -br link show 2>/dev/null | awk '$1 != "lo" {sub(/@.*/, "", $1); printf "%s %s\n", $1, ($2 == "UP") ? "UP" : "DOWN"}'
+}
+
+# IPV4 INTERFACES
+# Offer only interfaces with an active link and configured global IPv4
+list_ipv4_ifaces() {
+    local iface state
+    while read -r iface state; do
+        [ "$state" = UP ] || continue
+        if ip -4 -o addr show dev "$iface" scope global 2>/dev/null \
+            | awk '$4 != "" {found=1} END {exit !found}'; then
+            printf '%s\n' "$iface"
+        fi
+    done < <(list_ifaces)
+}
+
 # LAN SELECTION
 # Select an existing interface and one of its configured IPv4 addresses
 choose_lan_interface() {
-    local preset_iface="${1:-}" excluded_iface="${2:-}"
-    local iface_name iface_choice iface_index iface_addrs
+    local preset_iface="${1:-}"
+    local iface_name iface_choice iface_index iface_addrs iface_state
     local -a lan_candidates=()
-    if [ -n "$preset_iface" ]; then
-        ip link show dev "$preset_iface" >/dev/null 2>&1 || {
-            log "ERROR: LAN interface '$preset_iface' not found -abort"
-            exit 1
-        }
-        [ "$preset_iface" != "$excluded_iface" ] || {
-            log "ERROR: LAN and WAN must differ -abort"
-            exit 1
-        }
-        lan_iface_answer="$preset_iface"
-        return 0
-    fi
     while IFS= read -r iface_name; do
-        [ "$iface_name" = "$excluded_iface" ] && continue
         lan_candidates+=("$iface_name")
-    done < <(ip -br link show | awk '$1 != "lo" {sub(/@.*/, "", $1); print $1}')
+    done < <(list_ipv4_ifaces)
+    if [ -n "$preset_iface" ]; then
+        for iface_name in "${lan_candidates[@]}"; do
+            if [ "$preset_iface" = "$iface_name" ]; then
+                lan_iface_answer="$preset_iface"
+                return 0
+            fi
+        done
+        log "ERROR: LAN must be an active interface with IPv4 -abort"
+        exit 1
+    fi
     (( ${#lan_candidates[@]} > 0 )) || {
         log "ERROR: no LAN interface available -abort"
         exit 1
@@ -978,11 +972,12 @@ choose_lan_interface() {
     echo "Available LAN interfaces:"
     for iface_index in "${!lan_candidates[@]}"; do
         iface_name="${lan_candidates[$iface_index]}"
+        iface_state=$(ip -br link show "$iface_name" | awk '{print $2}')
         iface_addrs=$(ip -4 -o addr show dev "$iface_name" scope global | awk '{print $4}' | paste -sd' ')
-        printf ' [%d] %s (%s)\n' "$((iface_index + 1))" "$iface_name" "${iface_addrs:-no IPv4}"
+        printf ' [%d] %s (%s, %s)\n' "$((iface_index + 1))" "$iface_name" "$iface_state" "${iface_addrs:-no IPv4}"
     done
     while true; do
-        read -r -p "Select LAN interface number: " iface_choice || {
+        read -r -p "Select LAN Interface [1-${#lan_candidates[@]}]: " iface_choice || {
             log "ERROR: cannot read LAN interface selection -abort"
             exit 1
         }
@@ -1522,6 +1517,7 @@ do_install() {
       -e 's/^\s*;*\s*display_errors\s*=.*/display_errors = Off/' \
       -e 's/^\s*;*\s*display_startup_errors\s*=.*/display_startup_errors = Off/' \
       -e 's/^\s*;*\s*log_errors\s*=.*/log_errors = On/' \
+      -e 's/^\s*;*\s*session\.upload_progress\.enabled\s*=.*/session.upload_progress.enabled = 0/' \
       -e 's/^\s*;*\s*session.use_strict_mode\s*=.*/session.use_strict_mode = 1/' \
       -e 's/^\s*;*\s*session.cookie_httponly\s*=.*/session.cookie_httponly = 1/' \
       -e 's/^\s*;*\s*session.cookie_samesite\s*=.*/session.cookie_samesite = Strict/' \

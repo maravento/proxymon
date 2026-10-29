@@ -1039,33 +1039,6 @@ document.querySelectorAll('.ip-row').forEach(function(row) {
 </script>
 ENDJS
 
-# JavaScript for ACL filtering
-print <<'ENDJS2';
-<script>
-function filterByACL() {
-    var selectedACL = document.getElementById('aclFilter').value;
-
-    document.querySelectorAll('.details-row').forEach(function(detailsRow) {
-        var rows = detailsRow.querySelectorAll("table tr[data-acl]");
-        var anyVisible = false;
-
-        rows.forEach(function(row) {
-            var acl = row.getAttribute("data-acl");
-            if (!selectedACL || acl === selectedACL) {
-                row.style.display = "";
-                anyVisible = true;
-            } else {
-                row.style.display = "none";
-            }
-        });
-
-        // Hide the entire block if there are no matches
-        detailsRow.style.display = anyVisible ? "table-row" : "none";
-    });
-}
-</script>
-ENDJS2
-
 print "</div>"; # End dashboard-container
 
 # Auto-refresh JavaScript - SILENT

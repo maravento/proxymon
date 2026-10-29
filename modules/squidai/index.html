@@ -482,7 +482,6 @@ FILE: squidai/index.html
     @media (max-width: 640px) {
       .sidebar { display: none; }
       .welcome-grid { grid-template-columns: 1fr; }
-      .modes { display: none; }
       .topbar-subtitle { display: none; }
       .mobile-menu-bar {
         display: flex;
@@ -582,16 +581,8 @@ FILE: squidai/index.html
     <div class="sidebar-section">
       <div class="sidebar-title">System Status</div>
       <div class="stat-row">
-        <span class="stat-key">Active Mode</span>
-        <span class="stat-val" id="statMode">user</span>
-      </div>
-      <div class="stat-row">
         <span class="stat-key">IA</span>
         <span class="stat-val" id="statLLM">Checking…</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-key">API Key</span>
-        <span class="stat-val warn" id="statKey">●●●●●●</span>
       </div>
     </div>
 
@@ -677,18 +668,8 @@ const t = new Proxy(_tStore, {
 });
 
 let conversationHistory = [];
-let currentMode = 'user';
 let pendingConfirmation = null;
-let apiKey = ''; // managed by the server
 const WORKER_URL = 'worker.php';
-
-// ── MODE ──
-function setMode(mode, btn) {
-  currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('statMode').textContent = mode;
-}
 
 // ── INIT UI ──
 function initUI() {

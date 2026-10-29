@@ -82,103 +82,6 @@ UH_UINT='^(0|[1-9][0-9]*)$'
 proxymon_env="/etc/proxymon/proxymon.env"
 
 # ------------------------------------------------------------------------------
-# ENV
-# ------------------------------------------------------------------------------
-
-# PERMS
-# Owner and mode of every .env this script reads
-env_specs=("$proxymon_env root:www-data 640")
-for env_spec in "${env_specs[@]}"; do
-    read -r env_path env_owner_want env_perms_want <<< "$env_spec"
-    if [ ! -f "$env_path" ]; then
-        log "ERROR: $(basename "$env_path") not found -abort"
-        exit 1
-    fi
-    env_owner=$(stat -c '%U:%G' "$env_path" 2>/dev/null)
-    env_perms=$(stat -c '%a' "$env_path" 2>/dev/null)
-    if [[ "$env_owner" != "$env_owner_want" ]] \
-       || [[ "$env_perms" != "$env_perms_want" ]]; then
-        if chown "$env_owner_want" "$env_path" 2>/dev/null \
-           && chmod "$env_perms_want" "$env_path" 2>/dev/null; then
-            log "INFO: $(basename "$env_path") perms fixed -fixed"
-        else
-            log "ERROR: cannot fix $(basename "$env_path") perms -abort"
-            exit 1
-        fi
-    fi
-done
-unset env_specs env_spec env_path env_owner_want env_perms_want
-unset env_owner env_perms
-
-# LOAD_CONF
-# Read known key=value pairs from a config file, without sourcing it
-source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/proxymonenv.sh"
-
-# LOAD
-# Reads proxymon.env and derives the report paths from its values.
-# A file that cannot be read aborts the run here.
-load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
-report_dir="${TOOL_REPORT_DIR:-}"
-traffic_html="$report_dir/squid_traffic.html"
-search_html="$report_dir/squid_search.html"
-panel_port="${PANEL_PORT:-}"
-
-# KEY CHECK
-# Collect every failure first, then decide -- a single abort reports them all
-key_errors=()
-for env_key in SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR PANEL_PORT SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD; do
-    if ! grep -q "^${env_key}=" "$proxymon_env"; then
-        key_errors+=("$env_key missing line")
-    elif [[ -z "${!env_key:-}" ]]; then
-        key_errors+=("$env_key not set")
-    elif [[ "$env_key" == SQUIDTOOL_MIN_HITS || "$env_key" == SQUIDTOOL_ALERT_THRESHOLD ]] \
-         && ! [[ "${!env_key}" =~ $UH_UINT ]]; then
-        key_errors+=("$env_key invalid integer")
-    elif [ "$env_key" = PANEL_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
-        key_errors+=("$env_key invalid port")
-    fi
-done
-if (( ${#key_errors[@]} > 0 )); then
-    for key_error in "${key_errors[@]}"; do
-        log "WARNING: $key_error -alert"
-    done
-    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -abort"
-    exit 1
-fi
-unset key_errors key_error env_key checked_port
-min_hits="$SQUIDTOOL_MIN_HITS"
-alert_threshold="$SQUIDTOOL_ALERT_THRESHOLD"
-
-squid_log_dir="$SQUID_LOG_DIR"
-squid_log_file="$SQUID_LOG_FILE"
-cache_log_file="$squid_log_dir/cache.log"
-
-# REPORT DIR
-# Root owns the whole chain down to the reports, so nothing else can swap a
-# path for a symlink while this script writes. Apache serves them through
-# an Alias in proxymon.conf and only needs read access.
-if ! mkdir -p "$report_dir"; then
-    log "ERROR: cannot create $report_dir -abort"
-    exit 1
-fi
-if ! chown root:root "$report_dir"; then
-    log "ERROR: TOOL_REPORT_DIR: cannot set owner/group -abort"
-    exit 1
-fi
-if ! chmod 755 "$report_dir"; then
-    log "ERROR: TOOL_REPORT_DIR: cannot set permissions -abort"
-    exit 1
-fi
-
-# KEY GUARD
-# Every report below reads this file, so a path that no longer matches the
-# filesystem produces an empty report instead of an error.
-if ! ls "$squid_log_file"* >/dev/null 2>&1; then
-    log "ERROR: access log not found in $squid_log_dir -abort"
-    exit 1
-fi
-
-# ------------------------------------------------------------------------------
 # FUNCTIONS
 # ------------------------------------------------------------------------------
 
@@ -331,7 +234,6 @@ report_traffic() {
     fi
 
     log "INFO: traffic report -- ip=${target_ip:-all} cutoff=$cutoff"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') Analyzing, please wait..."
 
     if ! rows=$(zcat -f "$squid_log_file"* | awk -v cutoff="$cutoff" -v ip="$target_ip" '
         $1 > cutoff {
@@ -423,7 +325,6 @@ report_search() {
     fi
 
     log "INFO: search '$search_term' -- ip=${target_ip:-all} cutoff=$cutoff"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') Searching, please wait..."
 
     if ! access_hits=$(
         zcat -f "$squid_log_file"* \
@@ -504,6 +405,103 @@ report_search() {
     log "INFO: search access=$access_count cache=$cache_count"
     publish_report "$search_html"
 }
+
+# ------------------------------------------------------------------------------
+# ENV
+# ------------------------------------------------------------------------------
+
+# PERMS
+# Owner and mode of every .env this script reads
+env_specs=("$proxymon_env root:www-data 640")
+for env_spec in "${env_specs[@]}"; do
+    read -r env_path env_owner_want env_perms_want <<< "$env_spec"
+    if [ ! -f "$env_path" ]; then
+        log "ERROR: $(basename "$env_path") not found -abort"
+        exit 1
+    fi
+    env_owner=$(stat -c '%U:%G' "$env_path" 2>/dev/null)
+    env_perms=$(stat -c '%a' "$env_path" 2>/dev/null)
+    if [[ "$env_owner" != "$env_owner_want" ]] \
+       || [[ "$env_perms" != "$env_perms_want" ]]; then
+        if chown "$env_owner_want" "$env_path" 2>/dev/null \
+           && chmod "$env_perms_want" "$env_path" 2>/dev/null; then
+            log "INFO: $(basename "$env_path") perms fixed -fixed"
+        else
+            log "ERROR: cannot fix $(basename "$env_path") perms -abort"
+            exit 1
+        fi
+    fi
+done
+unset env_specs env_spec env_path env_owner_want env_perms_want
+unset env_owner env_perms
+
+# LOAD_CONF
+# Read known key=value pairs from a config file, without sourcing it
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/proxymonenv.sh"
+
+# LOAD
+# Reads proxymon.env and derives the report paths from its values.
+# A file that cannot be read aborts the run here.
+load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
+report_dir="${TOOL_REPORT_DIR:-}"
+traffic_html="$report_dir/squid_traffic.html"
+search_html="$report_dir/squid_search.html"
+panel_port="${PANEL_PORT:-}"
+
+# KEY CHECK
+# Collect every failure first, then decide -- a single abort reports them all
+key_errors=()
+for env_key in SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR PANEL_PORT SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD; do
+    if ! grep -q "^${env_key}=" "$proxymon_env"; then
+        key_errors+=("$env_key missing line")
+    elif [[ -z "${!env_key:-}" ]]; then
+        key_errors+=("$env_key not set")
+    elif [[ "$env_key" == SQUIDTOOL_MIN_HITS || "$env_key" == SQUIDTOOL_ALERT_THRESHOLD ]] \
+         && ! [[ "${!env_key}" =~ $UH_UINT ]]; then
+        key_errors+=("$env_key invalid integer")
+    elif [ "$env_key" = PANEL_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
+        key_errors+=("$env_key invalid port")
+    fi
+done
+if (( ${#key_errors[@]} > 0 )); then
+    for key_error in "${key_errors[@]}"; do
+        log "WARNING: $key_error -alert"
+    done
+    log "ERROR: ${#key_errors[@]} key(s) invalid in $(basename "$proxymon_env") -abort"
+    exit 1
+fi
+unset key_errors key_error env_key checked_port
+min_hits="$SQUIDTOOL_MIN_HITS"
+alert_threshold="$SQUIDTOOL_ALERT_THRESHOLD"
+
+squid_log_dir="$SQUID_LOG_DIR"
+squid_log_file="$SQUID_LOG_FILE"
+cache_log_file="$squid_log_dir/cache.log"
+
+# REPORT DIR
+# Root owns the whole chain down to the reports, so nothing else can swap a
+# path for a symlink while this script writes. Apache serves them through
+# an Alias in proxymon.conf and only needs read access.
+if ! mkdir -p "$report_dir"; then
+    log "ERROR: cannot create $report_dir -abort"
+    exit 1
+fi
+if ! chown root:root "$report_dir"; then
+    log "ERROR: TOOL_REPORT_DIR: cannot set owner/group -abort"
+    exit 1
+fi
+if ! chmod 755 "$report_dir"; then
+    log "ERROR: TOOL_REPORT_DIR: cannot set permissions -abort"
+    exit 1
+fi
+
+# KEY GUARD
+# Every report below reads this file, so a path that no longer matches the
+# filesystem produces an empty report instead of an error.
+if ! ls "$squid_log_file"* >/dev/null 2>&1; then
+    log "ERROR: access log not found in $squid_log_dir -abort"
+    exit 1
+fi
 
 # ------------------------------------------------------------------------------
 # MENU
