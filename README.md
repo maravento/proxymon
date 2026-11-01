@@ -74,7 +74,7 @@ FILE: README.md
 # other required packages (checked by pmsetup.sh, no extra setup needed)
 apt install -y wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl \
                 coreutils fonts-lato fonts-liberation fonts-dejavu \
-                perl cron sudo util-linux iproute2 passwd findutils sed \
+                perl python3 cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables \
                 gawk gzip procps logrotate
 
@@ -281,9 +281,13 @@ sudo bash pmsetup.sh --help   # or -h
 
 #### Panel access
 
-<b>Access Proxymon</b>: [http://localhost:18080](http://localhost:18080)
+<b>Access Proxymon</b>: [http://localhost:18770](http://localhost:18770)
 
-<b>Warning for Bandata</b>: `http://SERVER_IP:18081`
+<b>Warning for Bandata</b>: `http://SERVER_IP:18771`
+
+> The panel listens on port `18770` and the warning page on port `18771`, registered by [IANA](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.txt) as Unassigned.
+>
+> El panel escucha en el puerto `18770` y la página de aviso en el puerto `18771`, registrados por [IANA](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.txt) como Sin asignar.
 
 ### proxymon.env
 
@@ -296,7 +300,7 @@ sudo bash pmsetup.sh --help   # or -h
 | Variable | Read by | Description | Descripción |
 |----------|---------|--------------|-------------|
 | `WEB_ROOT`, `CONFIG_DIR` | `pmsetup.sh`, `pmbk.sh` | Web application and root-script directories. Defaults: `/var/www/proxymon` and `/etc/proxymon`. | Directorios de la aplicación web y los scripts de root. Valores iniciales: `/var/www/proxymon` y `/etc/proxymon`. |
-| `PANEL_PORT`, `WARNING_PORT` | `pmsetup.sh`, `squidtool.sh`, `worker.php`, `bandata.sh` | Panel and warning ports. Defaults: `18080` and `18081`. Apache keeps the panel on loopback and the warning page on `SERVER_IP`. | Puertos del panel y los avisos. Valores iniciales: `18080` y `18081`. Apache mantiene el panel en localhost y los avisos en `SERVER_IP`. |
+| `PANEL_PORT`, `WARNING_PORT` | `pmsetup.sh`, `squidtool.sh`, `worker.php`, `bandata.sh` | Panel and warning ports. Defaults: `18770` and `18771`. Apache keeps the panel on loopback and the warning page on `SERVER_IP`. | Puertos del panel y los avisos. Valores iniciales: `18770` y `18771`. Apache mantiene el panel en localhost y los avisos en `SERVER_IP`. |
 | `PANEL_DOMAINS` | `worker.php` | Public HTTPS panel domains accepted by SquidAI, separated by commas. Empty by default: only local panel origins are allowed. Use bare domains, without a scheme, port or path, for example `proxy.example.com`. See the SquidAI section. | Dominios públicos HTTPS del panel admitidos por SquidAI, separados por comas. Vacío por defecto: solo se autorizan los orígenes locales del panel. Escriba dominios sin esquema, puerto ni ruta, por ejemplo `proxy.example.com`. Ver la sección SquidAI. |
 | `BACKUP_DIR` | `pmbk.sh` | Backup destination. Default: `/etc/bak/proxymon`. Changing this default is not recommended. | Destino de las copias de seguridad. Valor inicial: `/etc/bak/proxymon`. No se recomienda modificar este valor. |
 | `TOOL_REPORT_DIR` | `pmsetup.sh`, `squidtool.sh`, `pmbk.sh` | Directory for generated traffic and log-search HTML reports, served through Apache's Squidtool alias. | Directorio de informes HTML de tráfico y búsqueda, publicado mediante el alias Squidtool de Apache. |
@@ -1003,7 +1007,7 @@ sudo nano /etc/cron.d/proxymon
 </table>
 
 ```bash
-http://192.168.X.X:18081
+http://192.168.X.X:18771
 ```
 
 ###### Banned IPs

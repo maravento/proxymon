@@ -87,8 +87,8 @@ configure_locations() {
         [WEB_ROOT]="/var/www/proxymon"
         [CONFIG_DIR]="/etc/proxymon"
         [BACKUP_DIR]="/etc/bak/proxymon"
-        [PANEL_PORT]="18080"
-        [WARNING_PORT]="18081"
+        [PANEL_PORT]="18770"
+        [WARNING_PORT]="18771"
     )
     for env_key in WEB_ROOT CONFIG_DIR BACKUP_DIR PANEL_PORT WARNING_PORT; do
         if [ -z "${!env_key+x}" ]; then
@@ -355,8 +355,28 @@ check_conflicts() {
 
 # port in use
 check_port() {
-    local proto="$1" port="$2" role="$3"
-    if [ -n "$(ss -lnH "--${proto,,}" "sport = :$port" 2>/dev/null)" ]; then
+    local proto="$1" port="$2" role="$3" port_listeners
+    if ! port_listeners=$(python3 - "${proto,,}" "$port" <<'PY'
+import subprocess
+import sys
+
+try:
+    result = subprocess.run(
+        ["ss", "-lnH", f"--{sys.argv[1]}", f"sport = :{sys.argv[2]}"],
+        capture_output=True,
+        text=True,
+    )
+except OSError:
+    sys.exit(1)
+if result.returncode != 0 or result.stderr.strip():
+    sys.exit(1)
+sys.stdout.write(result.stdout)
+PY
+    ); then
+        err "cannot check ${proto^^} port $port"
+        abort "fix the ss query before installing -abort"
+    fi
+    if [ -n "$port_listeners" ]; then
         err "${proto^^} port $port in use by another $role"
         abort "stop that service before installing -abort"
     fi
