@@ -243,7 +243,7 @@ function cachedJson(string $key, int $ttl, callable $producer): void {
                 return;
             }
         }
-        $result = json_encode($producer());
+        $result = json_encode($producer(), JSON_INVALID_UTF8_SUBSTITUTE);
         $temp = tempnam($dir, '.cache-');
         if ($temp !== false) {
             if (file_put_contents($temp, $result) !== false) {
@@ -258,7 +258,7 @@ function cachedJson(string $key, int $ttl, callable $producer): void {
     }
 
     // Locking unavailable — fall back to computing directly rather than blocking
-    echo json_encode($producer());
+    echo json_encode($producer(), JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
 // Thrown when a log reader fails or times out. A query that could not read
@@ -278,12 +278,12 @@ try {
                 http_response_code(404);
                 echo json_encode(['error' => msg('dataset_not_found')]);
             } else {
-                echo json_encode(['content' => file_get_contents($datasetPath)]);
+                echo json_encode(['content' => file_get_contents($datasetPath)], JSON_INVALID_UTF8_SUBSTITUTE);
             }
             break;
 
         case 'get_users':
-            echo json_encode(getUsers());
+            echo json_encode(getUsers(), JSON_INVALID_UTF8_SUBSTITUTE);
             break;
 
         case 'get_available_dates':
@@ -292,7 +292,7 @@ try {
                 http_response_code(400);
                 echo json_encode(['error' => 'Invalid IP']); break;
             }
-            echo json_encode(getAvailableDates($ip));
+            echo json_encode(getAvailableDates($ip), JSON_INVALID_UTF8_SUBSTITUTE);
             break;
 
         case 'get_user_report':
@@ -683,7 +683,7 @@ function getAvailableDates(string $ip): array {
 /**
  * Obtain traffic report of a user by IP and date
  */
-function getDomainReport(string $ip, string $date): array {
+function getDomainReport(string $ip, string $date, bool $groupWww = true): array {
     $result = [
         'ip'      => $ip,
         'date'    => $date,
@@ -693,13 +693,13 @@ function getDomainReport(string $ip, string $date): array {
     ];
 
     // Try Squidreports first
-    $squidreportsResult = readSquidreportsReport($ip, $date);
+    $squidreportsResult = readSquidreportsReport($ip, $date, $groupWww);
     if (!empty($squidreportsResult['domains'])) {
         return array_merge($result, $squidreportsResult, ['source' => 'squidreports']);
     }
 
     // Fallback: parser access.log
-    return array_merge($result, parseAccessLog($ip, $date), ['source' => 'access.log']);
+    return array_merge($result, parseAccessLog($ip, $date, $groupWww), ['source' => 'access.log']);
 }
 
 function getUserReport(string $ip, string $date): array {
@@ -802,7 +802,7 @@ function getDeniedDirectIps(string $ip, string $date): array {
  * Read Squidreports reports for an IP/date
  * Squidreports saves files by IP within folders by date
  */
-function readSquidreportsReport(string $ip, string $date): array {
+function readSquidreportsReport(string $ip, string $date, bool $groupWww = true): array {
     // Normalize and strictly validate date format to prevent path traversal
     $targetDate = ($date === 'today' || !$date) ? date('Y-m-d') : $date;
     $dateFormatted = str_replace('-', '', $targetDate); // YYYYMMDD
@@ -833,7 +833,7 @@ function readSquidreportsReport(string $ip, string $date): array {
         $parts = preg_split('/\s+/', $line, 4);
         if (count($parts) < 2) continue;
 
-        $domain = extractDomain($parts[0]);
+        $domain = extractDomain($parts[0], $groupWww);
         $bytes  = (int)$parts[1];
         $hits   = isset($parts[2]) ? (int)$parts[2] : 1;
 
@@ -865,7 +865,7 @@ function readSquidreportsReport(string $ip, string $date): array {
  * Parse Squid access.log filtering by IP and date
  * Format: timestamp elapsed client action/code bytes method url ...
  */
-function parseAccessLog(string $ip, string $date): array {
+function parseAccessLog(string $ip, string $date, bool $groupWww = true): array {
     $domains    = [];
     $totalBytes = 0;
     $logSources = 0;
@@ -939,7 +939,7 @@ function parseAccessLog(string $ip, string $date): array {
             }
 
             // Extract domain
-            $domain = extractDomain($url);
+            $domain = extractDomain($url, $groupWww);
             if (!$domain) continue;
 
             if (isset($domains[$domain])) {
@@ -997,7 +997,7 @@ function checkBlacklist(string $ip, string $date): array {
     if (empty($blacklist)) return ['hits' => [], 'blacklist_count' => 0];
 
     // Get visited domains
-    $report = getDomainReport($ip, $date);
+    $report = getDomainReport($ip, $date, false);
     $hits   = [];
 
     $allDomains = $report['all_domains'] ?? $report['domains'];
@@ -1158,8 +1158,8 @@ function getBlockedByType(string $type, string $date = 'today'): array {
             $bytes  = (int)$parts[4];
             $url    = $parts[6] ?? '';
 
-            $domain = strtolower(extractDomain($url));
-            if (!$domain) $domain = $url;
+            $host = extractDomain($url, false);
+            $domain = $host === '' ? $url : preg_replace('/^www\./', '', $host);
 
             // 🔴 REAL FILTER BY PATTERNS
             if ($type === 'patterns') {
@@ -1220,7 +1220,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
             // 🔹 FILTER FOR BLOCKED DOMAINS
             if ($type === 'domains') {
                 $matchedDomain = false;
-                $candidate = $domain;
+                $candidate = $host === '' ? $domain : $host;
                 while (true) {
                     if (isset($blockedDomains[$candidate])) {
                         $matchedDomain = true;
@@ -1453,7 +1453,7 @@ function normalizeBlockedDomain(string $line): string {
     return ltrim(strtolower($line), '.');
 }
 
-function extractDomain(string $url): string {
+function extractDomain(string $url, bool $groupWww = true): string {
     if (!$url || $url === '-') return '';
     
     // Handle CONNECT (HTTPS tunnels): host:port
@@ -1465,11 +1465,10 @@ function extractDomain(string $url): string {
                 return strtolower(substr($url, 0, $end + 1));
             }
         }
-        return strtolower(explode(':', $url)[0]);
+        $host = explode(':', $url)[0];
+    } else {
+        $host = parse_url($url, PHP_URL_HOST);
     }
-    
-    // Try parse_url first
-    $host = parse_url($url, PHP_URL_HOST);
     
     // If it fails, try cleaning up malformed URLs (ej: https:///dominio.com)
     if (!$host) {
@@ -1483,8 +1482,8 @@ function extractDomain(string $url): string {
     
     if (!$host) return '';
     
-    // Remove www.
-    return strtolower(preg_replace('/^www\./', '', $host));
+    $host = strtolower($host);
+    return $groupWww ? preg_replace('/^www\./', '', $host) : $host;
 }
 
 function formatBytes(int $bytes): string {

@@ -11,7 +11,7 @@
 # sudo bash pmsetup.sh --update       Refresh code, keep live data
 # sudo bash pmsetup.sh --uninstall    Remove proxymon
 # sudo bash pmsetup.sh                Interactive menu
-# sudo bash pmsetup.sh -h             Show usage
+# sudo bash pmsetup.sh -h, --help     Show usage
 #
 # LOG: pmsetup.log, in this script's directory
 #
@@ -77,7 +77,7 @@ err()  { log "ERROR: $*"; }
 abort() { err "$*"; exit 1; }
 
 configure_locations() {
-    unset WEB_ROOT CONFIG_DIR BACKUP_DIR PANEL_PORT WARNING_PORT
+    unset WEB_ROOT CONFIG_DIR PANEL_PORT WARNING_PORT
     unset TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH
     if [ -f "$proxymon_env" ]; then
         load_proxymon_env "$proxymon_env" || abort "cannot load proxymon.env -abort"
@@ -86,11 +86,10 @@ configure_locations() {
     local -A location_defaults=(
         [WEB_ROOT]="/var/www/proxymon"
         [CONFIG_DIR]="/etc/proxymon"
-        [BACKUP_DIR]="/etc/bak/proxymon"
         [PANEL_PORT]="18770"
         [WARNING_PORT]="18771"
     )
-    for env_key in WEB_ROOT CONFIG_DIR BACKUP_DIR PANEL_PORT WARNING_PORT; do
+    for env_key in WEB_ROOT CONFIG_DIR PANEL_PORT WARNING_PORT; do
         if [ -z "${!env_key+x}" ]; then
             printf -v "$env_key" '%s' "${location_defaults[$env_key]}"
         fi
@@ -106,7 +105,7 @@ configure_locations() {
             printf -v "$env_key" '%s' "${location_defaults[$env_key]}"
         fi
     done
-    for env_key in WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH; do
+    for env_key in WEB_ROOT CONFIG_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH; do
         [[ "${!env_key}" =~ ^/[a-zA-Z0-9_./-]+$ ]] || abort "invalid $env_key -abort"
         [[ "${!env_key}" != /etc && "${!env_key}" != /var && "${!env_key}" != /var/www && "${!env_key}" != / && "${!env_key}" != *'/../'* && "${!env_key}" != */.. ]] || abort "unsafe $env_key -abort"
     done
@@ -799,7 +798,7 @@ acl_fix_perms() {
         log "ERROR: cannot fix $(basename "$acl_path") perms -abort"
         exit 1
     fi
-    log "INFO: $acl_path perms fixed -fixed"
+    log "INFO: $(basename "$acl_path") perms fixed -fixed"
 }
 
 # ACL download
@@ -818,8 +817,19 @@ get_acl() {
     # wget would otherwise hang forever with nothing printed. --timeout
     # bounds each read/connect phase and --tries=1 stops it from silently
     # retrying on top of retry_cmd's own retry loop.
-    if ! timeout 30 wget -q -c -N --timeout=15 --tries=1 "$source_url" -O "$target_file"; then
+    local acl_tmp
+    if ! acl_tmp=$(mktemp -- "${target_file}.XXXXXX"); then
+        log "WARNING: cannot stage $(basename "$target_file") -alert"
+        return 1
+    fi
+    if ! timeout 30 wget -q --timeout=15 --tries=1 "$source_url" -O "$acl_tmp"; then
+        rm -f -- "$acl_tmp"
         log "PARTIAL: $source_url"
+        return 1
+    fi
+    if ! chmod 644 "$acl_tmp" || ! mv -fT -- "$acl_tmp" "$target_file"; then
+        rm -f -- "$acl_tmp"
+        log "WARNING: cannot publish $(basename "$target_file") -alert"
         return 1
     fi
     local source_name target_name
@@ -927,14 +937,14 @@ run_initial_checks() {
 }
 
 check_repo() {
-    local missing_flag=0
+    local config_incomplete=0
     if [ ! -d "modules" ] || [ -z "$(ls -A "modules" 2>/dev/null)" ]; then
-        missing_flag=1
+        config_incomplete=1
     fi
     if [ ! -d "config" ] || [ -z "$(ls -A "config" 2>/dev/null)" ]; then
-        missing_flag=1
+        config_incomplete=1
     fi
-    if [ "$missing_flag" -eq 1 ]; then
+    if [ "$config_incomplete" -eq 1 ]; then
         echo ""
         err "repository files not found"
         err "clone it from github.com/maravento/proxymon -abort"
@@ -1068,13 +1078,13 @@ create_proxymon_env() {
         info "$env_file already exists -skip"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
-        local required_keys="WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH PANEL_PORT PANEL_DOMAINS WARNING_PORT LAN SERVER_IP RANGE REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH SQUID_MGR_HOST SQUID_MGR_PORT SQUID_INTERCEPT_PORT SQUID_MGR_PASSWD MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD"
-        local missing_flag=""
-        for env_key in $required_keys; do
-            grep -q "^${env_key}=" "$env_file" || missing_flag="$missing_flag $env_key"
+        local expected_keys="WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH PANEL_PORT PANEL_DOMAINS WARNING_PORT LAN SERVER_IP RANGE REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH SQUID_MGR_HOST SQUID_MGR_PORT SQUID_INTERCEPT_PORT SQUID_MGR_PASSWD MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD"
+        local absent_keys=""
+        for env_key in $expected_keys; do
+            grep -q "^${env_key}=" "$env_file" || absent_keys="$absent_keys $env_key"
         done
-        if [ -n "$missing_flag" ]; then
-            for env_key in $missing_flag; do
+        if [ -n "$absent_keys" ]; then
+            for env_key in $absent_keys; do
                 warn "$(basename "$env_file"): missing variable $env_key"
             done
             warn "$(basename "$env_file"): add missing variables -alert"
@@ -1259,8 +1269,7 @@ HOTSPOT_PATH=${hotspot_dir}
 UPDATE_REALNAME=${update_realname_flag}
 
 # Backup
-# Changing these defaults is not recommended
-BACKUP_DIR=${BACKUP_DIR}
+BACKUP_DIR=/etc/bak/proxymon
 # =============================================================================
 ENVEOF
 

@@ -42,7 +42,7 @@ if ($sysTz && @timezone_open($sysTz)) {
 
 function err($msg, $code = 500) {
     http_response_code($code);
-    echo json_encode(['error' => $msg]);
+    echo json_encode(['error' => $msg], JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
@@ -109,7 +109,7 @@ $file_id = (string)fileinode(LOG_FILE);
 // ── Mode: info only (polling size check) ─────────────────────────────────────
 
 if (isset($_GET['info'])) {
-    echo json_encode(['size' => $file_size]);
+    echo json_encode(['size' => $file_size], JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
@@ -150,7 +150,7 @@ if (isset($_GET['grep']) && $_GET['grep'] !== '') {
             'log_file'   => LOG_FILE,
             'total_rows' => 0,
             'grep'       => true,
-        ]);
+        ], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
 
@@ -169,7 +169,7 @@ if (isset($_GET['grep']) && $_GET['grep'] !== '') {
         'log_file'   => LOG_FILE,
         'total_rows' => count($rows),
         'grep'       => true,
-    ]);
+    ], JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
@@ -194,7 +194,7 @@ if (isset($_GET['since'])) {
         $rotated = true;
     }
     if ($file_size === 0) {
-        echo json_encode(['rows' => [], 'offset' => 0, 'rotated' => true, 'file_id' => $file_id]);
+        echo json_encode(['rows' => [], 'offset' => 0, 'rotated' => true, 'file_id' => $file_id], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
     $fh = fopen(LOG_FILE, 'rb');
@@ -229,7 +229,7 @@ if (isset($_GET['since'])) {
         'offset'  => $offset,
         'rotated' => isset($rotated),
         'file_id' => $file_id,
-    ]);
+    ], JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
@@ -289,4 +289,4 @@ echo json_encode([
     'log_file'  => LOG_FILE,
     'total_rows'=> count($rows),
     'file_id'   => $file_id,
-]);
+], JSON_INVALID_UTF8_SUBSTITUTE);

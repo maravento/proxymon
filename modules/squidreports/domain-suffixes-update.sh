@@ -44,7 +44,7 @@ script_lock="/var/lock/$(basename "$0" .sh).lock"
 }
 exec 200>"$script_lock"
 if ! flock -n 200; then
-    log "ERROR: suffix update is already running -abort"
+    log "ERROR: script $(basename "$0") is already running -abort"
     exit 1
 fi
 

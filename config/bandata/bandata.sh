@@ -274,7 +274,7 @@ sort_ips="sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
 # reach the set. The mark is read where load_failed starts, further below.
 list_failed=0
 clear_list() {
-    : > "$1" || {
+    { : > "$1"; } 2>/dev/null || {
         list_failed=1
         log "WARNING: cannot clear $(basename "$1") -alert"
     }
@@ -341,7 +341,7 @@ acl_fix_perms() {
         log "ERROR: cannot fix $(basename "$acl_path") perms -abort"
         exit 1
     fi
-    log "INFO: $acl_path perms fixed -fixed"
+    log "INFO: $(basename "$acl_path") perms fixed -fixed"
 }
 
 # FILESYSTEM LAYOUT
@@ -366,12 +366,14 @@ log "EVENT: Running Bandata Day..."
 day_logs_dir=$REPORT_PATH/$(date +"%Y%m%d")
 # bandata day rule
 if [[ "$today_dow" -eq 6 || "$today_dow" -eq 7 ]]; then
-    log "INFO: Weekend Excluded"
-    : > "$BLOCK_LIST_DAY"
+    clear_list "$BLOCK_LIST_DAY"
+    if [ "$list_failed" -eq 0 ]; then
+        log "INFO: Weekend Excluded"
+    fi
 else
     if [ ! -d "$day_logs_dir" ]; then
         log "INFO: day report folder $(basename "$day_logs_dir") not found -skip"
-        : > "$BLOCK_LIST_DAY"
+        clear_list "$BLOCK_LIST_DAY"
     else
         tmp_day=$(mktemp)
         subshell_ok=0
@@ -386,10 +388,12 @@ else
                     log "WARNING: cannot read $report_file -alert" >&2
                     exit 1
                 }
-                if [[ "$user_bytes" =~ $UH_UINT ]] && (( user_bytes > max_bw_day )); then
-                    echo "$report_file"
-                elif [ -n "$user_bytes" ] && ! [[ "$user_bytes" =~ $UH_UINT ]]; then
-                    log "WARNING: non-numeric total '$user_bytes' in $report_file -alert" >&2
+                if [[ "$user_bytes" =~ $UH_UINT ]]; then
+                    if ! uh_fits "$user_bytes" || (( user_bytes > max_bw_day )); then
+                        echo "$report_file"
+                    fi
+                elif [ -n "$user_bytes" ]; then
+                    log "WARNING: invalid total in $report_file -alert" >&2
                 fi
             done
             exit 0
@@ -402,26 +406,26 @@ else
             allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
             allow_rc=$?
             if [ "$allow_rc" -gt 1 ]; then
-                log "WARNING: cannot read allow list, day cleared -alert"
-                : > "$BLOCK_LIST_DAY"
+                log "WARNING: cannot read allow list -alert"
+                clear_list "$BLOCK_LIST_DAY"
             else
                 grep -wvFf <(printf '%s\n' "$allow_ips") "$tmp_day" | $sort_ips | uniq > "${BLOCK_LIST_DAY}.tmp"
                 pipe_status=("${PIPESTATUS[@]}")
                 if [ "${pipe_status[0]}" -le 1 ] && [ "${pipe_status[1]}" -eq 0 ] && [ "${pipe_status[2]}" -eq 0 ]; then
-                    if ! mv -f "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"; then
-                        log "WARNING: cannot publish daily list, day cleared -alert"
+                    if ! { chmod 600 -- "${BLOCK_LIST_DAY}.tmp" && mv -fT -- "${BLOCK_LIST_DAY}.tmp" "$BLOCK_LIST_DAY"; }; then
+                        log "WARNING: cannot publish daily list -alert"
                         rm -f "${BLOCK_LIST_DAY}.tmp"
                         clear_list "$BLOCK_LIST_DAY"
                     fi
                 else
-                    log "WARNING: cannot build daily list, day cleared -alert"
+                    log "WARNING: cannot build daily list -alert"
                     rm -f "${BLOCK_LIST_DAY}.tmp"
-                    : > "$BLOCK_LIST_DAY"
+                    clear_list "$BLOCK_LIST_DAY"
                 fi
             fi
         else
-            log "WARNING: cannot read day reports, day cleared -alert"
-            : > "$BLOCK_LIST_DAY"
+            log "WARNING: cannot read day reports -alert"
+            clear_list "$BLOCK_LIST_DAY"
         fi
         rm -f "$tmp_day"
     fi
@@ -455,43 +459,43 @@ if [ "$today_dow" -eq 1 ]; then
 
     if [ ${#week_dirs[@]} -eq 0 ]; then
         log "INFO: No weekday report folders found for last week"
-        : > "$BLOCK_LIST_WEEK"
+        clear_list "$BLOCK_LIST_WEEK"
     else
         # Each reading decides, because a partial list would total only part of
         # the week. Any failure clears the week, as the flow asks.
         if ! report_files=$(list_lan_reports "${week_dirs[@]}"); then
-            log "WARNING: cannot read weekly reports, week cleared -alert"
-            : > "$BLOCK_LIST_WEEK"
+            log "WARNING: cannot read weekly reports -alert"
+            clear_list "$BLOCK_LIST_WEEK"
         elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
             awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
-            log "WARNING: cannot total weekly reports, week cleared -alert"
-            : > "$BLOCK_LIST_WEEK"
+            log "WARNING: cannot total weekly reports -alert"
+            clear_list "$BLOCK_LIST_WEEK"
         elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
-            log "WARNING: cannot add up weekly totals, week cleared -alert"
-            : > "$BLOCK_LIST_WEEK"
+            log "WARNING: cannot add up weekly totals -alert"
+            clear_list "$BLOCK_LIST_WEEK"
         else
             # Same reading as the day: the exclusions cannot come from a process
             # substitution, whose failure the pipeline never sees.
             allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
             allow_rc=$?
             if [ "$allow_rc" -gt 1 ]; then
-                log "WARNING: cannot read allow list, week cleared -alert"
-                : > "$BLOCK_LIST_WEEK"
+                log "WARNING: cannot read allow list -alert"
+                clear_list "$BLOCK_LIST_WEEK"
             else
                 echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
                 pipe_status=("${PIPESTATUS[@]}")
                 if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
                    && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
                    && [ "${pipe_status[4]}" -eq 0 ]; then
-                    if ! mv -f "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"; then
-                        log "WARNING: cannot publish weekly list, week cleared -alert"
+                    if ! { chmod 600 -- "${BLOCK_LIST_WEEK}.tmp" && mv -fT -- "${BLOCK_LIST_WEEK}.tmp" "$BLOCK_LIST_WEEK"; }; then
+                        log "WARNING: cannot publish weekly list -alert"
                         rm -f "${BLOCK_LIST_WEEK}.tmp"
                         clear_list "$BLOCK_LIST_WEEK"
                     fi
                 else
-                    log "WARNING: cannot build weekly list, week cleared -alert"
+                    log "WARNING: cannot build weekly list -alert"
                     rm -f "${BLOCK_LIST_WEEK}.tmp"
-                    : > "$BLOCK_LIST_WEEK"
+                    clear_list "$BLOCK_LIST_WEEK"
                 fi
             fi
         fi
@@ -528,42 +532,42 @@ done
 
 if [ ${#month_dirs[@]} -eq 0 ]; then
     log "INFO: No weekday report folders found for current month"
-    : > "$BLOCK_LIST_MONTH"
+    clear_list "$BLOCK_LIST_MONTH"
 else
     # Each reading decides, as in the week: a partial list would total only
     # part of the month. Any failure clears the month, as the flow asks.
     if ! report_files=$(list_lan_reports "${month_dirs[@]}"); then
-        log "WARNING: cannot read monthly reports, month cleared -alert"
-        : > "$BLOCK_LIST_MONTH"
+        log "WARNING: cannot read monthly reports -alert"
+        clear_list "$BLOCK_LIST_MONTH"
     elif ! user_totals=$(echo "$report_files" | xargs -r -I {} \
         awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
-        log "WARNING: cannot total monthly reports, month cleared -alert"
-        : > "$BLOCK_LIST_MONTH"
+        log "WARNING: cannot total monthly reports -alert"
+        clear_list "$BLOCK_LIST_MONTH"
     elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
-        log "WARNING: cannot add up monthly totals, month cleared -alert"
-        : > "$BLOCK_LIST_MONTH"
+        log "WARNING: cannot add up monthly totals -alert"
+        clear_list "$BLOCK_LIST_MONTH"
     else
         # Same reading as the day and the week, for the same reason.
         allow_ips=$(grep -v '^[[:space:]]*$' "$ALLOW_LIST")
         allow_rc=$?
         if [ "$allow_rc" -gt 1 ]; then
-            log "WARNING: cannot read allow list, month cleared -alert"
-            : > "$BLOCK_LIST_MONTH"
+            log "WARNING: cannot read allow list -alert"
+            clear_list "$BLOCK_LIST_MONTH"
         else
             echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
             pipe_status=("${PIPESTATUS[@]}")
             if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
                && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
                && [ "${pipe_status[4]}" -eq 0 ]; then
-                if ! mv -f "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"; then
-                    log "WARNING: cannot publish monthly list, month cleared -alert"
+                if ! { chmod 600 -- "${BLOCK_LIST_MONTH}.tmp" && mv -fT -- "${BLOCK_LIST_MONTH}.tmp" "$BLOCK_LIST_MONTH"; }; then
+                    log "WARNING: cannot publish monthly list -alert"
                     rm -f "${BLOCK_LIST_MONTH}.tmp"
                     clear_list "$BLOCK_LIST_MONTH"
                 fi
             else
-                log "WARNING: cannot build monthly list, month cleared -alert"
+                log "WARNING: cannot build monthly list -alert"
                 rm -f "${BLOCK_LIST_MONTH}.tmp"
-                : > "$BLOCK_LIST_MONTH"
+                clear_list "$BLOCK_LIST_MONTH"
             fi
         fi
     fi
@@ -815,7 +819,7 @@ update_squidreports_realname() {
     else
         cfg_tmp=$(mktemp)
         if ! { echo "$final_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
-            && mv -f "$cfg_tmp" "$REALNAME_CFG"; }; then
+            && mv -fT -- "$cfg_tmp" "$REALNAME_CFG"; }; then
             rm -f "$cfg_tmp"
             log "WARNING: cannot update realname.cfg -alert"
         fi
@@ -826,7 +830,7 @@ update_squidreports_realname() {
     else
         cfg_tmp=$(mktemp)
         if ! { echo "$skip_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
-            && mv -f "$cfg_tmp" "$SKIPUSERS_CFG"; }; then
+            && mv -fT -- "$cfg_tmp" "$SKIPUSERS_CFG"; }; then
             rm -f "$cfg_tmp"
             log "WARNING: cannot update skipuser.cfg -alert"
         fi
@@ -865,10 +869,8 @@ update_squidreports_groups() {
             return 1
         fi
     done
-    if sort -u -o "$cfg_tmp" "$cfg_tmp" && chmod 644 "$cfg_tmp" \
-        && mv -f -- "$cfg_tmp" "$group_cfg"; then
-        log "INFO: group.cfg updated"
-    else
+    if ! { sort -u -o "$cfg_tmp" "$cfg_tmp" && chmod 644 "$cfg_tmp" \
+        && mv -fT -- "$cfg_tmp" "$group_cfg"; }; then
         rm -f -- "$cfg_tmp"
         log "WARNING: cannot update group.cfg -alert"
         return 1
