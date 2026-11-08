@@ -691,12 +691,13 @@ function applyFilters(newCount) {
   if (fc) res = res.filter(function(r){ return r.cache_code === fc; });
   if (fh) res = res.filter(function(r){ return r.http_code === fh; });
 
-  CUR = res;
+  CUR = res.slice();
+  sortRows(CUR);
   var elapsed = (performance.now() - t0).toFixed(1);
   document.getElementById('sTime').textContent = elapsed + ' ms';
 
   updateStats();
-  renderTable(q, (q || fc || fh) ? 0 : (newCount || 0));
+  renderTable(q, (q || fc || fh || sortKey !== 'ts' || sortDir !== -1) ? 0 : (newCount || 0));
 }
 
 function updateStats() {
@@ -756,6 +757,17 @@ function renderTable(q, animateFirst) {
 }
 
 // ── Sort ──────────────────────────────────────────────────────────────
+function sortRows(rows) {
+  var key = sortKey;
+  rows.sort(function(a, b) {
+    var va = a[key], vb = b[key];
+    if (key === 'bytes' || key === 'elapsed') { va = parseInt(va)||0; vb = parseInt(vb)||0; return (va - vb) * sortDir; }
+    if (key === 'http_code') { va = parseInt(va)||0; vb = parseInt(vb)||0; return (va - vb) * sortDir; }
+    va = String(va); vb = String(vb);
+    return va < vb ? -sortDir : va > vb ? sortDir : 0;
+  });
+}
+
 function sortBy(key) {
   if (sortKey === key) sortDir *= -1;
   else { sortKey = key; sortDir = -1; }
@@ -764,15 +776,7 @@ function sortBy(key) {
   var arr = document.getElementById('arr-' + key);
   if (arr) arr.textContent = sortDir === -1 ? '▼' : '▲';
 
-  CUR.sort(function(a, b) {
-    var va = a[key], vb = b[key];
-    if (key === 'bytes' || key === 'elapsed') { va = parseInt(va)||0; vb = parseInt(vb)||0; return (va - vb) * sortDir; }
-    if (key === 'http_code') { va = parseInt(va)||0; vb = parseInt(vb)||0; return (va - vb) * sortDir; }
-    va = String(va); vb = String(vb);
-    return va < vb ? -sortDir : va > vb ? sortDir : 0;
-  });
-
-  renderTable(document.getElementById('q').value.toLowerCase().trim());
+  applyFilters();
 }
 
 // ── New rows banner ───────────────────────────────────────────────────

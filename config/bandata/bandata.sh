@@ -346,8 +346,7 @@ acl_fix_perms() {
 
 # FILESYSTEM LAYOUT
 # Create folders if they don't exist
-acl_prepare "$ACL_PATH" 755 644
-acl_prepare "$ACL_MAC_PATH" 700 600
+acl_prepare "$ACL_PATH" 700 600
 acl_prepare "$ACL_BANDATA_PATH" 700 600 "$ALLOW_LIST" \
     "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
 

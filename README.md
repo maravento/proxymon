@@ -330,7 +330,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `SQUIDREPORTS_DIR` | `bandata.sh`, Squidreports | Squidreports installation directory | Directorio de instalación de Squidreports |
 | `REPORT_PATH` | `bandata.sh`, `worker.php`, Squidreports, `pmbk.sh` | Directory holding the daily Squidreports reports | Directorio con los informes diarios de Squidreports |
 | `REALNAME_CFG`, `SKIPUSERS_CFG` | `bandata.sh`, `worker.php`, Squidreports | Squidreports hostname mappings and excluded-user list | Correspondencia entre IP y nombres de equipo, y lista de usuarios excluidos de Squidreports |
-| `ACL_PATH`, `ACL_MAC_PATH`, `ACL_SQUID_PATH` | `pmsetup.sh`, `bandata.sh`, `worker.php` | ACL tree shared with the other projects on the host, and its MAC and Squid branches | Árbol de ACL compartido con los otros proyectos del host, y sus ramas MAC y Squid |
+| `ACL_PATH`, `ACL_MAC_PATH`, `ACL_SQUID_PATH` | `pmsetup.sh`, `bandata.sh`, `worker.php` | ACL tree shared with the other projects on the host, the MAC directory, and the Squid ACL directory | Árbol de ACL compartido con los otros proyectos del host, y sus ramas MAC y Squid |
 | `ACL_BANDATA_PATH` | `bandata.sh` | Directory holding Bandata's own quota lists | Directorio con las listas de cuota propias de Bandata |
 | `ALLOW_LIST` | `bandata.sh` | `allowdata.txt`: IPs exempt from every quota. This is the only Bandata ACL the administrator edits, manually on the server. The web interface does not provide an editor. | `allowdata.txt`: IP exentas de toda cuota. Es la única ACL de Bandata que edita el administrador, manualmente en el servidor. La interfaz web no permite editarla. |
 | `BLOCK_LIST_DAY`, `BLOCK_LIST_WEEK`, `BLOCK_LIST_MONTH` | `bandata.sh` | `banday.txt`, `banweek.txt` and `banmonth.txt`: block lists managed automatically by Bandata. Do not edit them manually; the web interface does not provide an editor. | `banday.txt`, `banweek.txt` y `banmonth.txt`: listas de bloqueo administradas automáticamente por Bandata. No deben editarse manualmente; la interfaz web no permite editarlas. |
@@ -441,8 +441,8 @@ sudo bash pmsetup.sh --help   # or -h
 </table>
 
 ```bash
-/etc/acl/squid/blocktlds.txt=Blocked TLD
-/etc/acl/squid/blockdomains.txt=Blocked Sites
+/etc/squid/acl/blocktlds.txt=Blocked TLD
+/etc/squid/acl/blockdomains.txt=Blocked Sites
 regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?(?=[/?#]|$)=Block IPv4
 regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|peer_id=|porn|psiphon|torrent|ultrasurf)=Blocked Patterns
 ```
@@ -462,6 +462,8 @@ regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|p
 sudo nano /etc/proxymon/proxymon.env
 # path to ACLs folder
 ACL_PATH=/etc/acl
+ACL_MAC_PATH=$ACL_PATH
+ACL_SQUID_PATH=/etc/squid/acl
 ```
 
 ##### ACL Rules
@@ -484,13 +486,13 @@ sudo nano /etc/squid/squid.conf
 #
 include /etc/squid/conf.d/*.conf
 # Block: TLDs
-acl blocktlds dstdomain "/etc/acl/squid/blocktlds.txt"
+acl blocktlds dstdomain "/etc/squid/acl/blocktlds.txt"
 http_access deny workdays blocktlds
 # Block: domains
-acl blockdomains dstdomain "/etc/acl/squid/blockdomains.txt"
+acl blockdomains dstdomain "/etc/squid/acl/blockdomains.txt"
 http_access deny workdays blockdomains
 # Block: patterns
-acl blockpatterns dstdomain "/etc/acl/squid/blockpatterns.txt"
+acl blockpatterns dstdomain "/etc/squid/acl/blockpatterns.txt"
 http_access deny workdays blockpatterns
 ```
 
@@ -1326,10 +1328,10 @@ MAX_BANDWIDTH_MONTH=20G
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      For security incident detection, SquidAI uses <code>/etc/acl/squid/blockpatterns.txt</code> and direct IPv4 detection. Severity depends on the pattern type and number of matches; results can be classified as <strong>CRITICAL</strong>, <strong>HIGH</strong>, <strong>MEDIUM</strong>, or <strong>LOW</strong>.
+      For security incident detection, SquidAI uses <code>/etc/squid/acl/blockpatterns.txt</code> and direct IPv4 detection. Severity depends on the pattern type and number of matches; results can be classified as <strong>CRITICAL</strong>, <strong>HIGH</strong>, <strong>MEDIUM</strong>, or <strong>LOW</strong>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/acl/squid/blockpatterns.txt</code> y detección de IPv4 directa. La severidad depende del tipo de patrón y del número de coincidencias; los resultados pueden clasificarse como <strong>CRITICAL</strong>, <strong>HIGH</strong>, <strong>MEDIUM</strong> o <strong>LOW</strong>.
+      Para la detección de incidentes de seguridad, SquidAI utiliza <code>/etc/squid/acl/blockpatterns.txt</code> y detección de IPv4 directa. La severidad depende del tipo de patrón y del número de coincidencias; los resultados pueden clasificarse como <strong>CRITICAL</strong>, <strong>HIGH</strong>, <strong>MEDIUM</strong> o <strong>LOW</strong>.
     </td>
   </tr>
 </table>

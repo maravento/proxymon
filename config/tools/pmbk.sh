@@ -252,7 +252,7 @@ for backup_item in \
     "$SQUIDMON_CONFIG" \
     "$TOOL_REPORT_DIR" \
     "$LLM_ENV_FILE" \
-    "$ACL_MAC_PATH" \
+    "$ACL_MAC_PATH"/mac-*.txt \
     "$ACL_SQUID_PATH" \
     "$ACL_BANDATA_PATH" \
     "$ALLOW_LIST" \

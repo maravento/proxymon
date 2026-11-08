@@ -128,6 +128,7 @@ sub load_config {
     %config = ();
     read_file($config_file, \%config);
     foreach my $key (keys %config_defaults) {
+        next if $key eq 'acl_list' && exists $config{$key};
         next if defined $config{$key} && $config{$key} ne '';
         $config{$key} = $config_defaults{$key};
     }

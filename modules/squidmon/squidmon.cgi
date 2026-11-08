@@ -1069,9 +1069,9 @@ function silentRefresh() {
             oldContent.innerHTML = newContent.innerHTML;
         }
 
-        startCountdown();
     })
-    .catch(err => console.log('Refresh failed:', err));
+    .catch(err => console.log('Refresh failed:', err))
+    .finally(startCountdown);
 }
 
 function startCountdown() {

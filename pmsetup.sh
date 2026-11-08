@@ -1229,8 +1229,8 @@ SQUID_MGR_PASSWD=
 
 # ACL
 ACL_PATH=/etc/acl
-ACL_MAC_PATH=\$ACL_PATH/mac
-ACL_SQUID_PATH=\$ACL_PATH/squid
+ACL_MAC_PATH=\$ACL_PATH
+ACL_SQUID_PATH=/etc/squid/acl
 
 # Squidreports
 SQUIDREPORTS_DIR=${WEB_ROOT}/squidreports
@@ -1467,8 +1467,7 @@ do_install() {
     # ACL_BANDATA_PATH ships inside config/bandata/acl/ with its 4 files
     # already present, copied to $CONFIG_DIR above. Only its permissions are
     # set here, through the same block, because only root reads those lists.
-    acl_prepare "$ACL_PATH" 755 644
-    acl_prepare "$ACL_MAC_PATH" 700 600
+    acl_prepare "$ACL_PATH" 700 600
     acl_prepare "$ACL_SQUID_PATH" 755 644
     acl_prepare "$ACL_BANDATA_PATH" 700 600 "$ALLOW_LIST" \
         "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
@@ -1510,7 +1509,7 @@ do_install() {
             && acl_fix_perms "$ACL_SQUID_PATH/blockdomains.txt" 644
     fi
 
-    if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/vault/refs/heads/master/gateproxy/acl/squid/blockpatterns.txt "$ACL_SQUID_PATH/blockpatterns.txt"; then
+    if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/vault/refs/heads/master/gateproxy/conf/squid/acl/blockpatterns.txt "$ACL_SQUID_PATH/blockpatterns.txt"; then
         acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blockpatterns.txt"
     else
         warn "blockpatterns.txt download failed -alert"

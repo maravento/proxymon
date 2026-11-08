@@ -86,7 +86,8 @@ find(sub {
     return unless $File::Find::name =~ m{/\d{8}/[^/.][^/]*$};
     open(my $fh, '<', $File::Find::name) or return;
     while (my $line = <$fh>) {
-        if (index(lc($line), $query_lc) != -1) {
+        my ($site) = split(' ', $line);
+        if (defined $site && $site ne 'total:' && index(lc($site), $query_lc) != -1) {
             push @all_grep_results, $File::Find::name . ':' . $line;
         }
     }
