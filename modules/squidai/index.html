@@ -892,6 +892,18 @@ async function processQuery(userText) {
   const ragContext = retrieveContext(userText);
 
   try {
+    if (userText.toLowerCase() === t.queryTopDomains.toLowerCase()) {
+      const netData = await fetchWorker('get_network_summary', { date: 'today' });
+      if (netData.error) throw new Error(netData.error);
+      const rows = netData.top_domains_by_hits.map(d =>
+        `<tr><td>${escHtml(d.domain)}</td><td>${escHtml(String(d.hits))}</td></tr>`
+      ).join('');
+      removeTyping();
+      appendMessage('ai', `<table><thead><tr><th>${t.labelDomain}</th><th>${t.labelHits}</th></tr></thead><tbody>${rows}</tbody></table>`);
+      btn.disabled = false;
+      return;
+    }
+
     // 1. Detect intent via BM25 on dataset.md
     let intent = detectIntentFromDataset(userText);
 
@@ -1086,6 +1098,7 @@ async function processQuery(userText) {
       if (mentionsToday || dateMatch) {
         const date = dateMatch ? dateMatch[1] : 'today';
         const netData = await fetchWorker('get_network_summary', { date });
+        if (netData.error) throw new Error(netData.error);
         contextData = JSON.stringify(netData);
         const intentInstructions = retrieveContextForIntent('INTENCIÓN: red_global');
         systemPrompt += `\n\n${intentInstructions}\n\nCONTEXTO DE RED (JSON):\n${contextData}`;
@@ -1175,6 +1188,7 @@ window.loadNetworkDate = async function(folder, label) {
   await loadDataset();
   try {
     const netData = await fetchWorker('get_network_summary', { date: folder });
+    if (netData.error) throw new Error(netData.error);
     const intentInstructions = retrieveContextForIntent('INTENCIÓN: red_global');
     const systemPrompt = buildSystemPrompt()
       + `\n\n${intentInstructions}\n\nCONTEXTO DE RED (JSON):\n${JSON.stringify(netData)}`;

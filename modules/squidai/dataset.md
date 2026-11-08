@@ -101,7 +101,7 @@ FILE: squidai/dataset.md
 
 | Español | English |
 |---------|---------|
-| Consultar get_network_summary en worker.php que devuelve: total de bytes, hits, IPs únicas, top 10 usuarios por consumo, top 10 dominios por consumo. | Call get_network_summary in worker.php which returns: total bytes, hits, unique IPs, top 10 users by consumption, top 10 domains by consumption. |
+| Consultar get_network_summary en worker.php que devuelve: total de bytes, hits, IPs únicas, top 10 usuarios por consumo, top 10 dominios por consumo y top 10 dominios por hits. Para «más visitados», usa top_domains_by_hits y conserva su orden. | Call get_network_summary in worker.php which returns: total bytes, hits, unique IPs, top 10 users by consumption, top 10 domains by consumption, and top 10 domains by hits. For “most visited”, use top_domains_by_hits and keep its order. |
 
 ### Instrucciones para responder | Response instructions
 

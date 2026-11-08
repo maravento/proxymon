@@ -398,6 +398,10 @@ sudo bash pmsetup.sh --help   # or -h
 | SquidAI | Squidreports reports, `access.log` and `access.log.1` | Informes de Squidreports, `access.log` y `access.log.1` | Full history by report, two weeks by log / Histórico completo por informe, dos semanas por registro |
 | `squidtool.sh` | `access.log` and every rotated file | `access.log` y todos los rotados | Full retention / Retención completa |
 
+SquidAI uses the daily Squidreports `.denied` file for blocked domains, patterns, TLDs and direct IPv4 incidents. If the report is missing or empty, it reads the active and uncompressed rotated logs. Denied reports do not include byte counts.
+
+SquidAI usa el archivo diario `.denied` de Squidreports para consultar bloqueos por dominio, patrón, TLD y acceso directo a IPv4. Si el informe falta o está vacío, lee el registro activo y los rotados sin comprimir. Los informes de solicitudes denegadas no incluyen los bytes.
+
 ### Modules
 
 #### MAIN MENU
@@ -1318,6 +1322,10 @@ MAX_BANDWIDTH_MONTH=20G
 | **Security queries:**<br> "Are there security incidents?"<br> "Detect any threat today?"<br> "Is there torrent traffic?" | **Consultas de seguridad:**<br> "¿Hay incidentes de seguridad?"<br> "¿Detectas alguna amenaza hoy?"<br> "¿Hay tráfico de torrents?" |
 | **Blocked accesses:**<br> "Which IPs accessed blocked domains?"<br> "Show blocked TLD accesses" | **Accesos bloqueados:**<br> "¿Qué IPs accedieron a dominios bloqueados?"<br> "Muestra accesos a TLDs bloqueados" |
 | **User list:**<br> "List all registered users"<br> "Show me all users" | **Lista de usuarios:**<br> "Lista todos los usuarios registrados"<br> "Muéstrame todos los usuarios" |
+
+> **Top Domains** uses daily Squidreports data and ranks domains by hits. **Top Consumers** ranks users by bytes transferred.
+>
+> **Top Domains** usa los reportes diarios de Squidreports y ordena los dominios por hits. **Top Consumers** ordena los usuarios por bytes transferidos.
 
 > The user names in the examples are illustrative. For the assistant to recognize them, they must exist in `realname.cfg` (and not be excluded in `skipuser.cfg`), where Squidreports stores the IP-to-hostname mapping.
 >

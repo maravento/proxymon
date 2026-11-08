@@ -53,6 +53,7 @@ $i18n = [
         'realname_not_found' => 'realname.cfg not found',
         'squidreports_dir_missing' => 'Squidreports directory not found',
         'no_report' => 'No Squidreports report for this date/IP',
+        'no_network_report' => 'No Squidreports report for this date',
         'blockdomains_not_found' => 'blockdomains.txt not found',
         'cannot_read_log' => 'Cannot read access.log',
         'unknown' => 'Unknown',
@@ -65,6 +66,7 @@ $i18n = [
         'realname_not_found' => 'realname.cfg no encontrado',
         'squidreports_dir_missing' => 'Directorio Squidreports no encontrado',
         'no_report' => 'Sin reporte Squidreports para esta fecha/IP',
+        'no_network_report' => 'No hay un reporte de Squidreports para esta fecha',
         'blockdomains_not_found' => 'blockdomains.txt no encontrado',
         'cannot_read_log' => 'No se pudo leer access.log',
         'unknown' => 'Desconocido',
@@ -332,7 +334,7 @@ try {
 
         case 'get_network_summary':
             $date = normalizeDate((string)($_GET['date'] ?? 'today'));
-            cachedJson("get_network_summary:$date", WORKER_CACHE_TTL, fn() => getNetworkSummary($date));
+            cachedJson("get_network_summary:v3:$date", WORKER_CACHE_TTL, fn() => getNetworkSummary($date));
             break;
 
         case 'get_traffic_stats':
@@ -716,20 +718,31 @@ function getUserReport(string $ip, string $date): array {
 /**
  * TCP_DENIED account to direct IPv4 for a specific IP and date
  */
-function getDeniedDirectIps(string $ip, string $date): array {
-    $targetDate = ($date === 'today' || !$date) ? date('Y-m-d') : $date;
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
-        $targetDate = date('Y-m-d');
+function deniedReport(string $date): array {
+    $path = REPORT_STATS_DIR . '/' . str_replace('-', '', $date) . '/.denied';
+    return file_exists($path) ? readLinesLocked($path) : [];
+}
+
+function deniedRows(string $date, ?string $ip = null, ?array $report = null): Generator {
+    $report ??= deniedReport($date);
+    if ($report) {
+        foreach ($report as $line) {
+            $fields = explode("\t", $line, 4);
+            if (count($fields) !== 4) {
+                throw new IncompleteLogRead('Invalid denied report for ' . $date);
+            }
+            [$client, , $code, $url] = $fields;
+            if (!str_contains($code, 'TCP_DENIED')) continue;
+            if ($ip !== null && $client !== $ip) continue;
+
+            yield [$client, $url, null];
+        }
+        return;
     }
-    $startTs    = (float) strtotime($targetDate . ' 00:00:00');
-    $endTs      = strtotime('+1 day', (int)$startTs);
 
-    $hits      = 0;
-    $ipTargets = [];
-
-    // Possible logs: access.log, access.log.1, etc. (same order as getBlockedByType)
     $rotated = glob(SQUID_LOG_DIR . '/access.log.*');
     if ($rotated) {
+        // Only files without an additional extension (.gz is not readable directly via fopen)
         $rotated = array_filter($rotated, fn($f) => preg_match('/access\.log\.\d+$/', $f));
         usort($rotated, function($a, $b) {
             $na = (int)preg_replace('/^.*\.(\d+)$/', '$1', $a);
@@ -741,45 +754,61 @@ function getDeniedDirectIps(string $ip, string $date): array {
     }
     $logFiles = array_merge($rotated, [SQUID_LOG_FILE]);
 
-    $ipEsc = escapeshellarg($ip);
-
     $logSources = 0;
     foreach ($logFiles as $logFile) {
         if (!file_exists($logFile)) continue;
 
         $logFileEsc = escapeshellarg($logFile);
-        $command = "timeout 30 grep -Fa {$ipEsc} {$logFileEsc} | timeout 30 grep 'TCP_DENIED'"
-            . '; s=("${PIPESTATUS[@]}"); exit $(( s[0] > 1 || s[1] > 1 ? 2 : 0 ))';
-        $handle = popen('/bin/bash -c ' . escapeshellarg($command), 'r');
+        $command = "timeout 30 grep -a 'TCP_DENIED' $logFileEsc";
+        if ($ip !== null) {
+            $ipEsc = escapeshellarg($ip);
+            $command = "timeout 30 grep -Fa {$ipEsc} {$logFileEsc} | timeout 30 grep 'TCP_DENIED'"
+                . '; s=("${PIPESTATUS[@]}"); exit $(( s[0] > 1 || s[1] > 1 ? 2 : 0 ))';
+            $command = '/bin/bash -c ' . escapeshellarg($command);
+        }
+        $handle = popen($command, 'r');
         if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
         $logSources++;
 
-        while (($line = fgets($handle)) !== false) {
-            if (microtime(true) > LOG_SCAN_DEADLINE) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
+        try {
+            while (($line = fgets($handle)) !== false) {
+                if (microtime(true) > LOG_SCAN_DEADLINE) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
 
-            $parts = preg_split('/\s+/', trim($line));
-            if (count($parts) < 7) continue;
-            if (stripos($parts[3] ?? '', 'DENIED') === false) continue;
+                $parts = preg_split('/\s+/', trim($line));
+                if (count($parts) < 7 || stripos($parts[3], 'DENIED') === false) continue;
+                if ($ip !== null && $parts[2] !== $ip) continue;
+                if (date('Y-m-d', (int)(float)$parts[0]) !== $date) continue;
 
-            if (($parts[2] ?? '') !== $ip) continue;
-
-            $ts  = (float) $parts[0];
-            if ($ts < $startTs || $ts >= $endTs) continue;
-
-            $url = $parts[6] ?? '';
-            if (!preg_match('/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?=[:\/?#]|$)/', $url)) continue;
-
-            $hits++;
-            $target = preg_replace('#^https?://#', '', $url);
-            $ipTargets[$target] = ($ipTargets[$target] ?? 0) + 1;
+                yield [$parts[2], $parts[6], (int)$parts[4]];
+            }
+        } finally {
+            $status = pclose($handle);
         }
-        if (pclose($handle) !== 0) {
+        if ($status > ($ip === null ? 1 : 0)) {
             throw new IncompleteLogRead('Incomplete read of ' . $logFile);
         }
     }
 
     if ($logSources === 0) {
         throw new IncompleteLogRead('No Squid access logs available in ' . SQUID_LOG_DIR);
+    }
+}
+
+function getDeniedDirectIps(string $ip, string $date): array {
+    $targetDate = ($date === 'today' || !$date) ? date('Y-m-d') : $date;
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
+        $targetDate = date('Y-m-d');
+    }
+
+    $hits      = 0;
+    $ipTargets = [];
+
+    foreach (deniedRows($targetDate, $ip) as [$client, $url]) {
+        if (!preg_match('/^(https?:\/\/)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?=[:\/?#]|$)/', $url)) continue;
+
+        $hits++;
+        $target = preg_replace('#^https?://#', '', $url);
+        $ipTargets[$target] = ($ipTargets[$target] ?? 0) + 1;
     }
     if ($hits === 0) return ['hits' => 0, 'severity' => null];
 
@@ -1071,7 +1100,6 @@ function getBlockedByType(string $type, string $date = 'today'): array {
     }
 
     $incidentMap = [];
-    $totalBytes  = 0;
 
     // 🔹 Load REAL patterns
     $patterns = [];
@@ -1119,148 +1147,110 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         }
     }
 
-    // Possible logs: access.log, access.log.1, etc. (same order as getNetworkSummary)
-    $rotated = glob(SQUID_LOG_DIR . '/access.log.*');
-    if ($rotated) {
-        // Only files without an additional extension (.gz is not readable directly via fopen)
-        $rotated = array_filter($rotated, fn($f) => preg_match('/access\.log\.\d+$/', $f));
-        usort($rotated, function($a, $b) {
-            $na = (int)preg_replace('/^.*\.(\d+)$/', '$1', $a);
-            $nb = (int)preg_replace('/^.*\.(\d+)$/', '$1', $b);
-            return $nb - $na; // descending suffix = ascending age
-        });
-    } else {
-        $rotated = [];
-    }
-    $logFiles = array_merge($rotated, [SQUID_LOG_FILE]);
+    $denied = deniedReport($hoy);
+    $totalBytes = $denied ? null : 0;
+    foreach (deniedRows($hoy, null, $denied) as [$client, $url, $bytes]) {
+        if (!preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $client)) continue;
+        if (in_array($client, $skipIps)) continue;
 
-    $logSources = 0;
-    foreach ($logFiles as $logFile) {
-        if (!file_exists($logFile)) continue;
+        $host = extractDomain($url, false);
+        $domain = $host === '' ? $url : preg_replace('/^www\./', '', $host);
 
-        $handle = popen("timeout 30 grep -a 'TCP_DENIED' " . escapeshellarg($logFile), 'r');
-        if (!$handle) throw new IncompleteLogRead('Cannot start reader for ' . $logFile);
-        $logSources++;
+        // 🔴 REAL FILTER BY PATTERNS
+        if ($type === 'patterns') {
+            $matched = null;
 
-        while (($line = fgets($handle)) !== false) {
-            if (microtime(true) > LOG_SCAN_DEADLINE) throw new \OverflowException('Log scan limit reached; the result would be incomplete. Narrow the query or use generated reports.');
-
-            $parts = preg_split('/\s+/', trim($line));
-            if (count($parts) < 7) continue;
-            if (stripos($parts[3] ?? '', 'DENIED') === false) continue;
-
-            $ts = (float)$parts[0];
-            if (date('Y-m-d', (int)$ts) !== $hoy) continue;
-
-            $client = $parts[2];
-            if (!preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $client)) continue;
-            if (in_array($client, $skipIps)) continue;
-            $bytes  = (int)$parts[4];
-            $url    = $parts[6] ?? '';
-
-            $host = extractDomain($url, false);
-            $domain = $host === '' ? $url : preg_replace('/^www\./', '', $host);
-
-            // 🔴 REAL FILTER BY PATTERNS
-            if ($type === 'patterns') {
-                $matched = null;
-
-                foreach ($patterns as [$regex, $label]) {
-                    if (@preg_match($regex, $url)) {
-                        $matched = $label;
-                        break;
-                    }
+            foreach ($patterns as [$regex, $label]) {
+                if (@preg_match($regex, $url)) {
+                    $matched = $label;
+                    break;
                 }
-
-                if ($matched === null) continue;
-
-                $key = $client . '|' . $matched;
-
-                if (!isset($incidentMap[$key])) {
-                    $incidentMap[$key] = [
-                        'ip'      => $client,
-                        'name'    => $userMap[$client] ?? msg('unknown'),
-                        'pattern' => $matched,
-                        'hits'    => 0,
-                    ];
-                }
-
-                $incidentMap[$key]['hits']++;
-                $incidentMap[$key]['bytes'] = ($incidentMap[$key]['bytes'] ?? 0) + $bytes;
-                $totalBytes += $bytes;
-                continue;
             }
 
-            // 🔹 FILTER FOR TLDS
-            if ($type === 'tlds') {
-                static $tlds = null;
-                if ($tlds === null) {
-                    $tlds = [];
-                    if (file_exists(BLOCKTLDS)) {
-                        $tldLines = readLinesLocked(BLOCKTLDS);
-                        foreach ($tldLines as $line) {
-                            $line = trim($line);
-                            if ($line && $line[0] !== '#') {
-                                $tlds[] = strtolower(ltrim($line, '.'));
-                            }
-                        }
-                    }
-                }
+            if ($matched === null) continue;
 
-                $matchedTld = false;
-                foreach ($tlds as $tld) {
-                    if (str_ends_with($domain, '.' . $tld) || $domain === $tld) {
-                        $matchedTld = true;
-                        break;
-                    }
-                }
-                if (!$matchedTld) continue;
-            }
-
-            // 🔹 FILTER FOR BLOCKED DOMAINS
-            if ($type === 'domains') {
-                $matchedDomain = false;
-                $candidate = $host === '' ? $domain : $host;
-                while (true) {
-                    if (isset($blockedDomains[$candidate])) {
-                        $matchedDomain = true;
-                        break;
-                    }
-                    $dot = strpos($candidate, '.');
-                    if ($dot === false) break;
-                    $candidate = substr($candidate, $dot + 1);
-                }
-                if (!$matchedDomain) continue;
-            }
-
-            // 🔹 NORMAL MODE (TCP_DENIED grouped by domain)
-            $key = $client . '|' . $domain;
+            $key = $client . '|' . $matched;
 
             if (!isset($incidentMap[$key])) {
                 $incidentMap[$key] = [
-                    'ip'     => $client,
-                    'name'   => $userMap[$client] ?? msg('unknown'),
-                    'domain' => $domain,
-                    'hits'   => 0,
-                    'bytes'  => 0,
+                    'ip'      => $client,
+                    'name'    => $userMap[$client] ?? msg('unknown'),
+                    'pattern' => $matched,
+                        'hits'    => 0,
+                        'bytes'   => $bytes === null ? null : 0,
                 ];
             }
 
             $incidentMap[$key]['hits']++;
+            if ($bytes !== null) {
+                $incidentMap[$key]['bytes'] += $bytes;
+                $totalBytes += $bytes;
+            }
+            continue;
+        }
+
+        // 🔹 FILTER FOR TLDS
+        if ($type === 'tlds') {
+            static $tlds = null;
+            if ($tlds === null) {
+                $tlds = [];
+                if (file_exists(BLOCKTLDS)) {
+                    $tldLines = readLinesLocked(BLOCKTLDS);
+                    foreach ($tldLines as $line) {
+                        $line = trim($line);
+                        if ($line && $line[0] !== '#') {
+                            $tlds[] = strtolower(ltrim($line, '.'));
+                        }
+                    }
+                }
+            }
+
+            $matchedTld = false;
+            foreach ($tlds as $tld) {
+                if (str_ends_with($domain, '.' . $tld) || $domain === $tld) {
+                    $matchedTld = true;
+                    break;
+                }
+            }
+            if (!$matchedTld) continue;
+        }
+
+        // 🔹 FILTER FOR BLOCKED DOMAINS
+        if ($type === 'domains') {
+            $matchedDomain = false;
+            $candidate = $host === '' ? $domain : $host;
+            while (true) {
+                if (isset($blockedDomains[$candidate])) {
+                    $matchedDomain = true;
+                    break;
+                }
+                $dot = strpos($candidate, '.');
+                if ($dot === false) break;
+                $candidate = substr($candidate, $dot + 1);
+            }
+            if (!$matchedDomain) continue;
+        }
+
+        // 🔹 NORMAL MODE (TCP_DENIED grouped by domain)
+        $key = $client . '|' . $domain;
+
+        if (!isset($incidentMap[$key])) {
+            $incidentMap[$key] = [
+                'ip'     => $client,
+                'name'   => $userMap[$client] ?? msg('unknown'),
+                'domain' => $domain,
+                'hits'   => 0,
+                'bytes'  => $bytes === null ? null : 0,
+            ];
+        }
+
+        $incidentMap[$key]['hits']++;
+        if ($bytes !== null) {
             $incidentMap[$key]['bytes'] += $bytes;
             $totalBytes += $bytes;
         }
-
-        // grep exits 1 when the file holds no denied request, which is a
-        // complete answer. Anything above that is a read error or a timeout.
-        if (pclose($handle) > 1) {
-            throw new IncompleteLogRead('Incomplete read of ' . $logFile);
-        }
     }
 
-    if ($logSources === 0) {
-        throw new IncompleteLogRead('No Squid access logs available in ' . SQUID_LOG_DIR);
-    }
     $results = array_values($incidentMap);
 
     usort($results, fn($a, $b) => $b['hits'] - $a['hits']);
@@ -1270,7 +1260,7 @@ function getBlockedByType(string $type, string $date = 'today'): array {
         'incidents'   => $results,
         'count'       => count($results),
         'total_bytes' => $totalBytes,
-        'total_human' => formatBytes($totalBytes),
+        'total_human' => $totalBytes === null ? null : formatBytes($totalBytes),
         'missing_lists' => $missingLists,
     ];
 }
@@ -1347,6 +1337,10 @@ function getNetworkSummary(string $date = 'today'): array {
         }
     }
 
+    if (!$ipStats) {
+        return ['error' => msg('no_network_report')];
+    }
+
     usort($ipStats, fn($a, $b) => $b['bytes'] - $a['bytes']);
     usort($domainStats, fn($a, $b) => $b['bytes'] - $a['bytes']);
 
@@ -1358,6 +1352,9 @@ function getNetworkSummary(string $date = 'today'): array {
     unset($a);
 
     $topUsers = array_slice($allUsers, 0, 10);
+
+    $domainsByHits = array_values($domainStats);
+    usort($domainsByHits, fn($a, $b) => ($b['hits'] <=> $a['hits']) ?: strcmp($a['domain'], $b['domain']));
 
     $topDomains = array_slice(array_values($domainStats), 0, 10);
     foreach ($topDomains as &$d) $d['bytes_human'] = formatBytes($d['bytes']);
@@ -1372,6 +1369,7 @@ function getNetworkSummary(string $date = 'today'): array {
         'top_users'     => $topUsers,
         'all_users'     => $allUsers,
         'top_domains'   => $topDomains,
+        'top_domains_by_hits' => array_slice($domainsByHits, 0, 10),
     ];
 }
 
