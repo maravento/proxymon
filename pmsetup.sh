@@ -1164,9 +1164,10 @@ print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
         echo "Max bandwidth per month: $bw_month (default)"
     fi
 
-    # Unifi Hotspot Manager -- enabled when uhm is installed and its ACL exists
+    # Enable Bandata integration only for an installed UHM in Hotspot mode.
     hotspot_dir="/etc/uhm"
-    if [ -f "$hotspot_dir/uhm.env" ] && [ -f "$hotspot_dir/acl/uhm-auth.txt" ]; then
+    if [ -f "$hotspot_dir/uhm.env" ] && [ -f "$hotspot_dir/acl/uhm-auth.txt" ] &&
+        grep -qxF 'UNIFI_HOTSPOT_ENABLED=true' "$hotspot_dir/uhm.env"; then
         hotspot_enabled=true
     else
         hotspot_enabled=false

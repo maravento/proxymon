@@ -350,9 +350,12 @@ acl_prepare "$ACL_PATH" 700 600
 acl_prepare "$ACL_BANDATA_PATH" 700 600 "$ALLOW_LIST" \
     "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
 
-if [ "$BANDATA_HOTSPOT" = true ] && [ ! -d "$HOTSPOT_PATH" ]; then
-    log "ERROR: BANDATA_HOTSPOT=true but $HOTSPOT_PATH missing -abort"
-    exit 1
+# Check UHM's current mode before consuming its voucher ACL.
+if [ "$BANDATA_HOTSPOT" = true ] &&
+    { [ ! -f "$HOTSPOT_PATH/uhm.env" ] ||
+      [ ! -f "$HOTSPOT_PATH/acl/uhm-auth.txt" ] ||
+      ! grep -qxF 'UNIFI_HOTSPOT_ENABLED=true' "$HOTSPOT_PATH/uhm.env"; }; then
+    BANDATA_HOTSPOT=false
 fi
 
 # ------------------------------------------------------------------------------
@@ -785,7 +788,10 @@ update_squidreports_realname() {
     process_acls() {
         local filter_mode="$1" # "include" or "exclude"
         local mac_file
-        find "$ACL_MAC_PATH" -maxdepth 1 -type f -iname 'mac-*' | while read -r mac_file; do
+        local mac_files
+        mac_files=$(find "$ACL_MAC_PATH" -maxdepth 1 -type f -iname 'mac-*') || return 1
+        while IFS= read -r mac_file; do
+            [ -n "$mac_file" ] || continue
             local base_name
             base_name=$(basename "$mac_file")
             if [ "$filter_mode" = "include" ]; then
@@ -793,8 +799,8 @@ update_squidreports_realname() {
             else
                 is_excluded "$base_name" || continue
             fi
-            extract_ip_hostname < "$mac_file"
-        done
+            extract_ip_hostname < "$mac_file" || return 1
+        done <<< "$mac_files"
     }
 
     local sort_uniq="sort -u -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n"
@@ -803,7 +809,10 @@ update_squidreports_realname() {
     if [ "$BANDATA_HOTSPOT" = true ]; then
         hotspot_out=$(process_hotspot)
     fi
-    acl_out=$(process_acls include)
+    if ! acl_out=$(process_acls include); then
+        log "WARNING: cannot read MAC lists for realname.cfg -alert"
+        return 1
+    fi
     skip_out=$(process_acls exclude)
 
     local final_output skip_output cfg_tmp
@@ -813,11 +822,11 @@ update_squidreports_realname() {
     # Squidreports reads both files from its own directory, which belongs to
     # www-data. Staging through mktemp keeps this root write on a name no
     # other user can reach, and the mv replaces the target name as a whole.
-    if [ -z "$final_output" ]; then
+    if [ -z "$final_output" ] && [ "$BANDATA_HOTSPOT" = true ]; then
         log "INFO: No MAC data processed for realname.cfg"
     else
         cfg_tmp=$(mktemp)
-        if ! { echo "$final_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
+        if ! { { [ -z "$final_output" ] || printf '%s\n' "$final_output"; } > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
             && mv -fT -- "$cfg_tmp" "$REALNAME_CFG"; }; then
             rm -f "$cfg_tmp"
             log "WARNING: cannot update realname.cfg -alert"
