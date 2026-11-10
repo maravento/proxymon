@@ -156,23 +156,96 @@ a2enmod -q php || true
 
 ```
 proxymon/
-├── modules/                    # Web content served from /var/www/proxymon
-│   ├── logview/                  # Logview: Log and Live views for access logs and active requests
-│   ├── squidai/                  # AI: conversational assistant
-│   ├── squidmon/                 # Monitor: real-time traffic and ACL analysis
-│   ├── squidreports/             # Reports: daily traffic reports
-│   ├── warning/                  # Captive portal warning page
-│   └── index.html                # Main page with the module tabs
-├── config/                     # Root-only files, installed to /etc/proxymon
-│   ├── update-files.txt          # Required web code files checked before update
-│   ├── bandata/                  # Data usage control (bandata.sh and its ACLs)
-│   ├── tools/                    # Maintenance scripts
-│   │   ├── pmbk.sh               # Backup tool
-│   │   ├── proxymonenv.sh        # Shared configuration reader; sourced, not executed
-│   │   └── squidtool.sh          # Log search and traffic reports
-│   ├── squid/                    # squid.conf template, deployed only on a fresh Squid
-│   └── web/                      # Apache vhosts, installed to sites-available
-└── pmsetup.sh                  # Installer: install, update, uninstall
+├── modules/                              # deployed to: /var/www/proxymon [0755 root:root]
+│   ├── ProxymonEnv.pm                    # shared Perl configuration reader [0644 root:root]
+│   ├── index.html                        # main page with module tabs [0644 root:root]
+│   ├── logview/                          # access logs and live requests [0755 root:root]
+│   │   ├── LICENSE-SqStat                # SqStat license [0644 root:root]
+│   │   ├── access.php                    # access log view [0644 root:root]
+│   │   ├── api.php                       # log and traffic API [0644 root:root]
+│   │   ├── connections.php               # live connections view [0644 root:root]
+│   │   ├── env.php                       # configuration reader [0644 root:root]
+│   │   ├── index.php                     # LogView entry point [0644 root:root]
+│   │   ├── sqstat-dark.css               # dark theme styles [0644 root:root]
+│   │   ├── sqstat.class.php              # SqStat PHP class [0644 root:root]
+│   │   ├── sqstat.css                    # SqStat styles [0644 root:root]
+│   │   └── theme.js                      # theme controls [0644 root:root]
+│   ├── squidai/                          # conversational assistant [0755 root:root]
+│   │   ├── dataset.md                    # assistant reference data [0644 root:root]
+│   │   ├── index.html                    # assistant interface [0644 root:root]
+│   │   └── worker.php                    # assistant backend [0644 root:root]
+│   ├── squidmon/                         # real-time traffic monitor [0755 root:root]
+│   │   ├── CHANGELOG                     # Squidmon change history [0644 root:root]
+│   │   ├── config.cgi                    # configuration interface [0755 root:root]
+│   │   ├── etc/                          # configuration directory [0755 root:root]
+│   │   │   └── config                    # editable Squidmon settings [0644 www-data:www-data]
+│   │   ├── lang/                         # translations [0755 root:root]
+│   │   │   ├── en                        # English strings [0644 root:root]
+│   │   │   └── es                        # Spanish strings [0644 root:root]
+│   │   ├── pdf_report.cgi                # PDF report generator [0755 root:root]
+│   │   ├── squidmon-lib.pl               # shared Perl functions [0644 root:root]
+│   │   ├── squidmon-standalone.pl        # standalone support [0644 root:root]
+│   │   └── squidmon.cgi                  # Squidmon entry point [0755 root:root]
+│   ├── squidreports/                     # traffic reports and web assets [0755 root:root]
+│   │   ├── assets/
+│   │   │   └── global/
+│   │   │       └── plugins/
+│   │   │           └── bootstrap-switch/
+│   │   │               └── js/           # example asset directory [0755 root:root]
+│   │   ├── report/                       # generated reports [0755 www-data:www-data]
+│   │   ├── reportstats/                  # generated report statistics [0755 www-data:www-data]
+│   │   └── tpl/
+│   │       └── metro_tpl/
+│   │           └── graph.html            # example report template [0644 root:root]
+│   └── warning/                          # usage quota warning page [0755 root:root]
+│       └── warning.html                  # warning page [0644 root:root]
+├── config/                               # deployed configuration under /etc/proxymon [0750 root:www-data]
+│   ├── .env                              # generated LLM settings [0640 root:www-data]
+│   ├── proxymon.env                      # generated project settings [0640 root:www-data]
+│   ├── update-files.txt                  # required web files checked during updates
+│   ├── bandata/                          # deployed to: /etc/proxymon/bandata [0755 root:root]
+│   │   ├── bandata.sh                    # enforces data usage quotas [0755 root:root]
+│   │   └── acl/                          # Bandata ACL files [0700 root:root]
+│   │       ├── allowdata.txt             # quota exceptions [0600 root:root]
+│   │       ├── banday.txt                # daily blocks [0600 root:root]
+│   │       ├── banmonth.txt              # monthly blocks [0600 root:root]
+│   │       └── banweek.txt               # weekly blocks [0600 root:root]
+│   ├── tools/                            # deployed to: /etc/proxymon/tools [0755 root:root]
+│   │   ├── pmbk.sh                       # configuration backup [0755 root:root]
+│   │   ├── proxymonenv.sh                # shared Bash configuration reader [0644 root:root]
+│   │   ├── reports/                      # traffic report tools [0755 root:root]
+│   │   └── squidtool.sh                  # log search and traffic reports [0755 root:root]
+│   ├── squid/                            # Squid configuration for fresh installations
+│   └── web/                              # Apache virtual host templates
+│       ├── proxymon.conf                 # deployed to: /etc/apache2/sites-available/proxymon.conf [0644 root:root]
+│       └── warning.conf                  # deployed to: /etc/apache2/sites-available/warning.conf [0644 root:root]
+└── pmsetup.sh                            # installer, updater and uninstaller
+```
+
+### Additional Installed Paths
+
+```text
+etc/
+├── apache2/
+│   └── sites-enabled/
+│       ├── proxymon.conf                 # link to ../sites-available/proxymon.conf [0777 root:root]
+│       └── warning.conf                  # link to ../sites-available/warning.conf [0777 root:root]
+├── bak/
+│   └── proxymon                          # configuration backups [0700 root:root]
+├── cron.d/
+│   ├── proxymon                          # ProxyMon scheduled tasks [0644 root:root]
+│   └── proxymon.lock                     # cron writer lock [0600 root:root]
+└── logrotate.d/
+    └── proxymon                          # ProxyMon log rotation policy [0644 root:root]
+
+var/
+└── log/
+    ├── apache2/
+    │   ├── proxymon_access.log           # panel access log [0640 root:adm]
+    │   ├── proxymon_error.log            # panel error log [0640 root:adm]
+    │   ├── warning_access.log            # warning page access log [0640 root:adm]
+    │   └── warning_error.log             # warning page error log [0640 root:adm]
+    └── proxymon.log                      # ProxyMon application log [0640 root:adm]
 ```
 
 ## HOW TO USE
@@ -1352,7 +1425,7 @@ MAX_BANDWIDTH_MONTH=20G
 | The URL format depends on the provider. <ul> <li>Some providers include the account ID or the model name in the URL, for example Cloudflare: `…/accounts/ACCOUNT_ID/ai/run/MODEL_NAME`.</li> <li>Others use a fixed URL with the model in `LLM_MODEL`, for example OpenAI and Groq.</li> <li>Others embed the API key as a URL parameter, for example Gemini: `…?key=YOUR_KEY`.</li> </ul> Check the commented examples in the `.env` file for each provider's exact format. Leave `LLM_MODEL` empty if the model is already part of the URL. | El formato de la URL depende del proveedor. <ul> <li>Algunos proveedores incluyen el identificador de cuenta o el nombre del modelo en la URL, por ejemplo Cloudflare: `…/accounts/ACCOUNT_ID/ai/run/NOMBRE_MODELO`.</li> <li>Otros usan una URL fija con el modelo en `LLM_MODEL`, por ejemplo OpenAI y Groq.</li> <li>Otros incrustan la clave de API como parámetro de la URL, por ejemplo Gemini: `…?key=SU_CLAVE`.</li> </ul> Consulte los ejemplos comentados del archivo `.env` para ver el formato exacto de cada proveedor. Deje `LLM_MODEL` vacío si el modelo ya forma parte de la URL. |
 | `LLM_RESPONSE_FORMAT` tells the worker how to read the response: `openai` (most providers), `ollama` (local Ollama), or `gemini` (Google Gemini passthrough). | `LLM_RESPONSE_FORMAT` indica al worker cómo leer la respuesta: `openai` (la mayoría de proveedores), `ollama` (Ollama local) o `gemini` (Google Gemini passthrough). |
 | The file includes commented examples for: **Cloudflare Workers AI**, **OpenAI**, **Groq**, **OpenRouter**, **Together AI**, **Ollama** (local), **LM Studio** (local) and **Google Gemini**. Uncomment one block and fill in your credentials. | El archivo incluye ejemplos comentados para: **Cloudflare Workers AI**, **OpenAI**, **Groq**, **OpenRouter**, **Together AI**, **Ollama** (local), **LM Studio** (local) y **Google Gemini**. Descomente un bloque y complete sus credenciales. |
-| **🔒 Security:** The `.env` file is stored in `/etc/proxymon/`, outside the Apache webroot. Permissions are set to `640` (`root:www-data`), allowing root and processes in the `www-data` group, including Apache PHP, to read the file. | **🔒 Seguridad:** El archivo `.env` se almacena en `/etc/proxymon/`, fuera del webroot de Apache. Los permisos son `640` (`root:www-data`): el archivo queda accesible para root y para los procesos del grupo `www-data`, incluido PHP de Apache. |
+| **🔒 Security:** The `.env` file is stored in `/etc/proxymon/`, outside the Apache webroot. Root and processes in the `www-data` group, including Apache PHP, can read the file. | **🔒 Seguridad:** El archivo `.env` se almacena en `/etc/proxymon/`, fuera del webroot de Apache. Root y los procesos del grupo `www-data`, incluido PHP de Apache, pueden leer el archivo. |
 | **🔄 Rate Limits &amp; Retries:** LLM APIs may experience congestion depending on demand. SquidAI implements an automatic retry mechanism: up to **4 attempts** with progressive delays (4s, 8s, 15s) before giving up. If the API is temporarily unavailable, the assistant will display retry messages. If all attempts fail, it displays the notice shown in the following table. | **🔄 Límites de solicitudes y reintentos:** Las APIs LLM pueden experimentar congestión según la demanda. SquidAI implementa un mecanismo de reintento automático: hasta **4 intentos** con esperas progresivas (4 s, 8 s y 15 s) antes de desistir. Si la API no está disponible temporalmente, el asistente mostrará mensajes de reintento. Si todos los intentos fallan, mostrará el aviso de la tabla siguiente. |
 
 | Message | Description | Descripción |
