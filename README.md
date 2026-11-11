@@ -443,10 +443,10 @@ sudo bash pmsetup.sh --help   # or -h
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <ul><li>Shared Bash file installed at <code>CONFIG_DIR/tools/proxymonenv.sh</code>. It is loaded automatically with <code>source</code> by <code>pmsetup.sh</code>, <code>bandata.sh</code>, <code>squidtool.sh</code> and <code>pmbk.sh</code>. Do not run it separately or schedule it in cron.</li><li>Provides <code>load_proxymon_env</code> to read general configuration from <code>proxymon.env</code>, resolve references between keys and check the file owner and permissions. It does not modify configuration files or load the LLM credentials file.</li></ul>
+      <ul><li>Shared Bash file installed at <code>CONFIG_DIR/tools/proxymonenv.sh</code>. It is loaded automatically with <code>source</code> by <code>pmsetup.sh</code>, <code>bandata.sh</code>, <code>squidtool.sh</code> and <code>pmbk.sh</code>. Do not run it separately or schedule it in cron.</li><li>Reads general configuration from <code>proxymon.env</code>, resolves references between keys and checks the file owner and permissions. It does not modify configuration files or load the LLM credentials file.</li></ul>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <ul><li>Archivo Bash compartido instalado en <code>CONFIG_DIR/tools/proxymonenv.sh</code>. Lo cargan automáticamente mediante <code>source</code> los scripts <code>pmsetup.sh</code>, <code>bandata.sh</code>, <code>squidtool.sh</code> y <code>pmbk.sh</code>. No se ejecuta por separado ni se programa en cron.</li><li>Proporciona <code>load_proxymon_env</code> para leer la configuración general de <code>proxymon.env</code>, resolver referencias entre claves y comprobar el propietario y los permisos del archivo. No modifica archivos de configuración ni carga el archivo de credenciales del LLM.</li></ul>
+      <ul><li>Archivo Bash compartido instalado en <code>CONFIG_DIR/tools/proxymonenv.sh</code>. Lo cargan automáticamente mediante <code>source</code> los scripts <code>pmsetup.sh</code>, <code>bandata.sh</code>, <code>squidtool.sh</code> y <code>pmbk.sh</code>. No se ejecuta por separado ni se programa en cron.</li><li>Lee la configuración general de <code>proxymon.env</code>, resuelve referencias entre claves y comprueba el propietario y los permisos del archivo. No modifica archivos de configuración ni carga el archivo de credenciales del LLM.</li></ul>
     </td>
   </tr>
 </table>
