@@ -180,7 +180,7 @@ load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abo
 
 # KEY CHECK
 key_errors=()
-for env_key in CONFIG_DIR WEB_ROOT REPORT_PATH REPORT_STATS_PATH SQUIDMON_CONFIG TOOL_REPORT_DIR LLM_ENV_FILE ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH; do
+for env_key in CONFIG_DIR WEB_ROOT REPORT_PATH REPORT_STATS_PATH SQUIDMON_CONFIG TOOL_REPORT_DIR LLM_ENV_FILE ACL_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH; do
     if ! grep -q "^${env_key}=" "$proxymon_env"; then
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
@@ -257,7 +257,7 @@ for backup_item in \
     "$SQUIDMON_CONFIG" \
     "$TOOL_REPORT_DIR" \
     "$LLM_ENV_FILE" \
-    "$ACL_MAC_PATH"/mac-*.txt \
+    "$ACL_PATH"/mac-*.txt \
     "$ACL_SQUID_PATH" \
     "$ACL_BANDATA_PATH" \
     "$ALLOW_LIST" \

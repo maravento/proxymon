@@ -190,7 +190,7 @@ load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abo
 # Collect every failure first, then decide -- a single abort reports them all
 key_errors=()
 for env_key in RANGE WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG \
-               SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_BANDATA_PATH \
+               SKIPUSERS_CFG ACL_PATH ACL_BANDATA_PATH \
                ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH \
                WARNING_HTML BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME; do
     if ! grep -q "^${env_key}=" "$proxymon_env"; then
@@ -789,7 +789,7 @@ update_squidreports_realname() {
         local filter_mode="$1" # "include" or "exclude"
         local mac_file
         local mac_files
-        mac_files=$(find "$ACL_MAC_PATH" -maxdepth 1 -type f -iname 'mac-*') || return 1
+        mac_files=$(find "$ACL_PATH" -maxdepth 1 -type f -iname 'mac-*') || return 1
         while IFS= read -r mac_file; do
             [ -n "$mac_file" ] || continue
             local base_name
@@ -846,7 +846,7 @@ update_squidreports_realname() {
 }
 
 update_squidreports_groups() {
-    local limited_acl="$ACL_MAC_PATH/mac-limited.txt"
+    local limited_acl="$ACL_PATH/mac-limited.txt"
     local hotspot_acl="$HOTSPOT_PATH/acl/uhm-auth.txt"
     local group_cfg="$SQUIDREPORTS_DIR/group.cfg"
     local cfg_tmp acl_file group_id group_name

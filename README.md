@@ -204,17 +204,17 @@ proxymon/
 │   ├── proxymon.env                      # generated project settings [0640 root:www-data]
 │   ├── update-files.txt                  # required web files checked during updates
 │   ├── bandata/                          # deployed to: /etc/proxymon/bandata [0755 root:root]
-│   │   ├── bandata.sh                    # enforces data usage quotas [0755 root:root]
+│   │   ├── bandata.sh                    # enforces data usage quotas [0750 root:root]
 │   │   └── acl/                          # Bandata ACL files [0700 root:root]
 │   │       ├── allowdata.txt             # quota exceptions [0600 root:root]
 │   │       ├── banday.txt                # daily blocks [0600 root:root]
 │   │       ├── banmonth.txt              # monthly blocks [0600 root:root]
 │   │       └── banweek.txt               # weekly blocks [0600 root:root]
 │   ├── tools/                            # deployed to: /etc/proxymon/tools [0755 root:root]
-│   │   ├── pmbk.sh                       # configuration backup [0755 root:root]
+│   │   ├── pmbk.sh                       # configuration backup [0750 root:root]
 │   │   ├── proxymonenv.sh                # shared Bash configuration reader [0644 root:root]
 │   │   ├── reports/                      # traffic report tools [0755 root:root]
-│   │   └── squidtool.sh                  # log search and traffic reports [0755 root:root]
+│   │   └── squidtool.sh                  # log search and traffic reports [0750 root:root]
 │   ├── squid/                            # Squid configuration for fresh installations
 │   └── web/                              # Apache virtual host templates
 │       ├── proxymon.conf                 # deployed to: /etc/apache2/sites-available/proxymon.conf [0644 root:root]
@@ -226,6 +226,7 @@ proxymon/
 
 ```text
 etc/
+├── acl/                                  # administrator ACL directory [0700 root:root]
 ├── apache2/
 │   └── sites-enabled/
 │       ├── proxymon.conf                 # link to ../sites-available/proxymon.conf [0777 root:root]
@@ -235,8 +236,13 @@ etc/
 ├── cron.d/
 │   ├── proxymon                          # ProxyMon scheduled tasks [0644 root:root]
 │   └── proxymon.lock                     # cron writer lock [0600 root:root]
-└── logrotate.d/
-    └── proxymon                          # ProxyMon log rotation policy [0644 root:root]
+├── logrotate.d/
+│   └── proxymon                          # ProxyMon log rotation policy [0644 root:root]
+└── squid/
+    └── acl/                              # Squid ACL directory, read by the proxy user [0755 root:root]
+        ├── blockdomains.txt              # blocked domains [0644 root:root]
+        ├── blockpatterns.txt             # blocked URL patterns [0644 root:root]
+        └── blocktlds.txt                 # blocked top-level domains [0644 root:root]
 
 var/
 └── log/
@@ -328,10 +334,10 @@ sudo bash pmsetup.sh --help   # or -h
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      • <code>update</code> updates the web content under <code>WEB_ROOT</code>, the root scripts under <code>CONFIG_DIR</code> and their permissions.<br><br>• Preserves PHP configuration, ACL lists and both configuration files (<code>proxymon.env</code> and the LLM <code>.env</code>) unchanged. Applies these values to Apache paths, Listen directives and the parser, Bandata and backup cron entries; retains other virtualhost directives.<br><br>• Creates a backup with <code>pmbk.sh</code> before stopping Apache, replaces the code and resumes Apache according to its recorded state.<br><br>• Application code and its directories are owned by <code>root</code>; preserved data and configuration retain their ownership.<br><br>• Does not change the ownership or permissions of the shared <code>/var/www</code> directory.<br><br>• Rejects symbolic links in code directories and replaces code files without following destination links.<br><br>• The copy excludes the preserved files and directories listed below.
+      • <code>update</code> updates the web content under <code>WEB_ROOT</code>, the root scripts under <code>CONFIG_DIR</code> and their permissions.<br><br>• Preserves PHP configuration, ACL lists and both configuration files (<code>proxymon.env</code> and the LLM <code>.env</code>) unchanged. Applies these values to Apache paths, Listen directives and the parser, Bandata and backup cron entries; retains other virtualhost directives.<br><br>• Creates a backup with <code>pmbk.sh</code> before stopping Apache, replaces the code and resumes Apache according to its recorded state.<br><br>• Application code and its directories are owned by <code>root</code>; preserved data and configuration retain their ownership.<br><br>• Repairs the owner and mode that <code>install</code> sets on the ACL directories (<code>ACL_PATH</code>, <code>ACL_SQUID_PATH</code>, <code>ACL_BANDATA_PATH</code>) and on their lists, without rewriting their content.<br><br>• Does not change the ownership or permissions of the shared <code>/var/www</code> directory.<br><br>• Rejects symbolic links in code directories and replaces code files without following destination links.<br><br>• The copy excludes the preserved files and directories listed below.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      • <code>update</code> actualiza el contenido web de <code>WEB_ROOT</code>, los scripts ejecutados como root de <code>CONFIG_DIR</code> y sus permisos.<br><br>• Conserva la configuración de PHP, las listas ACL y ambos archivos de configuración (<code>proxymon.env</code> y <code>.env</code> del LLM) sin modificaciones. Aplica estos valores a las rutas de Apache, sus directivas Listen y las entradas de cron del parser, Bandata y copias; mantiene las demás directivas de los virtualhosts.<br><br>• Crea una copia de seguridad con <code>pmbk.sh</code> antes de detener Apache, reemplaza el código y reanuda Apache según su estado registrado.<br><br>• El código de la aplicación y sus directorios pertenecen a <code>root</code>; los datos y la configuración preservados conservan sus propietarios.<br><br>• No cambia el propietario ni los permisos del directorio compartido <code>/var/www</code>.<br><br>• Rechaza enlaces simbólicos en directorios de código y reemplaza archivos de código sin seguir enlaces de destino.<br><br>• La copia excluye los archivos y directorios preservados que se enumeran a continuación.
+      • <code>update</code> actualiza el contenido web de <code>WEB_ROOT</code>, los scripts ejecutados como root de <code>CONFIG_DIR</code> y sus permisos.<br><br>• Conserva la configuración de PHP, las listas ACL y ambos archivos de configuración (<code>proxymon.env</code> y <code>.env</code> del LLM) sin modificaciones. Aplica estos valores a las rutas de Apache, sus directivas Listen y las entradas de cron del parser, Bandata y copias; mantiene las demás directivas de los virtualhosts.<br><br>• Crea una copia de seguridad con <code>pmbk.sh</code> antes de detener Apache, reemplaza el código y reanuda Apache según su estado registrado.<br><br>• El código de la aplicación y sus directorios pertenecen a <code>root</code>; los datos y la configuración preservados conservan sus propietarios.<br><br>• Repara el propietario y los permisos que <code>install</code> fija en las carpetas ACL (<code>ACL_PATH</code>, <code>ACL_SQUID_PATH</code>, <code>ACL_BANDATA_PATH</code>) y en sus listas, sin reescribir su contenido.<br><br>• No cambia el propietario ni los permisos del directorio compartido <code>/var/www</code>.<br><br>• Rechaza enlaces simbólicos en directorios de código y reemplaza archivos de código sin seguir enlaces de destino.<br><br>• La copia excluye los archivos y directorios preservados que se enumeran a continuación.
     </td>
   </tr>
 </table>
@@ -403,7 +409,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `SQUIDREPORTS_DIR` | `bandata.sh`, Squidreports | Squidreports installation directory | Directorio de instalación de Squidreports |
 | `REPORT_PATH` | `bandata.sh`, `worker.php`, Squidreports, `pmbk.sh` | Directory holding the daily Squidreports reports | Directorio con los informes diarios de Squidreports |
 | `REALNAME_CFG`, `SKIPUSERS_CFG` | `bandata.sh`, `worker.php`, Squidreports | Squidreports hostname mappings and excluded-user list | Correspondencia entre IP y nombres de equipo, y lista de usuarios excluidos de Squidreports |
-| `ACL_PATH`, `ACL_MAC_PATH`, `ACL_SQUID_PATH` | `pmsetup.sh`, `bandata.sh`, `worker.php` | ACL tree shared with the other projects on the host, the MAC directory, and the Squid ACL directory | Árbol de ACL compartido con los otros proyectos del host, y sus ramas MAC y Squid |
+| `ACL_PATH`, `ACL_SQUID_PATH` | `pmsetup.sh`, `bandata.sh`, `worker.php` | Shared ACL directory (`/etc/acl`), containing `mac-*.txt`, and Squid ACL directory (`/etc/squid/acl`) | Directorio ACL compartido (`/etc/acl`), que contiene `mac-*.txt`, y directorio ACL de Squid (`/etc/squid/acl`) |
 | `ACL_BANDATA_PATH` | `bandata.sh` | Directory holding Bandata's own quota lists | Directorio con las listas de cuota propias de Bandata |
 | `ALLOW_LIST` | `bandata.sh` | `allowdata.txt`: IPs exempt from every quota. This is the only Bandata ACL the administrator edits, manually on the server. The web interface does not provide an editor. | `allowdata.txt`: IP exentas de toda cuota. Es la única ACL de Bandata que edita el administrador, manualmente en el servidor. La interfaz web no permite editarla. |
 | `BLOCK_LIST_DAY`, `BLOCK_LIST_WEEK`, `BLOCK_LIST_MONTH` | `bandata.sh` | `banday.txt`, `banweek.txt` and `banmonth.txt`: block lists managed automatically by Bandata. Do not edit them manually; the web interface does not provide an editor. | `banday.txt`, `banweek.txt` y `banmonth.txt`: listas de bloqueo administradas automáticamente por Bandata. No deben editarse manualmente; la interfaz web no permite editarlas. |
@@ -539,7 +545,6 @@ regex:(adlinkfly|announce\.php\?passkey=|info_hash|iptv|jndi:|mtc[0-9]|\.onion|p
 sudo nano /etc/proxymon/proxymon.env
 # path to ACLs folder
 ACL_PATH=/etc/acl
-ACL_MAC_PATH=$ACL_PATH
 ACL_SQUID_PATH=/etc/squid/acl
 ```
 
@@ -845,10 +850,10 @@ sudo nano /var/www/proxymon/squidreports/skipuser.cfg
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <strong>Group</strong> summarizes client traffic by ACL membership. When <code>UPDATE_REALNAME=true</code>, Bandata rebuilds <code>group.cfg</code> inside <code>SQUIDREPORTS_DIR</code> on each run. Active IPs from <code>ACL_MAC_PATH/mac-limited.txt</code> belong to <strong>01. limited</strong>. With <code>BANDATA_HOTSPOT=true</code>, active IPs from <code>HOTSPOT_PATH/acl/uhm-auth.txt</code> belong to <strong>02. hotspot</strong>. Only entries beginning with <code>a;</code> are included. Unlimited clients remain excluded from reports.<br><br>The installer enables UHM integration when both <code>HOTSPOT_PATH/uhm.env</code> and <code>HOTSPOT_PATH/acl/uhm-auth.txt</code> exist. Without this integration, Bandata generates only the limited assignments. Clients recorded without an assignment appear as <strong>Not in group</strong>.<br><br>Bandata replaces <code>group.cfg</code>, including when no active assignments remain, so manual edits are overwritten. Each generated daily report receives a copy in <code>.group</code>. Existing historical assignments remain unchanged until that date is regenerated. The installer option <code>update</code> preserves the installed file; Bandata updates it on its next run.
+      <strong>Group</strong> summarizes client traffic by ACL membership. When <code>UPDATE_REALNAME=true</code>, Bandata rebuilds <code>group.cfg</code> inside <code>SQUIDREPORTS_DIR</code> on each run. Active IPs from <code>ACL_PATH/mac-limited.txt</code> belong to <strong>01. limited</strong>. With <code>BANDATA_HOTSPOT=true</code>, active IPs from <code>HOTSPOT_PATH/acl/uhm-auth.txt</code> belong to <strong>02. hotspot</strong>. Only entries beginning with <code>a;</code> are included. Unlimited clients remain excluded from reports.<br><br>The installer enables UHM integration when both <code>HOTSPOT_PATH/uhm.env</code> and <code>HOTSPOT_PATH/acl/uhm-auth.txt</code> exist. Without this integration, Bandata generates only the limited assignments. Clients recorded without an assignment appear as <strong>Not in group</strong>.<br><br>Bandata replaces <code>group.cfg</code>, including when no active assignments remain, so manual edits are overwritten. Each generated daily report receives a copy in <code>.group</code>. Existing historical assignments remain unchanged until that date is regenerated. The installer option <code>update</code> preserves the installed file; Bandata updates it on its next run.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <strong>Group</strong> resume el tráfico de los clientes según su pertenencia a las ACL. Con <code>UPDATE_REALNAME=true</code>, Bandata reconstruye <code>group.cfg</code> dentro de <code>SQUIDREPORTS_DIR</code> en cada ejecución. Las IP activas de <code>ACL_MAC_PATH/mac-limited.txt</code> pertenecen a <strong>01. limited</strong>. Con <code>BANDATA_HOTSPOT=true</code>, las IP activas de <code>HOTSPOT_PATH/acl/uhm-auth.txt</code> pertenecen a <strong>02. hotspot</strong>. Solo se incluyen entradas que comienzan con <code>a;</code>. Los clientes unlimited siguen excluidos de los informes.<br><br>El instalador habilita la integración con UHM cuando existen <code>HOTSPOT_PATH/uhm.env</code> y <code>HOTSPOT_PATH/acl/uhm-auth.txt</code>. Sin esta integración, Bandata genera únicamente las asignaciones limited. Los clientes registrados sin asignación aparecen como <strong>Not in group</strong>.<br><br>Bandata reemplaza <code>group.cfg</code>, incluso cuando no quedan asignaciones activas, por lo que sobrescribe los cambios manuales. Cada informe diario generado recibe una copia en <code>.group</code>. Las asignaciones históricas existentes se conservan hasta regenerar esa fecha. La opción <code>update</code> del instalador conserva el archivo instalado; Bandata lo actualiza en su siguiente ejecución.
+      <strong>Group</strong> resume el tráfico de los clientes según su pertenencia a las ACL. Con <code>UPDATE_REALNAME=true</code>, Bandata reconstruye <code>group.cfg</code> dentro de <code>SQUIDREPORTS_DIR</code> en cada ejecución. Las IP activas de <code>ACL_PATH/mac-limited.txt</code> pertenecen a <strong>01. limited</strong>. Con <code>BANDATA_HOTSPOT=true</code>, las IP activas de <code>HOTSPOT_PATH/acl/uhm-auth.txt</code> pertenecen a <strong>02. hotspot</strong>. Solo se incluyen entradas que comienzan con <code>a;</code>. Los clientes unlimited siguen excluidos de los informes.<br><br>El instalador habilita la integración con UHM cuando existen <code>HOTSPOT_PATH/uhm.env</code> y <code>HOTSPOT_PATH/acl/uhm-auth.txt</code>. Sin esta integración, Bandata genera únicamente las asignaciones limited. Los clientes registrados sin asignación aparecen como <strong>Not in group</strong>.<br><br>Bandata reemplaza <code>group.cfg</code>, incluso cuando no quedan asignaciones activas, por lo que sobrescribe los cambios manuales. Cada informe diario generado recibe una copia en <code>.group</code>. Las asignaciones históricas existentes se conservan hasta regenerar esa fecha. La opción <code>update</code> del instalador conserva el archivo instalado; Bandata lo actualiza en su siguiente ejecución.
     </td>
   </tr>
 </table>

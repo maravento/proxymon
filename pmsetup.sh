@@ -11,7 +11,8 @@
 # sudo bash pmsetup.sh --update       Refresh code, keep live data
 # sudo bash pmsetup.sh --uninstall    Remove proxymon
 # sudo bash pmsetup.sh                Interactive menu
-# sudo bash pmsetup.sh -h, --help     Show usage
+# sudo bash pmsetup.sh -h             Show usage
+# sudo bash pmsetup.sh --help         Show usage
 #
 # LOG: pmsetup.log, in this script's directory
 #
@@ -1104,7 +1105,7 @@ create_proxymon_env() {
         info "$env_file already exists -skip"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
-        local expected_keys="WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH PANEL_PORT PANEL_DOMAINS WARNING_PORT LAN SERVER_IP RANGE REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_MAC_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH SQUID_MGR_HOST SQUID_MGR_PORT SQUID_INTERCEPT_PORT SQUID_MGR_PASSWD MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD"
+        local expected_keys="WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH PANEL_PORT PANEL_DOMAINS WARNING_PORT LAN SERVER_IP RANGE REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH SQUID_MGR_HOST SQUID_MGR_PORT SQUID_INTERCEPT_PORT SQUID_MGR_PASSWD MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD"
         local absent_keys=""
         for env_key in $expected_keys; do
             grep -q "^${env_key}=" "$env_file" || absent_keys="$absent_keys $env_key"
@@ -1256,7 +1257,6 @@ SQUID_MGR_PASSWD=
 
 # ACL
 ACL_PATH=/etc/acl
-ACL_MAC_PATH=\$ACL_PATH
 ACL_SQUID_PATH=/etc/squid/acl
 
 # Squidreports
@@ -1944,6 +1944,16 @@ do_update() {
     update_wait_jobs
     update_apply
     secure_web_code "$WEB_ROOT" 0 || update_error "cannot set web code permissions"
+    # Repair the ACL directory modes set by --install; lists are never rewritten
+    acl_prepare "$ACL_PATH" 700 600
+    acl_prepare "$ACL_SQUID_PATH" 755 644
+    for file in blocktlds.txt blockdomains.txt blockpatterns.txt; do
+        if [ -f "$ACL_SQUID_PATH/$file" ]; then
+            acl_fix_perms "$ACL_SQUID_PATH/$file" 644
+        fi
+    done
+    acl_prepare "$ACL_BANDATA_PATH" 700 600 "$ALLOW_LIST" \
+        "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"
     rm -f -- "$WEB_ROOT/squidreports/weekly.cgi" "$WEB_ROOT/squidreports/ip2name/ip2name.dhcp" \
         || update_error "cannot remove obsolete web code"
     configure_apache_locations
