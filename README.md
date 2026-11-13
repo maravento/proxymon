@@ -62,10 +62,10 @@ FILE: README.md
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> installs Apache, PHP and <code>libjson-xs-perl</code> when they are missing. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• Install the supporting packages below before running <code>pmsetup.sh</code>. It checks them and stops at the first missing package.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
+      <p>• <code>pmsetup.sh</code> installs Apache and PHP when they are missing. <code>--install</code> and <code>--update</code> also install every missing package the project needs. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• Install the supporting packages below before running <code>pmsetup.sh</code>. It checks them and stops at the first missing package.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> instala Apache, PHP y <code>libjson-xs-perl</code> cuando faltan. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• Instale los paquetes auxiliares de abajo antes de ejecutar <code>pmsetup.sh</code>. Los comprueba y se detiene al encontrar el primer paquete ausente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
+      <p>• <code>pmsetup.sh</code> instala Apache y PHP cuando faltan. <code>--install</code> y <code>--update</code> también instalan todos los paquetes que falten al proyecto. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• Instale los paquetes auxiliares de abajo antes de ejecutar <code>pmsetup.sh</code>. Los comprueba y se detiene al encontrar el primer paquete ausente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
     </td>
   </tr>
 </table>
@@ -279,7 +279,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `sudo ./pmsetup.sh` | Opens the interactive menu with options to install, update, uninstall or exit. | Abre el menú interactivo con opciones para instalar, actualizar, desinstalar o salir. |
 | `sudo ./pmsetup.sh --install` | Installs and configures Proxy Monitor, including Apache rules, `proxymon.env`, ACL lists, Apache and PHP settings, and scheduled tasks. Stops if the configured `WEB_ROOT` already exists; use `--update` or `--uninstall` in that case. | Instala y configura Proxy Monitor, incluidas las reglas de Apache, `proxymon.env`, las listas ACL, los ajustes de Apache y PHP y las tareas programadas. Se detiene si el directorio configurado en `WEB_ROOT` ya existe; en ese caso, use `--update` o `--uninstall`. |
 | `sudo ./pmsetup.sh --update` | Updates code and permissions without prompting for input. Preserves configuration and operational data. | Actualiza el código y los permisos sin solicitar datos. Conserva la configuración y los datos de operación. |
-| `sudo ./pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. | Solicita confirmación antes de desinstalar Proxy Monitor. |
+| `sudo ./pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. It removes the project only and never uninstalls APT packages: other projects and the system may share them. | Solicita confirmación antes de desinstalar Proxy Monitor. Elimina solo el proyecto y nunca desinstala paquetes APT, porque otros proyectos y el sistema pueden compartirlos. |
 | `sudo ./pmsetup.sh -h` / `sudo ./pmsetup.sh --help` | Displays help with the available installer options. | Muestra la ayuda con las opciones disponibles del instalador. |
 
 > Traffic that bypasses Squid does not appear in its reports. The results in **Squidmon Search** and **Traffic Search** are examples. Actual results vary with your environment, the amount of log history, and the resources available to process ACLs.
@@ -701,10 +701,10 @@ regex:^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(:\d+)?(?=[/?#]|$)=Block IP
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      • Squidmon reads only the current <code>access.log</code>; it does not process rotated files. The same applies to Logview. SquidAI also reads the uncompressed rotated files (<code>access.log.1</code>, <code>access.log.2</code>, ...), but never the compressed <code>.gz</code> ones.<br><br>• Rotation in Proxymon is weekly. A rotation leaves <code>access.log</code> empty, so Squidmon and Logview lose the hours that moved to the rotated file. Weekly limits that gap to one day out of seven.<br><br>• The installer configures weekly rotation in <code>/etc/logrotate.d/squid</code>. The execution time depends on the system’s <code>logrotate</code> scheduler; the installer does not set it. Do not configure <code>size</code> or <code>maxsize</code>: those split the current day, and Squidreports rebuilds each day from a single file.<br><br>• The installer also adds a <code>prerotate</code> hook to <code>/etc/logrotate.d/squid</code>. It closes the previous day's report before <code>access.log</code> is rotated. When that file already defines its own <code>prerotate</code>, the installer reports it and leaves it untouched.<br><br>• Disable Squid's internal rotation with <code>logfile_rotate 0</code>.<br><br>• In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.
+      • Squidmon and Logview read <code>access.log</code> and the last rotation, <code>access.log.1</code>. When <code>access.log</code> has fewer lines than requested, they complete the view with the end of <code>access.log.1</code>. SquidAI also reads <code>access.log.1</code>. No panel reads the compressed <code>.gz</code> rotations; <code>squidtool.sh</code> searches them.<br><br>• Rotation in Proxymon is weekly. Right after a rotation, <code>access.log</code> is empty, and the panels show the end of <code>access.log.1</code> instead.<br><br>• The installer configures weekly rotation in <code>/etc/logrotate.d/squid</code>. The execution time depends on the system’s <code>logrotate</code> scheduler; the installer does not set it. Do not configure <code>size</code> or <code>maxsize</code>: those split the current day, and Squidreports rebuilds each day from a single file.<br><br>• The installer also adds a <code>prerotate</code> hook to <code>/etc/logrotate.d/squid</code>. It closes the previous day's report before <code>access.log</code> is rotated. When that file already defines its own <code>prerotate</code>, the installer reports it and leaves it untouched.<br><br>• Disable Squid's internal rotation with <code>logfile_rotate 0</code>.<br><br>• In <code>/etc/logrotate.d/squid</code>, you can keep seven rotations with <code>rotate 7</code>.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      • Squidmon solo lee el <code>access.log</code> actual; no procesa los archivos rotados. Lo mismo ocurre con Logview. SquidAI lee además los rotados sin comprimir (<code>access.log.1</code>, <code>access.log.2</code>, ...), pero nunca los comprimidos <code>.gz</code>.<br><br>• La rotación en Proxymon es semanal. Una rotación deja vacío el <code>access.log</code>, por lo que Squidmon y Logview pierden las horas que pasaron al archivo rotado. La frecuencia semanal limita ese hueco a un día de cada siete.<br><br>• El instalador configura la rotación semanal en <code>/etc/logrotate.d/squid</code>. La hora de ejecución depende de la programación de <code>logrotate</code> del sistema; el instalador no la establece. No configure <code>size</code> ni <code>maxsize</code>: parten el día en curso, y Squidreports reconstruye cada día a partir de un solo archivo.<br><br>• El instalador añade además un bloque <code>prerotate</code> a <code>/etc/logrotate.d/squid</code>. Cierra el informe del día anterior antes de rotar <code>access.log</code>. Si ese archivo ya define su propio <code>prerotate</code>, el instalador lo informa y no lo modifica.<br><br>• Desactive la rotación interna de Squid con <code>logfile_rotate 0</code>.<br><br>• En <code>/etc/logrotate.d/squid</code>, puede conservar siete rotaciones con <code>rotate 7</code>.
+      • Squidmon y Logview leen <code>access.log</code> y la última rotación, <code>access.log.1</code>. Cuando <code>access.log</code> tiene menos líneas de las pedidas, completan la vista con el final de <code>access.log.1</code>. SquidAI también lee <code>access.log.1</code>. Ningún panel lee las rotaciones comprimidas <code>.gz</code>; <code>squidtool.sh</code> las busca.<br><br>• La rotación en Proxymon es semanal. Justo después de una rotación, <code>access.log</code> está vacío, y los paneles muestran en su lugar el final de <code>access.log.1</code>.<br><br>• El instalador configura la rotación semanal en <code>/etc/logrotate.d/squid</code>. La hora de ejecución depende de la programación de <code>logrotate</code> del sistema; el instalador no la establece. No configure <code>size</code> ni <code>maxsize</code>: parten el día en curso, y Squidreports reconstruye cada día a partir de un solo archivo.<br><br>• El instalador añade además un bloque <code>prerotate</code> a <code>/etc/logrotate.d/squid</code>. Cierra el informe del día anterior antes de rotar <code>access.log</code>. Si ese archivo ya define su propio <code>prerotate</code>, el instalador lo informa y no lo modifica.<br><br>• Desactive la rotación interna de Squid con <code>logfile_rotate 0</code>.<br><br>• En <code>/etc/logrotate.d/squid</code>, puede conservar siete rotaciones con <code>rotate 7</code>.
     </td>
   </tr>
 </table>
@@ -1134,23 +1134,23 @@ sudo nano /etc/cron.d/proxymon
 ###### Terminal output example
 
 ```bash
-2026-10-19 15:59:56 EVENT: bandata start...
-2026-10-19 15:59:56 EVENT: Running Bandata Day...
+2026-10-19 15:59:56 INFO: bandata start...
+2026-10-19 15:59:56 INFO: Running Bandata Day...
 2026-10-19 15:59:56 INFO: Daily Blocked:
  192.168.0.86
-2026-10-19 15:59:56 EVENT: Running Bandata Week...
+2026-10-19 15:59:56 INFO: Running Bandata Week...
 2026-10-19 15:59:57 INFO: Weekly Blocked:
  192.168.0.86
  192.168.0.101
  192.168.0.127
-2026-10-19 15:59:57 EVENT: Running Bandata Month...
+2026-10-19 15:59:57 INFO: Running Bandata Month...
 2026-10-19 16:00:01 INFO: Monthly Blocked:
  192.168.0.60
  192.168.0.68
-2026-10-19 16:00:01 EVENT: Running Ipset/Iptables Rules...
-2026-10-19 16:00:01 EVENT: Applying Iptables Rules...
+2026-10-19 16:00:01 INFO: Running Ipset/Iptables Rules...
+2026-10-19 16:00:01 INFO: Applying Iptables Rules...
 2026-10-19 16:00:01 INFO: Quota rules applied; blocked IPs: 5
-2026-10-19 16:00:01 EVENT: bandata done
+2026-10-19 16:00:01 INFO: bandata done
 ```
 
 ###### Warning Portal
@@ -1552,10 +1552,10 @@ sudo /etc/proxymon/tools/squidtool.sh
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      Project log: <code>/var/log/proxymon.log</code>. Installation and update configure daily rotation in <code>/etc/logrotate.d/proxymon</code>, keeping seven previous files plus the active log. Compression starts on the next rotation. Empty logs are not rotated; missing logs are tolerated. Squid and Apache keep their own policies.
+      Project log: <code>/var/log/proxymon.log</code>. Installation and update configure weekly rotation in <code>/etc/logrotate.d/proxymon</code>, keeping seven previous files plus the active log. Compression starts on the next rotation. Empty logs are not rotated; missing logs are tolerated. Apache is set to <code>rotate 7</code>, and Squid to <code>weekly</code>, <code>rotate 7</code> and <code>create 0640 proxy proxy</code>, each after saving a <code>.bak</code> copy.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Log del proyecto: <code>/var/log/proxymon.log</code>. La instalación y la actualización configuran rotación diaria en <code>/etc/logrotate.d/proxymon</code>. Se conservan siete archivos anteriores y el activo. La compresión comienza en la siguiente rotación. Los logs vacíos no se rotan; los ausentes se toleran. Squid y Apache conservan sus propias políticas.
+      Log del proyecto: <code>/var/log/proxymon.log</code>. La instalación y la actualización configuran rotación semanal en <code>/etc/logrotate.d/proxymon</code>. Se conservan siete archivos anteriores y el activo. La compresión comienza en la siguiente rotación. Los logs vacíos no se rotan; los ausentes se toleran. Apache se fija en <code>rotate 7</code>, y Squid en <code>weekly</code>, <code>rotate 7</code> y <code>create 0640 proxy proxy</code>, cada uno tras guardar una copia <code>.bak</code>.
     </td>
   </tr>
 </table>
@@ -1571,7 +1571,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
 #### Message examples
 
 ```text
-2026-10-17 12:00:00 EVENT: Updating PHP...
+2026-10-17 12:00:00 INFO: Updating PHP...
 2026-10-17 12:00:00 INFO: blockpatterns.txt: download failed; retry 2/3
 2026-10-17 12:00:00 WARNING: blockpatterns.txt download failed -alert
 2026-10-17 12:00:00 WARNING: pmbk.sh: monthly backup setup failed -alert

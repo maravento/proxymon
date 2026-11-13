@@ -199,7 +199,7 @@ unset key_errors key_error env_key
 # UPDATE
 # ------------------------------------------------------------------------------
 
-log "EVENT: domain-suffixes-update start..."
+log "INFO: domain-suffixes-update start..."
 
 if [ "$#" -ne 0 ]; then
     log "ERROR: no arguments are accepted -abort"
@@ -319,7 +319,7 @@ if [ -f "$suffix_file" ]; then
     compare_status=$?
     if [ "$compare_status" -eq 0 ]; then
         log "INFO: domain-suffixes.txt is current -skip"
-        log "EVENT: domain-suffixes-update done"
+        log "INFO: domain-suffixes-update done"
         exit 0
     elif [ "$compare_status" -gt 1 ]; then
         log "ERROR: cannot compare domain-suffixes.txt -abort"
@@ -347,4 +347,4 @@ log "INFO: updated domain-suffixes.txt"
 # END
 # ------------------------------------------------------------------------------
 
-log "EVENT: domain-suffixes-update done"
+log "INFO: domain-suffixes-update done"

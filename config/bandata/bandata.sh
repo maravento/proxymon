@@ -71,7 +71,7 @@ logrotate_conf="/etc/logrotate.d/bandata"
 if [ ! -f "$logrotate_conf" ]; then
     cat > "$logrotate_conf" <<'EOF'
 /var/log/bandata.log {
-    daily
+    weekly
     rotate 7
     compress
     delaycompress
@@ -254,7 +254,7 @@ max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}")
 # MAIN
 # ------------------------------------------------------------------------------
 
-log "EVENT: bandata start..."
+log "INFO: bandata start..."
 
 # PREFLIGHT CHECKS
 # Self-heal: remove orphaned .tmp files left by a previous run that failed
@@ -362,7 +362,7 @@ fi
 # BANDAY
 # ------------------------------------------------------------------------------
 
-log "EVENT: Running Bandata Day..."
+log "INFO: Running Bandata Day..."
 
 # path to day report
 day_logs_dir=$REPORT_PATH/$(date +"%Y%m%d")
@@ -450,7 +450,7 @@ fi
 # "+1 month -1 day"). Not portable to BSD/macOS date. This project
 # targets Linux only (already requires ipset/iptables).
 
-log "EVENT: Running Bandata Week..."
+log "INFO: Running Bandata Week..."
 
 if [ "$today_dow" -eq 1 ]; then
     week_dirs=()
@@ -518,7 +518,7 @@ fi
 # BANMONTH
 # ------------------------------------------------------------------------------
 
-log "EVENT: Running Bandata Month..."
+log "INFO: Running Bandata Month..."
 
 # Build weekday directories for current month (excluding weekends)
 month_prefix=$(date +"%Y%m")
@@ -587,7 +587,7 @@ fi
 # IPSET RULES
 # ------------------------------------------------------------------------------
 
-log "EVENT: Running Ipset/Iptables Rules..."
+log "INFO: Running Ipset/Iptables Rules..."
 # Every preparation step decides whether the new set may be published. A
 # failed create or flush leaves bandata_new holding the previous contents,
 # and swapping that in would reinstate blocks that are no longer current.
@@ -669,7 +669,7 @@ else
     ipset destroy bandata_new 2>/dev/null || true
 fi
 
-log "EVENT: Applying Iptables Rules..."
+log "INFO: Applying Iptables Rules..."
 
 # Add a rule only when it is absent, and remember any failure.
 rules_failed=0
@@ -918,4 +918,4 @@ else
     log "WARNING: cannot read bandata; block count unavailable -alert"
 fi
 
-log "EVENT: bandata done"
+log "INFO: bandata done"

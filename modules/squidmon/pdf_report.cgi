@@ -76,6 +76,10 @@ eval {
         # Keep only last N lines
         @log_lines = splice(@log_lines, -$max_lines) if $max_lines > 0 && scalar(@log_lines) > $max_lines;
     }
+    # A short current log, as right after a rotation, is completed with the last rotation
+    if ($max_lines > 0 && scalar(@log_lines) < $max_lines) {
+        unshift(@log_lines, read_last_lines("$log_file.1", $max_lines - scalar(@log_lines)));
+    }
 
     foreach my $line (@log_lines) {
         next unless $line =~ /^(\d+\.\d+)\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+\S+\s+(https?:\/\/)?([^\s\/]+)([^\s]*)/;

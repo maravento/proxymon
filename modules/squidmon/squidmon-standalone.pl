@@ -268,6 +268,17 @@ sub format_number {
     return $num;
 }
 
+# Last $count lines of $path, oldest first; empty when it cannot be read.
+# Used to complete a short current log with the last rotation.
+sub read_last_lines {
+    my ($path, $count) = @_;
+    return () if !$count || $count <= 0 || !-r $path;
+    open(my $fh, '-|', 'tail', '-n', $count, '--', $path) or return ();
+    chomp(my @lines = <$fh>);
+    close($fh);
+    return @lines;
+}
+
 # ============================================================
 # Return 1 to indicate successful module load
 # ============================================================

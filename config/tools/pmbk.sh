@@ -54,14 +54,9 @@ if ! flock -n 200; then
     exit 1
 fi
 
-# Function: Report whether a package is installed, not merely residual
-package_installed() {
-    [ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = installed ]
-}
-
 # dependencies
 for dep_pkg in zip coreutils findutils util-linux cron; do
-    if ! package_installed "$dep_pkg"; then
+    if [[ "$(dpkg-query -W -f='${Status}' "$dep_pkg" 2>/dev/null)" != *"ok installed"* ]]; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
     fi
@@ -126,7 +121,14 @@ register_cron() {
             log "ERROR: cannot create $(dirname "$installed_path") -abort"
             exit 1
         fi
-        install -m 755 -o root -g root "$script_path" "$installed_path"
+        install -m 644 -o root -g root "$(dirname "$script_path")/proxymonenv.sh" "$(dirname "$installed_path")/proxymonenv.sh" \
+            || { log "ERROR: cannot deploy proxymonenv.sh -abort"; exit 1; }
+        cmp -s -- "$(dirname "$script_path")/proxymonenv.sh" "$(dirname "$installed_path")/proxymonenv.sh" \
+            || { log "ERROR: src and dst do not match: proxymonenv.sh -abort"; exit 1; }
+        install -m 750 -o root -g root "$script_path" "$installed_path" \
+            || { log "ERROR: cannot deploy $(basename "$installed_path") -abort"; exit 1; }
+        cmp -s -- "$script_path" "$installed_path" \
+            || { log "ERROR: src and dst do not match: $(basename "$installed_path") -abort"; exit 1; }
         log "INFO: deployed to $installed_path"
     fi
 
@@ -169,7 +171,10 @@ unset env_specs env_spec env_path env_owner_want env_perms_want
 unset env_owner env_perms
 
 # LOAD_CONF
-source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/proxymonenv.sh"
+if ! source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/proxymonenv.sh" 2>/dev/null; then
+    log "ERROR: cannot load proxymonenv.sh -abort"
+    exit 1
+fi
 # LOAD
 load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
 
@@ -203,19 +208,19 @@ installed_path="$CONFIG_DIR/tools/$(basename "$0")"
 # Start
 case "${1:-}" in
     --install)
-        log "EVENT: pmbk start..."
+        log "INFO: pmbk start..."
         register_cron || exit 1
-        log "EVENT: pmbk done"
+        log "INFO: pmbk done"
         exit 0
         ;;
     --uninstall)
-        log "EVENT: pmbk start..."
+        log "INFO: pmbk start..."
         deregister_cron || exit 1
-        log "EVENT: pmbk done"
+        log "INFO: pmbk done"
         exit 0
         ;;
     "")
-        log "EVENT: pmbk start..."
+        log "INFO: pmbk start..."
         ;;
     *)
         log "ERROR: invalid option -abort"
@@ -234,14 +239,14 @@ if ! install -d -m 700 -o root -g root "$backup_dir"; then
     exit 1
 fi
 
-# Project files and relevant system configuration are listed explicitly
-# so the project state can be restored.
 php_version=""
 if command -v php >/dev/null 2>&1; then
     php_version=$(php -r \
         'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || true)
 fi
 
+# Project files and relevant system configuration are listed explicitly
+# so the project state can be restored.
 backup_list=()
 for backup_item in \
     /etc/proxymon/proxymon.env \
@@ -273,7 +278,7 @@ do
     if [ -e "$backup_item" ]; then
         backup_list+=("$backup_item")
     else
-        log "INFO: $backup_item not present -skip"
+        log "INFO: $(basename "$backup_item") not present"
     fi
 done
 
@@ -332,7 +337,7 @@ else
     zip_status=$?
     trap - INT
     rm -f "$backup_part"
-    log "ERROR: cannot write archive $(basename "$backup_zip") (zip exit $zip_status) -abort"
+    log "ERROR: zip failed ($zip_status): $(basename "$backup_zip") -abort"
     exit 1
 fi
 
@@ -340,4 +345,4 @@ fi
 # END
 # ------------------------------------------------------------------------------
 
-log "EVENT: pmbk done"
+log "INFO: pmbk done"

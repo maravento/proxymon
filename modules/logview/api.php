@@ -125,8 +125,12 @@ if (isset($_GET['grep']) && $_GET['grep'] !== '') {
 
     $escaped = escapeshellarg($term);
     $log     = escapeshellarg(LOG_FILE);
+    // The last rotation is searched too; older .gz copies go through squidtool.sh
+    if (is_readable(LOG_FILE . '.1')) {
+        $log = escapeshellarg(LOG_FILE . '.1') . ' ' . $log;
+    }
     $max_matches = 5000;
-    $search_command = "timeout 20 grep -Fa -e $escaped $log 2>/dev/null | tail -n $max_matches";
+    $search_command = "timeout 20 grep -Fah -e $escaped $log 2>/dev/null | tail -n $max_matches";
     $search_command .= '; search_status=("${PIPESTATUS[@]}");'
         . ' if [ "${search_status[1]}" -ne 0 ]; then exit 200; fi;'
         . ' exit "${search_status[0]}"';
@@ -273,6 +277,14 @@ $all_lines = explode("\n", $buf);
 // Keep the last N complete lines. The partial line at the head of the buffer
 // was already dropped above, so no extra slot is needed here.
 $last = array_slice($all_lines, -$lines_req);
+// A short current log, as right after a rotation, is completed with the end
+// of the last rotation so the first view is never almost empty.
+$missing = $lines_req - count($last);
+if ($missing > 0 && is_readable(LOG_FILE . '.1')) {
+    $previous = [];
+    exec('tail -n ' . (int)$missing . ' -- ' . escapeshellarg(LOG_FILE . '.1'), $previous);
+    $last = array_merge($previous, $last);
+}
 
 $rows = [];
 foreach ($last as $line) {

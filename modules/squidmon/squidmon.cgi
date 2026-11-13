@@ -308,6 +308,10 @@ if (open(my $fh, '<', $log_file)) {
     # Keep only last N lines
     @log_lines = splice(@log_lines, -$lines_to_read) if scalar(@log_lines) > $lines_to_read;
 }
+# A short current log, as right after a rotation, is completed with the last rotation
+if (scalar(@log_lines) < $lines_to_read) {
+    unshift(@log_lines, read_last_lines("$log_file.1", $lines_to_read - scalar(@log_lines)));
+}
 
 # Calculate time threshold for filtering
 my $time_threshold = time() - ($time_range * 3600);

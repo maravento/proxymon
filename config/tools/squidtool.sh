@@ -532,6 +532,6 @@ show_menu() {
 # END
 # ------------------------------------------------------------------------------
 
-log "EVENT: squidtool start..."
+log "INFO: squidtool start..."
 show_menu
-log "EVENT: squidtool done"
+log "INFO: squidtool done"

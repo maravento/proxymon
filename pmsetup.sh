@@ -169,23 +169,26 @@ package_installed() {
 }
 
 # dependencies
-check_dependencies() {
-    for dep_pkg in wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate; do
-        if ! package_installed "$dep_pkg"; then
-            if [ "$dep_pkg" = libjson-xs-perl ]; then
-                info "Installing missing dependency: $dep_pkg"
-                apt-get install -y "$dep_pkg" || abort "cannot install '$dep_pkg' -abort"
-            else
-                abort "'$dep_pkg' is not installed -abort"
-            fi
-        fi
-    done
+# Every package the deployed components need. Installed by install_deps
+# in --install and --update.
+apt_deps=(wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate)
 
+# Install the missing packages of apt_deps
+install_deps() {
+    local dep_pkg missing_pkgs=()
+    for dep_pkg in "${apt_deps[@]}"; do
+        package_installed "$dep_pkg" || missing_pkgs+=("$dep_pkg")
+    done
+    (( ${#missing_pkgs[@]} == 0 )) && return 0
+    check_ipv4_interfaces
+    check_internet
+    DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
+        || { err "cannot install ${missing_pkgs[*]}"; abort "install them with apt, then re-run -abort"; }
+    info "Installed: ${missing_pkgs[*]}"
 }
 
-# Installs Apache and PHP. Unlike check_dependencies, these are installed
-# instead of merely verified: they are proxymon's own serving layer, not a
-# tool it calls.
+# Installs Apache and PHP. Kept apart from apt_deps because they are
+# proxymon's own serving layer, installed only by --install.
 install_apache2() {
     local dep_pkg missing_pkgs=()
 
@@ -256,10 +259,8 @@ deploy_squid_template() {
     fi
 }
 
-# Squidmon and Logview read only the current access.log, so a rotation leaves
-# them without the activity moved to the rotated file. SquidAI also reads the
-# first rotated file, which keeps its answers by date correct across that
-# boundary. Weekly rotation keeps the gap of the first two modules bounded.
+# The panels read access.log and access.log.1, never the .gz rotations.
+# delaycompress keeps access.log.1 readable; weekly keeps a week in view.
 set_squid_logrotate() {
     local failure_message="cannot update Squid logrotate settings"
     local rotate_file=/etc/logrotate.d/squid
@@ -308,6 +309,14 @@ set_squid_logrotate() {
             warn "cannot set rotate 7 in ${rotate_file#/etc/} -alert"
         fi
     fi
+    local rotate_option
+    for rotate_option in compress delaycompress missingok notifempty; do
+        if ! grep -qE "^[[:space:]]*$rotate_option$" "$rotate_file"; then
+            failure_message="cannot edit Squid logrotate settings"
+            sed -i -E "0,/^([[:space:]]*)rotate[[:space:]]+7$/s//&\n\1$rotate_option/" "$rotate_file"
+            info "${rotate_file#/etc/} set to $rotate_option -fixed"
+        fi
+    done
     local size_directive size_directives=""
     for size_directive in size maxsize; do
         if grep -qE "^[[:space:]]*$size_directive[[:space:]]" "$rotate_file"; then
@@ -332,8 +341,6 @@ set_squid_logrotate() {
 }
 
 squid_preexisting=1
-failure_message="cannot check required packages"
-check_dependencies
 
 # conflicting packages
 check_conflicts() {
@@ -892,7 +899,7 @@ check_apache_config() {
         fi
     fi
 
-    # PHP and mpm_prefork are already installed (see check_dependencies());
+    # PHP and mpm_prefork are already installed (see install_apache2());
     # if their Apache modules just aren't enabled yet, enable them instead
     # of aborting.
     apache_needs_restart=0
@@ -970,6 +977,25 @@ list_ipv4_ifaces() {
             printf '%s\n' "$iface"
         fi
     done < <(list_ifaces)
+}
+
+# check ipv4 interfaces
+check_ipv4_interfaces() {
+    local max_attempts=24 attempt=1
+
+    while (( attempt <= max_attempts )); do
+        if [ -n "$(list_ipv4_ifaces)" ]; then
+            return 0
+        fi
+        if (( attempt == 1 )); then
+            log "INFO: waiting for an interface with IPv4..."
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+
+    log "ERROR: no interface with IPv4 -abort"
+    exit 1
 }
 
 # LAN SELECTION
@@ -1352,7 +1378,7 @@ install_project_logrotate() {
     chmod 640 "$project_log" || return 1
     cat > "$rotate_file" <<EOF
 $project_log {
-    daily
+    weekly
     rotate 7
     compress
     delaycompress
@@ -1370,6 +1396,8 @@ EOF
 
 do_install() {
     local failure_message="cannot finish the Proxymon installation"
+    failure_message="cannot install required packages"
+    install_deps
     failure_message="cannot check conflicting packages"
     check_conflicts "web server" nginx lighttpd caddy
     failure_message="cannot read locations from proxymon.env"
@@ -1378,6 +1406,7 @@ do_install() {
         abort "proxymon already installed -abort"
     fi
     failure_message="cannot check the internet connection"
+    check_ipv4_interfaces
     check_internet
     failure_message="cannot install Apache and PHP packages"
     install_apache2
@@ -1414,7 +1443,7 @@ do_install() {
     info "updated squidreports/domain-suffixes-update.sh"
     info "updated squidreports/proxymonenv.sh"
 
-    log "EVENT: Configuring Apache..."
+    log "INFO: Configuring Apache..."
 
     if [[ -f "config/web/proxymon.conf" ]]; then
         failure_message="cannot copy proxymon.conf"
@@ -1430,9 +1459,9 @@ do_install() {
 
     [ -f /etc/apache2/ports.conf.bak ] || cp -f /etc/apache2/ports.conf{,.bak} &>/dev/null || true
 
-    log "EVENT: Configuring Squid Monitor..."
+    log "INFO: Configuring Squid Monitor..."
 
-    log "EVENT: Configuring Squidreports..."
+    log "INFO: Configuring Squidreports..."
     if "$WEB_ROOT/squidreports/squidreports.pl" today; then
         info "initial squidreports report generated"
     else
@@ -1442,7 +1471,7 @@ do_install() {
     failure_message="cannot update Apache site locations"
     configure_apache_locations
 
-    log "EVENT: Configuring ACL directories and files..."
+    log "INFO: Configuring ACL directories and files..."
     # Load env to get ACL paths defined by create_proxymon_env()
     # Verify ownership/permissions before sourcing -- this file is executed
     # as root, so it must not be writable by anyone other than root.
@@ -1518,7 +1547,7 @@ do_install() {
             && acl_fix_perms "$ACL_SQUID_PATH/blockpatterns.txt" 644
     fi
 
-    log "EVENT: Updating Prefork MPM..."
+    log "INFO: Updating Prefork MPM..."
     [ -f /etc/apache2/mods-available/mpm_prefork.conf.bak ] || cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null || true
     failure_message="cannot edit mpm_prefork.conf"
     sed -i \
@@ -1529,7 +1558,7 @@ do_install() {
       -e 's/^\(MaxConnectionsPerChild[[:space:]]*\)0/\11000/' \
     /etc/apache2/mods-available/mpm_prefork.conf
 
-    log "EVENT: Updating PHP..."
+    log "INFO: Updating PHP..."
     [ -f /etc/php/$php_version/apache2/php.ini.bak ] || cp -f /etc/php/$php_version/apache2/php.ini{,.bak} &>/dev/null || true
     failure_message="cannot edit Apache php.ini"
     sed -i \
@@ -1553,7 +1582,7 @@ do_install() {
      /etc/php/$php_version/apache2/php.ini
 
     # Hardening
-    log "EVENT: Updating Apache2 Security..."
+    log "INFO: Updating Apache2 Security..."
     if [ -f /etc/apache2/conf-available/security.conf ]; then
         [ -f /etc/apache2/conf-available/security.conf.bak ] || cp -f /etc/apache2/conf-available/security.conf{,.bak} &>/dev/null || true
     else
@@ -1599,7 +1628,7 @@ do_install() {
     failure_message="cannot enable Apache security configuration"
     a2enconf security &>/dev/null
 
-    log "EVENT: Configuring SquidAI..."
+    log "INFO: Configuring SquidAI..."
     failure_message="cannot create $(basename "$CONFIG_DIR")"
     mkdir -p "$CONFIG_DIR" "$(dirname "$LLM_ENV_FILE")"
     if [ ! -f "$LLM_ENV_FILE" ]; then
@@ -1688,7 +1717,7 @@ EOF
     info "SquidAI config directory created: $CONFIG_DIR/"
     info "Edit $LLM_ENV_FILE and set your LLM credentials"
 
-    log "EVENT: Setting Permissions..."
+    log "INFO: Setting Permissions..."
     find "$WEB_ROOT" -type d -exec chmod 755 {} +
     find "$WEB_ROOT" -type f -exec chmod 644 {} +
     find "$WEB_ROOT" -type f -name "*.cgi" -exec chmod +x {} +
@@ -1710,11 +1739,11 @@ EOF
     find "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools" -path "$ACL_BANDATA_PATH" \
         -prune -o -type f -exec chmod 644 {} +
     failure_message="cannot set permissions on bandata.sh"
-    chmod 755 "$CONFIG_DIR/bandata/bandata.sh"
+    chmod 750 "$CONFIG_DIR/bandata/bandata.sh"
     failure_message="cannot set permissions on pmbk.sh"
-    chmod 755 "$CONFIG_DIR/tools/pmbk.sh"
+    chmod 750 "$CONFIG_DIR/tools/pmbk.sh"
     failure_message="cannot set permissions on squidtool.sh"
-    chmod 755 "$CONFIG_DIR/tools/squidtool.sh"
+    chmod 750 "$CONFIG_DIR/tools/squidtool.sh"
     failure_message="cannot set owner of $(basename "$CONFIG_DIR")"
     chown -R root:root "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools"
     if ! getent group proxy >/dev/null; then
@@ -1733,7 +1762,7 @@ EOF
     failure_message="cannot set permissions on squid.conf"
     chmod 644 /etc/squid/squid.conf
 
-    log "EVENT: Setting Logs..."
+    log "INFO: Setting Logs..."
     failure_message="cannot create Apache log files"
     touch /var/log/apache2/{warning_access,warning_error,proxymon_access,proxymon_error}.log
     failure_message="cannot set owner of Apache log files"
@@ -1753,7 +1782,7 @@ EOF
     fi
     shopt -u nullglob
 
-    log "EVENT: Enabling Apache Modules..."
+    log "INFO: Enabling Apache Modules..."
     a2dismod mpm_event 2>/dev/null || true
     # mod_cgid requires a threaded MPM (worker/event) and is incompatible
     # with mpm_prefork enabled below. Use mod_cgi instead.
@@ -1770,14 +1799,14 @@ EOF
         abort "cannot enable Apache module '$apache_mod', check it is installed -abort"
     done
 
-    log "EVENT: Enabling Apache Sites..."
+    log "INFO: Enabling Apache Sites..."
     a2ensite proxymon.conf || abort "cannot enable proxymon.conf -abort"
     a2ensite warning.conf || abort "cannot enable warning.conf -abort"
 
-    log "EVENT: Restarting Cron..."
+    log "INFO: Restarting Cron..."
     systemctl restart cron || abort "cannot restart cron -abort"
 
-    log "EVENT: Restarting Apache2..."
+    log "INFO: Restarting Apache2..."
     systemctl daemon-reload || abort "cannot reload systemd configuration -abort"
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
         a2dissite proxymon.conf 2>/dev/null || true
@@ -1875,6 +1904,7 @@ secure_web_code() (
 # entries. Copies every file under modules/ except web_preserved_paths.
 
 do_update() {
+    install_deps
     configure_locations
     [ -d "$WEB_ROOT" ] || abort "proxymon is not installed -abort"
     [ -f /etc/apache2/ports.conf ] && [ ! -L /etc/apache2/ports.conf ] \
@@ -1890,7 +1920,7 @@ do_update() {
         update_file "$script_dir/modules/$rel" "$WEB_ROOT/$rel" "$mode" root:root
     done < "$script_dir/config/update-files.txt"
     for file in bandata/bandata.sh tools/pmbk.sh tools/proxymonenv.sh tools/squidtool.sh; do
-        mode=755
+        mode=750
         [ "$file" != tools/proxymonenv.sh ] || mode=644
         update_file "$script_dir/config/$file" "$CONFIG_DIR/$file" "$mode" root:root
     done
@@ -1939,7 +1969,7 @@ do_uninstall() {
     fi
     failure_message="cannot read locations from proxymon.env"
     configure_locations
-    log "EVENT: Uninstalling Proxy Monitor..."
+    log "INFO: Uninstalling Proxy Monitor..."
 
     if [[ ! -d "$WEB_ROOT" ]] && [[ ! -d "$CONFIG_DIR" ]]; then
         info "Proxy Monitor is not installed"
@@ -2095,6 +2125,7 @@ do_uninstall() {
 
     failure_message="cannot remove bandata.log*"
     rm -f /etc/logrotate.d/proxymon && info "Removed /etc/logrotate.d/proxymon"
+    rm -f -- /var/log/proxymon.log /var/log/proxymon.log.* && info "Proxymon project log removed"
     rm -f /etc/logrotate.d/bandata /var/log/bandata.log* && {
         info "Removed /etc/logrotate.d/bandata"
         info "Bandata log files removed"
@@ -2169,7 +2200,7 @@ source "$script_dir/config/tools/proxymonenv.sh"
 # ------------------------------------------------------------------------------
 
 # Run the action given on the command line, or fall back to the menu
-log "EVENT: pmsetup start..."
+log "INFO: pmsetup start..."
 
 case "${1:-}" in
     --install) do_install ;;
@@ -2185,4 +2216,4 @@ case "${1:-}" in
         ;;
 esac
 
-log "EVENT: pmsetup done"
+log "INFO: pmsetup done"
