@@ -43,6 +43,31 @@ FILE: README.md
   </tr>
 </table>
 
+### Network
+
+<table width="100%">
+  <tr>
+    <td style="width: 50%; vertical-align: top;">
+      <p>Installation and update require the following:</p>
+      <ul>
+        <li>At least one interface must have an UP link and configured global IPv4.</li>
+        <li>Internet access is required when installing or updating packages and downloading components.</li>
+        <li>The selected LAN IPv4 must be static and persistent.</li>
+      </ul>
+      <p>The operation continues if the applicable requirements above are met; otherwise, it aborts.</p>
+    </td>
+    <td style="width: 50%; vertical-align: top;">
+      <p>La instalación y actualización requieren lo siguiente:</p>
+      <ul>
+        <li>Al menos una interfaz debe tener enlace UP e IPv4 global configurada.</li>
+        <li>Se requiere Internet para instalar o actualizar paquetes y descargar componentes.</li>
+        <li>La IPv4 LAN seleccionada debe ser estática y persistente.</li>
+      </ul>
+      <p>La operación continúa si se cumplen los requisitos anteriores que correspondan; de lo contrario, aborta.</p>
+    </td>
+  </tr>
+</table>
+
 ### Hardware
 
 |   CPU   |   RAM   |   Storage   |
@@ -62,10 +87,10 @@ FILE: README.md
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> installs Apache and PHP when they are missing. <code>--install</code> and <code>--update</code> also install every missing package the project needs. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• Install the supporting packages below before running <code>pmsetup.sh</code>. It checks them and stops at the first missing package.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
+      <p>• <code>pmsetup.sh</code> installs Apache and PHP when they are missing. <code>--install</code> and <code>--update</code> also install every missing package the project needs. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• The installer installs missing supporting packages listed below.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> instala Apache y PHP cuando faltan. <code>--install</code> y <code>--update</code> también instalan todos los paquetes que falten al proyecto. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• Instale los paquetes auxiliares de abajo antes de ejecutar <code>pmsetup.sh</code>. Los comprueba y se detiene al encontrar el primer paquete ausente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
+      <p>• <code>pmsetup.sh</code> instala Apache y PHP cuando faltan. <code>--install</code> y <code>--update</code> también instalan todos los paquetes que falten al proyecto. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• El instalador instala los paquetes auxiliares que falten de la lista siguiente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
     </td>
   </tr>
 </table>
@@ -74,7 +99,7 @@ FILE: README.md
 # other required packages (checked by pmsetup.sh, no extra setup needed)
 apt install -y wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl \
                 coreutils fonts-lato fonts-liberation fonts-dejavu \
-                perl python3 cron sudo util-linux iproute2 passwd findutils sed \
+                perl python3 python3-yaml cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables \
                 gawk gzip procps logrotate
 
@@ -1582,7 +1607,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
 2026-10-17 12:00:00 WARNING: pmbk.sh: monthly backup setup failed -alert
 ```
 
-## ORIGINAL PROJECTS
+## ACKNOWLEDGMENTS
 
 ---
 

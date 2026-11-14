@@ -48,6 +48,12 @@ if ($month ne "all") {
 }
 
 #----------------------------------- find defined month & years
+unless (opendir my $reportdir, $reportpath) {
+    ErrPrintConfig("cannot read report folder '$reportpath': $!");
+    exit;
+} else {
+    closedir $reportdir;
+}
 @days=sort glob("$reportpath/*");
 
 
@@ -63,15 +69,10 @@ foreach $day (@days) {
 ##  YEAR row ______________________________________________
 @yearlist=sort keys %yearhash;
 $yearcnt=$#yearlist+1;
-if ($yearcnt == 0) {
-    ErrPrintConfig("report folder '$reportpath' not contain any valid data! Please run squidreports.pl (and check 'report' folder content)");
-    print "<hr>folder content:<br>";
-    foreach $file (@days) {
-        print "$file<br>";
-    }
-
-    exit;
-
+my $no_reports = ($yearcnt == 0);
+if ($no_reports) {
+    $yearhash{$year} = 1;
+    $yearcnt = 1;
 }
 
 $yearspan=12/$yearcnt;
@@ -191,7 +192,8 @@ $month="all" if ($month eq "");
 $printtotalsize_L = "month_detail.cgi?year=$year&month=$month";
 $printtotalsize_B = "$printtotalsize";
 
-ReplaceTPL(WORKPERIOD,$workperiod);
+ReplaceTPL(WORKPERIOD, $no_reports
+    ? "$workperiod &mdash; No reports available yet" : $workperiod);
 ReplaceTPL(ANALYTICS,"analytics.cgi?year=$year&month=$month");
 ReplaceTPL(DETAILED_MONTH,"detailed.cgi?year=$year&month=$month");
 ReplaceTPL(DETAILED_YEAR,"detailed.cgi?year=$year&month=all");

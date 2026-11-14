@@ -7,10 +7,10 @@
 # FILE: tools/squidtool.sh
 #
 # USAGE:
-# sudo bash squidtool.sh    Interactive menu
+# ACTION            COMMAND
+# Interactive menu  sudo bash squidtool.sh
 #
 # LOG: /etc/proxymon/tools/squidtool.log
-#      Written in this script's own directory, so it follows the script
 #
 ################################################################################
 

@@ -7,12 +7,13 @@
 # FILE: pmsetup.sh
 #
 # USAGE:
-# sudo bash pmsetup.sh --install      Fresh install
-# sudo bash pmsetup.sh --update       Refresh code, keep live data
-# sudo bash pmsetup.sh --uninstall    Remove proxymon
-# sudo bash pmsetup.sh                Interactive menu
-# sudo bash pmsetup.sh -h             Show usage
-# sudo bash pmsetup.sh --help         Show usage
+# ACTION                        COMMAND
+# Fresh install                 sudo bash pmsetup.sh --install
+# Refresh code, keep live data  sudo bash pmsetup.sh --update
+# Remove proxymon               sudo bash pmsetup.sh --uninstall
+# Interactive menu              sudo bash pmsetup.sh
+# Show usage                    sudo bash pmsetup.sh -h
+# Show usage                    sudo bash pmsetup.sh --help
 #
 # LOG: pmsetup.log, in this script's directory
 #
@@ -43,6 +44,54 @@ report_failure() {
 
 failure_message="cannot initialize Proxymon"
 trap 'report_failure; exit 1' ERR
+
+check_requirements() {
+    local network_command
+    for network_command in ip awk python3; do
+        command -v "$network_command" >/dev/null 2>&1 \
+            || abort "network command '$network_command' missing -abort"
+    done
+    configure_locations
+    case "$1" in
+        install)
+            run_initial_checks
+            check_repo
+            check_port tcp "$PANEL_PORT" "web interface"
+            check_port tcp "$WARNING_PORT" "warning page"
+            require_static_lan_candidate
+            check_conflicts "web server" nginx lighttpd caddy
+            [ ! -d "$WEB_ROOT" ] || abort "proxymon installed; use --update | --uninstall -abort"
+            choose_lan_interface "${PROXYMON_LAN:-${LAN:-}}"
+            lan_answer="$lan_iface_answer"
+            read_lan_ipv4 "$lan_answer" "${PROXYMON_SERVER_IP:-${SERVER_IP:-}}"
+            check_static_lan "$lan_answer" "${lan_cidr_answer%/*}"
+            server_ip_answer="${lan_cidr_answer%/*}"
+            ;;
+        update)
+            [ -d "$WEB_ROOT" ] || abort "proxymon is not installed -abort"
+            local network_key
+            for network_key in LAN SERVER_IP; do
+                [ -n "${!network_key:-}" ] \
+                    || abort "$network_key not set -abort"
+            done
+            choose_lan_interface "${LAN:-}"
+            check_static_lan "${LAN:-}" "${SERVER_IP:-}"
+            ;;
+    esac
+    check_ipv4_interfaces
+    if [ "$1" = install ]; then
+        check_internet
+    else
+        local package
+        for package in "${apt_deps[@]}"; do
+            if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null \
+                | grep -q "ok installed"; then
+                check_internet
+                break
+            fi
+        done
+    fi
+}
 
 # prevent overlapping runs
 script_lock="/var/lock/$(basename "$0" .sh).lock"
@@ -172,7 +221,7 @@ package_installed() {
 # dependencies
 # Every package the deployed components need. Installed by install_deps
 # in --install and --update.
-apt_deps=(wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate)
+apt_deps=(python3-yaml wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate)
 
 # Install the missing packages of apt_deps
 install_deps() {
@@ -183,8 +232,8 @@ install_deps() {
     (( ${#missing_pkgs[@]} == 0 )) && return 0
     check_ipv4_interfaces
     check_internet
-    DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
-        || { err "cannot install ${missing_pkgs[*]}"; abort "install them with apt, then re-run -abort"; }
+    retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
+        || { err "[1/2] cannot install ${missing_pkgs[*]}"; abort "[2/2] install them with apt, then re-run -abort"; }
     info "Installed: ${missing_pkgs[*]}"
 }
 
@@ -202,8 +251,8 @@ install_apache2() {
         return 0
     fi
 
-    DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
-        || { err "cannot install ${missing_pkgs[*]}"; abort "install them with apt, then re-run -abort"; }
+    retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
+        || { err "[1/2] cannot install ${missing_pkgs[*]}"; abort "[2/2] install them with apt, then re-run -abort"; }
     systemctl enable apache2 &>/dev/null || true
     info "Installed: ${missing_pkgs[*]}"
 }
@@ -218,8 +267,8 @@ install_squid() {
         return 0
     fi
 
-    DEBIAN_FRONTEND=noninteractive apt-get -qq install -y squid-openssl squid-langpack squid-common \
-        || { err "cannot install squid-openssl"; abort "install it with apt, then re-run -abort"; }
+    retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y squid-openssl squid-langpack squid-common \
+        || { err "[1/2] cannot install squid-openssl"; abort "[2/2] install it with apt, then re-run -abort"; }
     systemctl enable squid &>/dev/null || true
     squid_preexisting=0
     info "Installed: squid-openssl squid-langpack squid-common"
@@ -332,8 +381,8 @@ set_squid_logrotate() {
     elif grep -qE '^[[:space:]]*prerotate' "$rotate_file"; then
         info "$rotate_file has prerotate defined -skip"
     elif ! grep -qE '^[[:space:]]*sharedscripts' "$rotate_file"; then
-        warn "Squidreports: squid has no sharedscripts"
-        warn "Squidreports not added before log rotation -alert"
+        warn "[1/2] Squidreports: squid has no sharedscripts"
+        warn "[2/2] not added before log rotation -alert"
     else
         failure_message="cannot edit Squid logrotate settings"
         sed -i "/^[[:space:]]*sharedscripts/a \\    prerotate\n        $hook\n    endscript" "$rotate_file"
@@ -380,12 +429,12 @@ if result.returncode != 0 or result.stderr.strip():
 sys.stdout.write(result.stdout)
 PY
     ); then
-        err "cannot check ${proto^^} port $port"
-        abort "fix the ss query before installing -abort"
+        err "[1/2] cannot check ${proto^^} port $port"
+        abort "[2/2] fix the ss query before installing -abort"
     fi
     if [ -n "$port_listeners" ]; then
-        err "${proto^^} port $port in use by another $role"
-        abort "stop that service before installing -abort"
+        err "[1/2] ${proto^^} port $port in use by another $role"
+        abort "[2/2] stop that service before installing -abort"
     fi
 }
 
@@ -672,8 +721,8 @@ update_apply() {
             if (( ${#compared_file} <= 19 )); then
                 update_error "src and dst do not match: $compared_file"
             fi
-            log "ERROR: src and dst: $compared_file"
-            update_error "src and dst do not match"
+            log "ERROR: [1/2] src and dst: $compared_file"
+            update_error "[2/2] src and dst do not match"
         }
         info "updated $(basename "$target")"
     done
@@ -851,21 +900,24 @@ get_acl() {
 }
 
 retry_cmd() {
-    local max_retries="${RETRY_CMD_MAX:-10}"
-    local retry_delay="${RETRY_CMD_DELAY:-10}"
-    local retry_attempt=1
-    local retry_file
-    retry_file=$(basename "${@: -1}")
-    until "$@"; do
-        if [ "$retry_attempt" -ge "$max_retries" ]; then
-            if [ "${RETRY_CMD_SOFT_FAIL:-0}" -eq 1 ]; then
-                return 1
-            fi
-            abort "$retry_file: download failed -abort"
+    [ "$#" -ge 2 ] || return 2
+    local retry_label="$1" retry_attempt retry_status
+    shift
+    for retry_attempt in 1 2 3; do
+        if "$@"; then
+            return 0
+        else
+            retry_status=$?
         fi
-        info "$retry_file: download failed; retry $((retry_attempt + 1))/$max_retries"
-        retry_attempt=$((retry_attempt + 1))
-        sleep "$retry_delay"
+        [ "$retry_attempt" -lt 3 ] || return "$retry_status"
+        if declare -F log >/dev/null; then
+            log "INFO: $retry_label: retry $((retry_attempt + 1))/3" >&2
+        else
+            printf '%s INFO: %s: retry %s/3\n' \
+                "$(date '+%Y-%m-%d %H:%M:%S')" "$retry_label" \
+                "$((retry_attempt + 1))" >&2
+        fi
+        sleep 5
     done
 }
 
@@ -954,8 +1006,8 @@ check_repo() {
     fi
     if [ "$config_incomplete" -eq 1 ]; then
         echo ""
-        err "repository files not found"
-        err "clone it from github.com/maravento/proxymon -abort"
+        err "[1/2] repository files not found"
+        err "[2/2] clone github.com/maravento/proxymon -abort"
         echo ""
         exit 1
     fi
@@ -1030,8 +1082,8 @@ choose_lan_interface() {
     for iface_index in "${!lan_candidates[@]}"; do
         iface_name="${lan_candidates[$iface_index]}"
         iface_state=$(ip -br link show "$iface_name" | awk '{print $2}')
-        iface_addrs=$(ip -4 -o addr show dev "$iface_name" scope global | awk '{print $4}' | paste -sd' ')
-        printf ' [%d] %s (%s, %s)\n' "$((iface_index + 1))" "$iface_name" "$iface_state" "${iface_addrs:-no IPv4}"
+        printf ' [%d] %s (%s)\n' "$((iface_index + 1))" "$iface_name" "$iface_state"
+        describe_lan_ipv4 "$iface_name"
     done
     while true; do
         read -r -p "Select LAN Interface [1-${#lan_candidates[@]}]: " iface_choice || {
@@ -1045,6 +1097,171 @@ choose_lan_interface() {
         fi
         log "INFO: invalid LAN interface selection -retry"
     done
+}
+
+check_static_lan() {
+    local static_result
+    static_result=$(python3 -I - "$1" "$2" <<'STATIC_LAN'
+import configparser
+import fnmatch
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+iface, address = sys.argv[1:]
+
+def run(*args):
+    return subprocess.check_output(
+        args, text=True, stderr=subprocess.DEVNULL, timeout=10,
+        env={**os.environ, 'LC_ALL': 'C', 'SYSTEMD_PAGER': 'cat'}).strip()
+
+def has_address(values):
+    return any(str(ipaddress.ip_interface(value.split(',')[0]).ip)
+               == address for value in values)
+
+def persistent_static():
+    data = json.loads(run('ip', '-j', '-4', 'addr', 'show', 'dev', iface))
+    selected = [entry for link in data for entry in link['addr_info']
+                if entry.get('local') == address]
+    if len(selected) != 1:
+        return 'unknown'
+    entry = selected[0]
+    if entry.get('dynamic') or 'dynamic' in entry.get('flags', []):
+        return 'dhcp'
+
+    nm_active = False
+    if shutil.which('nmcli'):
+        try:
+            uuid = run('nmcli', '-g', 'GENERAL.CON-UUID',
+                       'device', 'show', iface)
+            if uuid and uuid != '--':
+                nm_active = True
+                method = run('nmcli', '-g', 'ipv4.method',
+                             'connection', 'show', uuid)
+                addresses = run('nmcli', '-g', 'ipv4.addresses',
+                                'connection', 'show', uuid)
+                if method != 'manual' or not has_address(
+                        addresses.split(', ')):
+                    return 'unknown'
+                rows = run('nmcli', '-t', '--escape', 'no',
+                           '-f', 'UUID,FILENAME', 'connection', 'show')
+                netplan_profile = False
+                for row in rows.splitlines():
+                    key, _, filename = row.partition(':')
+                    if key != uuid:
+                        continue
+                    netplan_profile = (filename.startswith('/run/') and
+                                       '/netplan-' in filename)
+                    if not filename.startswith('/etc/'):
+                        continue
+                    config = configparser.ConfigParser(interpolation=None)
+                    config.read(filename)
+                    if config.get('ipv4', 'method') != 'manual':
+                        return 'unknown'
+                    values = [value for key, value in config['ipv4'].items()
+                              if re.fullmatch(r'address\d+', key)]
+                    if has_address(values):
+                        return 'static'
+                if not netplan_profile:
+                    return 'unknown'
+        except (OSError, ValueError, configparser.Error,
+                subprocess.SubprocessError):
+            if nm_active:
+                return 'unknown'
+
+    if not shutil.which('netplan'):
+        return 'unknown'
+    # Runtime Netplan overrides cannot prove persistent configuration.
+    if list(Path('/run/netplan').glob('*.yaml')):
+        return 'unknown'
+    if not nm_active:
+        status = run('networkctl', '--no-pager', 'status', iface)
+        if not re.search(r'Network File: .*netplan.*\.network', status):
+            return 'unknown'
+    import yaml
+    try:
+        network = yaml.safe_load(run('netplan', 'get')).get('network', {})
+    except yaml.YAMLError:
+        return 'unknown'
+    for kind in ('ethernets', 'wifis', 'bridges', 'bonds', 'vlans'):
+        for name, config in network.get(kind, {}).items():
+            match = config.get('match', {})
+            if match:
+                mac = data[0].get('permaddr', data[0].get('address', ''))
+                matches = not (set(match) - {'name', 'macaddress'})
+                if 'name' in match:
+                    matches &= fnmatch.fnmatchcase(iface, match['name'])
+                if 'macaddress' in match:
+                    matches &= mac.lower() == match['macaddress'].lower()
+                if config.get('set-name') == iface:
+                    matches = True
+            else:
+                matches = name == iface
+            if matches and has_address(config.get('addresses', [])):
+                return 'static'
+    return 'unknown'
+
+try:
+    print(persistent_static())
+except (OSError, ValueError, KeyError, TypeError, AttributeError,
+        ImportError, subprocess.SubprocessError):
+    print('unknown')
+STATIC_LAN
+    ) || static_result=unknown
+    if [ "${3:-}" = probe ]; then
+        printf '%s\n' "$static_result"
+        return 0
+    fi
+    case "$static_result" in
+        static) return 0 ;;
+        dhcp)
+            log "ERROR: [1/2] LAN $1: $2 uses DHCP"
+            log "ERROR: [2/2] configure a static LAN IPv4 -abort"
+            ;;
+        *)
+            log "ERROR: [1/2] LAN $1: $2"
+            log "ERROR: [2/2] cannot verify persistent static IPv4 -abort"
+            ;;
+    esac
+    exit 1
+}
+
+lan_ipv4_condition() {
+    case "$(check_static_lan "$1" "$2" probe)" in
+        static) printf 'static' ;;
+        dhcp) printf 'dynamic' ;;
+        *) printf 'unverified' ;;
+    esac
+}
+
+describe_lan_ipv4() {
+    local cidr
+    while read -r cidr; do
+        printf '      %s (%s)\n' "$cidr" \
+            "$(lan_ipv4_condition "$1" "${cidr%/*}")"
+    done < <(ip -4 -o addr show dev "$1" scope global | awk '{print $4}')
+}
+
+require_static_lan_candidate() {
+    local iface cidr
+    local -a candidates=()
+    mapfile -t candidates < <(list_ipv4_ifaces)
+    (( ${#candidates[@]} > 1 )) || return 0
+    for iface in "${candidates[@]}"; do
+        while read -r cidr; do
+            if [ "$(check_static_lan "$iface" "${cidr%/*}" probe)" = static ]; then
+                return 0
+            fi
+        done < <(ip -4 -o addr show dev "$iface" scope global | awk '{print $4}')
+    done
+    log "ERROR: [1/2] no interface has a verified static IPv4"
+    log "ERROR: [2/2] configure a static LAN IPv4 -abort"
+    exit 1
 }
 
 read_lan_ipv4() {
@@ -1077,7 +1294,10 @@ read_lan_ipv4() {
     fi
     echo "IPv4 addresses on LAN '$selected_iface':"
     for ipv4_index in "${!lan_addresses[@]}"; do
-        printf ' [%d] %s\n' "$((ipv4_index + 1))" "${lan_addresses[$ipv4_index]}"
+        printf ' [%d] %s (%s)\n' "$((ipv4_index + 1))" \
+            "${lan_addresses[$ipv4_index]}" \
+            "$(lan_ipv4_condition "$selected_iface" \
+                "${lan_addresses[$ipv4_index]%/*}")"
     done
     while true; do
         read -r -p "Select LAN IPv4 number: " ipv4_choice || {
@@ -1137,10 +1357,6 @@ create_proxymon_env() {
     local unattended=false
     [ -n "${PROXYMON_LAN:-}" ] && unattended=true
 
-    choose_lan_interface "${PROXYMON_LAN:-}"
-    lan_answer="$lan_iface_answer"
-    read_lan_ipv4 "$lan_answer" "${PROXYMON_SERVER_IP:-}"
-    server_ip_answer="${lan_cidr_answer%/*}"
     local -a lan_network_values
     mapfile -t lan_network_values < <(python3 -c '
 import ipaddress, sys
@@ -1395,33 +1611,27 @@ EOF
 }
 
 do_install() {
+    check_requirements install
     local failure_message="cannot finish the Proxymon installation"
     failure_message="cannot install required packages"
     install_deps
     failure_message="cannot check conflicting packages"
-    check_conflicts "web server" nginx lighttpd caddy
     failure_message="cannot read locations from proxymon.env"
     configure_locations
     if [[ -d "$WEB_ROOT" ]]; then
-        abort "proxymon already installed -abort"
+        abort "proxymon installed; use --update | --uninstall -abort"
     fi
     failure_message="cannot check the internet connection"
-    check_ipv4_interfaces
-    check_internet
     failure_message="cannot install Apache and PHP packages"
     install_apache2
     failure_message="cannot install Squid packages"
     install_squid
     failure_message="cannot check Proxymon requirements"
-    run_initial_checks
 
     failure_message="cannot check the required network port"
-    check_port tcp "$PANEL_PORT" "web interface"
     failure_message="cannot check the required network port"
-    check_port tcp "$WARNING_PORT" "warning page"
 
     failure_message="cannot check required repository files"
-    check_repo
     failure_message="cannot create proxymon.env"
     create_proxymon_env
     load_proxymon_env "$proxymon_env" || abort "cannot load proxymon.env -abort"
@@ -1523,7 +1733,7 @@ do_install() {
     # install. Fewer, shorter retries here (with feedback on the way in
     # and out), and a soft failure just skips that one file with a warning.
 
-    if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/blackweb/refs/heads/master/bwupdate/lst/blocktlds.txt "$ACL_SQUID_PATH/blocktlds.txt"; then
+    if retry_cmd "download blocktlds.txt" get_acl https://raw.githubusercontent.com/maravento/blackweb/refs/heads/master/bwupdate/lst/blocktlds.txt "$ACL_SQUID_PATH/blocktlds.txt"; then
         acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blocktlds.txt"
     else
         warn "blocktlds.txt download failed -alert"
@@ -1531,7 +1741,7 @@ do_install() {
             && acl_fix_perms "$ACL_SQUID_PATH/blocktlds.txt" 644
     fi
 
-    if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/blackweb/refs/heads/master/bwupdate/lst/debugbl.txt "$ACL_SQUID_PATH/blockdomains.txt"; then
+    if retry_cmd "download debugbl.txt" get_acl https://raw.githubusercontent.com/maravento/blackweb/refs/heads/master/bwupdate/lst/debugbl.txt "$ACL_SQUID_PATH/blockdomains.txt"; then
         acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blockdomains.txt"
     else
         warn "blockdomains.txt download failed -alert"
@@ -1539,7 +1749,7 @@ do_install() {
             && acl_fix_perms "$ACL_SQUID_PATH/blockdomains.txt" 644
     fi
 
-    if RETRY_CMD_MAX=3 RETRY_CMD_DELAY=5 RETRY_CMD_SOFT_FAIL=1 retry_cmd get_acl https://raw.githubusercontent.com/maravento/vault/refs/heads/master/gateproxy/conf/squid/acl/blockpatterns.txt "$ACL_SQUID_PATH/blockpatterns.txt"; then
+    if retry_cmd "download blockpatterns.txt" get_acl https://raw.githubusercontent.com/maravento/vault/refs/heads/master/gateproxy/conf/squid/acl/blockpatterns.txt "$ACL_SQUID_PATH/blockpatterns.txt"; then
         acl_prepare "$ACL_SQUID_PATH" 755 644 "$ACL_SQUID_PATH/blockpatterns.txt"
     else
         warn "blockpatterns.txt download failed -alert"
@@ -1811,8 +2021,8 @@ EOF
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
         a2dissite proxymon.conf 2>/dev/null || true
         a2dissite warning.conf 2>/dev/null || true
-        err "Apache tried disabling proxymon.conf and warning.conf"
-        err "Apache config test failed; fix it and retry -abort"
+        err "[1/2] tried disabling proxymon.conf, warning.conf"
+        err "[2/2] Apache config test failed; fix and retry -abort"
         exit 1
     fi
     info "Apache configuration OK"
@@ -1904,6 +2114,7 @@ secure_web_code() (
 # entries. Copies every file under modules/ except web_preserved_paths.
 
 do_update() {
+    check_requirements update
     install_deps
     configure_locations
     [ -d "$WEB_ROOT" ] || abort "proxymon is not installed -abort"

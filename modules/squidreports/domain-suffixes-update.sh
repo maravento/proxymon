@@ -7,7 +7,8 @@
 # FILE: squidreports/domain-suffixes-update.sh
 #
 # USAGE:
-# sudo bash domain-suffixes-update.sh    Update domain-suffixes.txt
+# ACTION                      COMMAND
+# Update domain-suffixes.txt  sudo bash domain-suffixes-update.sh
 #
 # LOG: /var/log/proxymon.log
 #

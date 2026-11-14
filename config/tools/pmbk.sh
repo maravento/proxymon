@@ -7,9 +7,10 @@
 # FILE: tools/pmbk.sh
 #
 # USAGE:
-# sudo bash pmbk.sh            Create a backup now
-# sudo bash pmbk.sh --install    Register the @monthly cron entry
-# sudo bash pmbk.sh --uninstall  Remove the cron entry (keeps archives)
+# ACTION                                  COMMAND
+# Create a backup now                     sudo bash pmbk.sh
+# Register the @monthly cron entry        sudo bash pmbk.sh --install
+# Remove the cron entry (keeps archives)  sudo bash pmbk.sh --uninstall
 #
 # LOG: /var/log/proxymon.log
 #
