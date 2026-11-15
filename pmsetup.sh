@@ -7,13 +7,13 @@
 # FILE: pmsetup.sh
 #
 # USAGE:
-# ACTION                        COMMAND
-# Fresh install                 sudo bash pmsetup.sh --install
-# Refresh code, keep live data  sudo bash pmsetup.sh --update
-# Remove proxymon               sudo bash pmsetup.sh --uninstall
-# Interactive menu              sudo bash pmsetup.sh
-# Show usage                    sudo bash pmsetup.sh -h
-# Show usage                    sudo bash pmsetup.sh --help
+# COMMAND                           ACTION
+# sudo bash pmsetup.sh --install    Fresh install
+# sudo bash pmsetup.sh --update     Refresh code, keep live data
+# sudo bash pmsetup.sh --uninstall  Remove proxymon
+# sudo bash pmsetup.sh              Interactive menu
+# sudo bash pmsetup.sh -h           Show usage
+# sudo bash pmsetup.sh --help       Show usage
 #
 # LOG: pmsetup.log, in this script's directory
 #

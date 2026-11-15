@@ -7,8 +7,8 @@
 # FILE: bandata/bandata.sh
 #
 # USAGE:
-# ACTION                COMMAND
-# Apply the quotas now  sudo bash bandata.sh
+# COMMAND               ACTION
+# sudo bash bandata.sh  Apply the quotas now
 #
 # LOG: /var/log/bandata.log
 #

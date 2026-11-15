@@ -7,8 +7,8 @@
 # FILE: tools/proxymonenv.sh
 #
 # USAGE:
-# ACTION                            COMMAND
-# Load shared environment settings  source proxymonenv.sh
+# COMMAND                ACTION
+# source proxymonenv.sh  Load shared environment settings
 #
 ################################################################################
 
