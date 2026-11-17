@@ -172,7 +172,7 @@ unless ($filterdate) {
    $readsource = $tempsource;
    $readcat	= "cat";
 }
-open FF, "$readcat $readsource|" || die "can't access log file\n";
+open(FF, "$readcat $readsource|") or die "can't access log file\n";
 
 InitSkipUser();
 

@@ -195,10 +195,6 @@ table.data-table tr:hover { background: #f9fafb; }
 .alert-warning { background: #fef3c7; color: #92400e; border-left-color: #f59e0b; }
 .alert-success { background: #d1fae5; color: #065f46; border-left-color: #10b981; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.ip-row { cursor: pointer; transition: background 0.2s; }
-.ip-row:hover { background: #f3f4f6 !important; }
-.details-row td { background: #f9fafb !important; padding: 0 !important; }
-.details-row table { margin: 10px; width: calc(100% - 20px); }
 @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
 /* Compatible with Legacy and Authentic themes */
 .progress-bar.custom-fill {
@@ -238,18 +234,12 @@ my %stats = (
     total_requests => 0,
     blocked_requests => 0,
     allowed_requests => 0,
-    unique_clients => 0,
-    unique_domains => 0
+    unique_clients => 0
 );
 
 my %blocked_domains = ();
-my %allowed_domains = ();
-my %blocked_clients = ();
-my %hourly_blocked = ();
-my %hourly_allowed = ();
 my %clients_data = ();
 my %acl_hits = ();
-my %client_logs = ();
 
 # Preload ACLs into REVERSE LOOKUP HASH for O(1) speed
 my %domain_to_acl = (); # domain => ACL label (instant lookup)
@@ -332,16 +322,10 @@ foreach my $line (@log_lines) {
 
     $stats{total_requests}++;
 
-    # Extract hour for hourly stats
-    my ($min, $hour, $day, $mon, $year) = (localtime($timestamp))[1,2,3,4,5];
-    $mon += 1; $year += 1900;
-    my $hour_key = sprintf("%04d-%02d-%02d %02d:00", $year, $mon, $day, $hour);
 
 if ($action_code =~ /^TCP_DENIED/) {
     $stats{blocked_requests}++;
     $blocked_domains{$domain}++;
-    $blocked_clients{$client}++;
-    push @{$hourly_blocked{$hour_key}}, 1;
 
     $clients_data{$client}{blocked}++;
     $clients_data{$client}{total}++;
@@ -386,14 +370,9 @@ if ($action_code =~ /^TCP_DENIED/) {
         $acl_hits{'Unknown ACL'}++;
     }
 
-    my $acl_info = @matched_acls ? join(', ', @matched_acls) : '-';
-    push @{$client_logs{$client}}, [$timestamp, 'Blocked', $domain, $acl_info];
 
     } else {
         $stats{allowed_requests}++;
-        push @{$hourly_allowed{$hour_key}}, 1;
-
-        $allowed_domains{$domain}++;
         $clients_data{$client}{allowed}++;
         $clients_data{$client}{total}++;
     }
@@ -401,7 +380,6 @@ if ($action_code =~ /^TCP_DENIED/) {
 
 # Calculate unique counts
 $stats{unique_clients} = scalar(keys %clients_data);
-$stats{unique_domains} = scalar(keys %blocked_domains);
 
 # Statistics Cards
 print "<div class='stats-grid'>";
@@ -1017,31 +995,6 @@ foreach my $client (sort @clients_to_show) {
     print "</div>";
     print "</details>";
 }
-
-# JavaScript for expandable rows
-print <<'ENDJS';
-<script>
-document.querySelectorAll('.ip-row').forEach(function(row) {
-    row.addEventListener('click', function() {
-        var ip = row.getAttribute('data-ip');
-        var details = document.getElementById('details-' + ip);
-
-        if (details) {
-            if (details.style.display === 'none' || details.style.display === '') {
-                // Hide all other details first
-                document.querySelectorAll('.details-row').forEach(function(r) {
-                    r.style.display = 'none';
-                });
-                // Show this one
-                details.style.display = 'table-row';
-            } else {
-                details.style.display = 'none';
-            }
-        }
-    });
-});
-</script>
-ENDJS
 
 print "</div>"; # End dashboard-container
 

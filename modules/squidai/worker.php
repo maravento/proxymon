@@ -11,23 +11,6 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-// ── PHP 8.0+ string function polyfills (for PHP 7.x compatibility) ─────
-if (!function_exists('str_contains')) {
-    function str_contains(string $haystack, string $needle): bool {
-        return $needle === '' || strpos($haystack, $needle) !== false;
-    }
-}
-if (!function_exists('str_starts_with')) {
-    function str_starts_with(string $haystack, string $needle): bool {
-        return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
-    }
-}
-if (!function_exists('str_ends_with')) {
-    function str_ends_with(string $haystack, string $needle): bool {
-        return $needle === '' || substr($haystack, -strlen($needle)) === $needle;
-    }
-}
-
 // Use the time zone configured in the system
 $sysTz = '';
 if (is_readable('/etc/timezone')) {

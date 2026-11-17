@@ -56,11 +56,11 @@ check_requirements() {
         install)
             run_initial_checks
             check_repo
+            [ ! -d "$WEB_ROOT" ] || abort "proxymon installed; use --update | --uninstall -abort"
             check_port tcp "$PANEL_PORT" "web interface"
             check_port tcp "$WARNING_PORT" "warning page"
             require_static_lan_candidate
             check_conflicts "web server" nginx lighttpd caddy
-            [ ! -d "$WEB_ROOT" ] || abort "proxymon installed; use --update | --uninstall -abort"
             choose_lan_interface "${PROXYMON_LAN:-${LAN:-}}"
             lan_answer="$lan_iface_answer"
             read_lan_ipv4 "$lan_answer" "${PROXYMON_SERVER_IP:-${SERVER_IP:-}}"
@@ -221,7 +221,7 @@ package_installed() {
 # dependencies
 # Every package the deployed components need. Installed by install_deps
 # in --install and --update.
-apt_deps=(python3-yaml wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gawk gzip procps logrotate)
+apt_deps=(python3-yaml wget curl git zip unzip ipset nbtscan libcgi-pm-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gzip procps logrotate diffutils)
 
 # Install the missing packages of apt_deps
 install_deps() {
@@ -289,13 +289,13 @@ deploy_squid_template() {
         || abort "cannot write /etc/squid/squid.conf -abort"
     failure_message="cannot edit squid.conf"
     sed -i "s:192.168.0.0/24:$RANGE:g; s:192.168.0.10:$SERVER_IP:g" /etc/squid/squid.conf
-    info "squid.conf deployed with RANGE=$RANGE and SERVER_IP=$SERVER_IP"
+    info "squid.conf deployed for $RANGE"
     failure_message="cannot create Squid cache directories"
     mkdir -p /var/spool/squid/rock
     failure_message="cannot set owner of Squid cache directories"
     chown -R proxy:proxy /var/spool/squid
     failure_message="cannot set permissions on Squid cache directories"
-    chmod -R 700 /var/spool/squid
+    chmod 700 /var/spool/squid /var/spool/squid/rock
     systemctl stop squid &>/dev/null || true
     failure_message="cannot initialize Squid cache directories"
     if ! squid -z &>/dev/null; then
@@ -446,6 +446,7 @@ proxymon_env="/etc/proxymon/proxymon.env"
 
 # validation -- one variable per thing validated; use directly with =~
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
+UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
 UH_UINT='^(0|[1-9][0-9]*)$'
 UH_SINT='^(0|-?[1-9][0-9]*)$'
 UH_MAX=9223372036854775807
@@ -676,8 +677,8 @@ update_stop_service() {
     systemctl stop "$unit" || update_error "cannot stop service: $unit"
     state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect stopped: $unit"
     [ "$state" = inactive ] || {
-        log "ERROR: $unit state: $state"
-        update_error "$unit did not stop"
+        log "ERROR: [1/2] $unit state: $state"
+        update_error "[2/2] $unit did not stop"
     }
 }
 
@@ -734,8 +735,8 @@ update_resume() {
         systemctl start "$unit" || update_error "cannot start service: $unit"
         state=$(systemctl show -p ActiveState --value "$unit") || update_error "cannot inspect started: $unit"
         [ "$state" = active ] || {
-            log "ERROR: $unit state: $state"
-            update_error "$unit did not start"
+            log "ERROR: [1/2] $unit state: $state"
+            update_error "[2/2] $unit did not start"
         }
     done
 }
@@ -1055,7 +1056,7 @@ check_ipv4_interfaces() {
 # Select an existing interface and one of its configured IPv4 addresses
 choose_lan_interface() {
     local preset_iface="${1:-}"
-    local iface_name iface_choice iface_index iface_addrs iface_state
+    local iface_name iface_choice iface_index iface_state
     local -a lan_candidates=()
     while IFS= read -r iface_name; do
         lan_candidates+=("$iface_name")
@@ -1325,14 +1326,14 @@ create_proxymon_env() {
         info "$env_file already exists -skip"
         # Warn if a newer version of this script expects variables
         # not present in an existing env file (version drift).
-        local expected_keys="WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH PANEL_PORT PANEL_DOMAINS WARNING_PORT LAN SERVER_IP RANGE REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH SQUID_MGR_HOST SQUID_MGR_PORT SQUID_INTERCEPT_PORT SQUID_MGR_PASSWD MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT HOTSPOT_PATH UPDATE_REALNAME SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD"
+        local expected_keys="WEB_ROOT CONFIG_DIR BACKUP_DIR TOOL_REPORT_DIR SQUIDMON_CONFIG LLM_ENV_FILE REPORT_STATS_PATH PANEL_PORT PANEL_DOMAINS WARNING_PORT LAN SERVER_IP RANGE REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH SQUID_LOG_DIR SQUID_LOG_FILE WARNING_HTML CACHE_PATH SQUID_MGR_HOST SQUID_MGR_PORT SQUID_INTERCEPT_PORT SQUID_MGR_PASSWD MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH BANDATA_HOTSPOT BANDATA_DNS HOTSPOT_PATH UPDATE_REALNAME SQUIDTOOL_MIN_HITS SQUIDTOOL_ALERT_THRESHOLD"
         local absent_keys=""
         for env_key in $expected_keys; do
             grep -q "^${env_key}=" "$env_file" || absent_keys="$absent_keys $env_key"
         done
         if [ -n "$absent_keys" ]; then
             for env_key in $absent_keys; do
-                warn "$(basename "$env_file"): missing variable $env_key"
+                warn "$(basename "$env_file"): missing variable $env_key -alert"
             done
             warn "$(basename "$env_file"): add missing variables -alert"
         fi
@@ -1371,7 +1372,7 @@ print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
     report_glob="${lan_network_values[1]}"
     info "LAN interface: $lan_answer ($lan_cidr_answer)"
 
-    # Bandwidth limits -- validate with numfmt (accepts e.g. 500M, 1G, 1.5G)
+    # Bandwidth limits: a number and an uppercase K, M, G or T (e.g. 500M, 1G, 1.5G)
     read_bandwidth() {
         local prompt_text="$1" default_value="$2" user_answer
         local check_bash_range="${3:-false}" quota_bytes
@@ -1383,7 +1384,8 @@ print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
             failure_message="cannot read the bandwidth limit answer"
             read -rp "$prompt_text" user_answer || return 1
             user_answer=${user_answer:-$default_value}
-            if quota_bytes=$(LC_ALL=C numfmt --from=iec "${user_answer/,/.}" 2>/dev/null); then
+            if [[ "$user_answer" =~ ^[0-9]+([.,][0-9]+)?[KMGT]$ ]] \
+                && quota_bytes=$(LC_ALL=C numfmt --from=iec "${user_answer/,/.}" 2>/dev/null); then
                 if [ "$check_bash_range" = true ] \
                     && ! uh_fits "$quota_bytes"; then
                     info "daily quota exceeds Bash integer range -retry" >&2
@@ -1405,6 +1407,25 @@ print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
         echo "Max bandwidth per day: $bw_day (default)"
         echo "Max bandwidth per week: $bw_week (default)"
         echo "Max bandwidth per month: $bw_month (default)"
+    fi
+
+    # DNS resolvers for blocked clients
+    local bandata_dns=""
+    if [ "$unattended" = true ]; then
+        bandata_dns="${PROXYMON_BANDATA_DNS:-}"
+        if ! [[ "$bandata_dns" =~ $UH_DNS ]] || [[ "$bandata_dns" == *,*,* ]]; then
+            abort "PROXYMON_BANDATA_DNS: expected 1-2 IPv4 -abort"
+        fi
+        echo "DNS for blocked clients: $bandata_dns"
+    else
+        while true; do
+            failure_message="cannot read the DNS for blocked clients"
+            read -rp "DNS for blocked clients (one or two IPv4, e.g. 192.168.0.1 or 8.8.8.8,1.1.1.1): " bandata_dns || { report_failure; exit 1; }
+            if [[ "$bandata_dns" =~ $UH_DNS ]] && [[ "$bandata_dns" != *,*,* ]]; then
+                break
+            fi
+            echo "'$bandata_dns' is not one or two IPv4 separated by a comma. Try again." >&2
+        done
     fi
 
     # Enable Bandata integration only for an installed UHM in Hotspot mode.
@@ -1496,6 +1517,7 @@ SQUIDTOOL_MIN_HITS=20
 SQUIDTOOL_ALERT_THRESHOLD=300
 
 # Bandata
+# Quotas: number + K, M, G or T (uppercase), e.g. 500M, 1G, 1.5G
 REPORT_IP_GLOB=${report_glob}
 ACL_BANDATA_PATH=${CONFIG_DIR}/bandata/acl
 ALLOW_LIST=${CONFIG_DIR}/bandata/acl/allowdata.txt
@@ -1508,6 +1530,7 @@ MAX_BANDWIDTH_MONTH=${bw_month}
 WARNING_PORT=${WARNING_PORT}
 WARNING_HTML=${WEB_ROOT}/warning/warning.html
 BANDATA_HOTSPOT=${hotspot_enabled}
+BANDATA_DNS=${bandata_dns}
 HOTSPOT_PATH=${hotspot_dir}
 UPDATE_REALNAME=${update_realname_flag}
 
@@ -1612,16 +1635,14 @@ EOF
 
 do_install() {
     check_requirements install
-    local failure_message="cannot finish the Proxymon installation"
+    local failure_message
     failure_message="cannot install required packages"
     install_deps
-    failure_message="cannot check conflicting packages"
     failure_message="cannot read locations from proxymon.env"
     configure_locations
     if [[ -d "$WEB_ROOT" ]]; then
         abort "proxymon installed; use --update | --uninstall -abort"
     fi
-    failure_message="cannot check the internet connection"
     failure_message="cannot install Apache and PHP packages"
     install_apache2
     failure_message="cannot install Squid packages"
@@ -1629,9 +1650,7 @@ do_install() {
     failure_message="cannot check Proxymon requirements"
 
     failure_message="cannot check the required network port"
-    failure_message="cannot check the required network port"
 
-    failure_message="cannot check required repository files"
     failure_message="cannot create proxymon.env"
     create_proxymon_env
     load_proxymon_env "$proxymon_env" || abort "cannot load proxymon.env -abort"
@@ -1653,8 +1672,6 @@ do_install() {
     info "updated squidreports/domain-suffixes-update.sh"
     info "updated squidreports/proxymonenv.sh"
 
-    log "INFO: Configuring Apache..."
-
     if [[ -f "config/web/proxymon.conf" ]]; then
         failure_message="cannot copy proxymon.conf"
         cp -f config/web/proxymon.conf /etc/apache2/sites-available/proxymon.conf
@@ -1669,9 +1686,6 @@ do_install() {
 
     [ -f /etc/apache2/ports.conf.bak ] || cp -f /etc/apache2/ports.conf{,.bak} &>/dev/null || true
 
-    log "INFO: Configuring Squid Monitor..."
-
-    log "INFO: Configuring Squidreports..."
     if "$WEB_ROOT/squidreports/squidreports.pl" today; then
         info "initial squidreports report generated"
     else
@@ -1681,7 +1695,6 @@ do_install() {
     failure_message="cannot update Apache site locations"
     configure_apache_locations
 
-    log "INFO: Configuring ACL directories and files..."
     # Load env to get ACL paths defined by create_proxymon_env()
     # Verify ownership/permissions before sourcing -- this file is executed
     # as root, so it must not be writable by anyone other than root.
@@ -1694,12 +1707,12 @@ do_install() {
     env_other_digit="${env_perms: -1}"
     if [ "$env_owner" != "root" ] || [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
         if [ "$env_owner" != "root" ]; then
-            err "proxymon.env: owner is not root -abort"
+            warn "proxymon.env: owner is not root -alert"
         fi
         if [[ "$env_group_digit" =~ [2367] ]] || [[ "$env_other_digit" =~ [2367] ]]; then
-            err "proxymon.env: group or others can write -abort"
+            warn "proxymon.env: group or others can write -alert"
         fi
-        exit 1
+        abort "proxymon.env: unsafe owner or permissions -abort"
     fi
     load_proxymon_env "$env_file_path" || abort "cannot load proxymon.env -abort"
 
@@ -1757,7 +1770,6 @@ do_install() {
             && acl_fix_perms "$ACL_SQUID_PATH/blockpatterns.txt" 644
     fi
 
-    log "INFO: Updating Prefork MPM..."
     [ -f /etc/apache2/mods-available/mpm_prefork.conf.bak ] || cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null || true
     failure_message="cannot edit mpm_prefork.conf"
     sed -i \
@@ -1768,7 +1780,6 @@ do_install() {
       -e 's/^\(MaxConnectionsPerChild[[:space:]]*\)0/\11000/' \
     /etc/apache2/mods-available/mpm_prefork.conf
 
-    log "INFO: Updating PHP..."
     [ -f /etc/php/$php_version/apache2/php.ini.bak ] || cp -f /etc/php/$php_version/apache2/php.ini{,.bak} &>/dev/null || true
     failure_message="cannot edit Apache php.ini"
     sed -i \
@@ -1792,7 +1803,6 @@ do_install() {
      /etc/php/$php_version/apache2/php.ini
 
     # Hardening
-    log "INFO: Updating Apache2 Security..."
     if [ -f /etc/apache2/conf-available/security.conf ]; then
         [ -f /etc/apache2/conf-available/security.conf.bak ] || cp -f /etc/apache2/conf-available/security.conf{,.bak} &>/dev/null || true
     else
@@ -1838,7 +1848,6 @@ do_install() {
     failure_message="cannot enable Apache security configuration"
     a2enconf security &>/dev/null
 
-    log "INFO: Configuring SquidAI..."
     failure_message="cannot create $(basename "$CONFIG_DIR")"
     mkdir -p "$CONFIG_DIR" "$(dirname "$LLM_ENV_FILE")"
     if [ ! -f "$LLM_ENV_FILE" ]; then
@@ -1927,7 +1936,6 @@ EOF
     info "SquidAI config directory created: $CONFIG_DIR/"
     info "Edit $LLM_ENV_FILE and set your LLM credentials"
 
-    log "INFO: Setting Permissions..."
     find "$WEB_ROOT" -type d -exec chmod 755 {} +
     find "$WEB_ROOT" -type f -exec chmod 644 {} +
     find "$WEB_ROOT" -type f -name "*.cgi" -exec chmod +x {} +
@@ -1972,7 +1980,6 @@ EOF
     failure_message="cannot set permissions on squid.conf"
     chmod 644 /etc/squid/squid.conf
 
-    log "INFO: Setting Logs..."
     failure_message="cannot create Apache log files"
     touch /var/log/apache2/{warning_access,warning_error,proxymon_access,proxymon_error}.log
     failure_message="cannot set owner of Apache log files"
@@ -1992,7 +1999,6 @@ EOF
     fi
     shopt -u nullglob
 
-    log "INFO: Enabling Apache Modules..."
     a2dismod mpm_event 2>/dev/null || true
     # mod_cgid requires a threaded MPM (worker/event) and is incompatible
     # with mpm_prefork enabled below. Use mod_cgi instead.
@@ -2006,17 +2012,14 @@ EOF
         if [[ "$apache_mod" == "php$php_version" ]] && a2enmod php 2>/dev/null; then
             continue
         fi
-        abort "cannot enable Apache module '$apache_mod', check it is installed -abort"
+        abort "cannot enable Apache module '$apache_mod' -abort"
     done
 
-    log "INFO: Enabling Apache Sites..."
     a2ensite proxymon.conf || abort "cannot enable proxymon.conf -abort"
     a2ensite warning.conf || abort "cannot enable warning.conf -abort"
 
-    log "INFO: Restarting Cron..."
     systemctl restart cron || abort "cannot restart cron -abort"
 
-    log "INFO: Restarting Apache2..."
     systemctl daemon-reload || abort "cannot reload systemd configuration -abort"
     if ! apachectl -t -D DUMP_INCLUDES -S &>/dev/null; then
         a2dissite proxymon.conf 2>/dev/null || true
@@ -2066,7 +2069,7 @@ secure_web_code() (
     fi
     cd -P -- "$target" || return 1
     if [ "$(pwd -P)" != "$target" ]; then
-        err "web root has a symbolic link in its path: $target -abort"
+        err "web root has a symlink: $target -abort"
         return 1
     fi
     chown root:root . || return 1
@@ -2181,7 +2184,7 @@ do_update() {
 # ------------------------------------------------------------------------------
 
 do_uninstall() {
-    local failure_message="cannot finish the Proxymon removal"
+    local failure_message
     failure_message="cannot read the uninstall confirmation"
     read -p "Are you sure you want to uninstall? (y/n): " -r
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -2190,7 +2193,6 @@ do_uninstall() {
     fi
     failure_message="cannot read locations from proxymon.env"
     configure_locations
-    log "INFO: Uninstalling Proxy Monitor..."
 
     if [[ ! -d "$WEB_ROOT" ]] && [[ ! -d "$CONFIG_DIR" ]]; then
         info "Proxy Monitor is not installed"
@@ -2228,7 +2230,7 @@ do_uninstall() {
                 fi
                 [ -n "$rule_num" ] || break
                 if ! iptables -D "$base_chain" "$rule_num" 2>/dev/null; then
-                    warn "cannot remove $target_chain jump; continuing uninstall -alert"
+                    warn "cannot remove $target_chain jump -alert"
                     break
                 fi
             done
@@ -2266,16 +2268,6 @@ do_uninstall() {
         failure_message="cannot restore mpm_prefork.conf"
         mv -f /etc/apache2/mods-available/mpm_prefork.conf.bak /etc/apache2/mods-available/mpm_prefork.conf
         info "mpm_prefork configuration restored"
-    fi
-
-    php_version=""
-    if command -v php >/dev/null 2>&1; then
-        php_version=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null || true)
-    fi
-    if [[ -n "$php_version" && -f "/etc/php/$php_version/apache2/php.ini.bak" ]]; then
-        failure_message="cannot restore Apache php.ini"
-        mv -f "/etc/php/$php_version/apache2/php.ini.bak" "/etc/php/$php_version/apache2/php.ini"
-        info "php.ini restored"
     fi
 
     if [[ -f "/etc/apache2/conf-available/security.conf.bak" ]]; then
@@ -2394,7 +2386,7 @@ show_menu() {
 }
 
 usage() {
-    local failure_message="cannot display installer usage"
+    local failure_message
     failure_message="cannot display installer usage"
     cat <<USAGE_END
 Usage: $(basename "$0") [--install|--update|--uninstall]

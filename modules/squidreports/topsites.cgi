@@ -89,7 +89,6 @@ $sortbytesattr   = ($sortorder eq "size")?"$hTPLVARIABLE{selectedattr}":"";
 @days=reverse @days;
 
 foreach $userpath (@days) {
-   next if ($userpath =~ m/^\./);
 
    $userpath =~ m/\d\/(.*)$/;
    $user=$1;

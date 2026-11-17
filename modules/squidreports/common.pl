@@ -91,7 +91,7 @@ sub GetRealName($$) {
   my $fullname;
   my $fval;
   
-  unless (defined $hRealName{$path}{__init__}) {
+  unless (defined $hRealName{__init__}) {
     open Fftr,"<$path/.realname";
     while (<Fftr>) {
       next if (m/^#/);
@@ -253,7 +253,7 @@ sub GetGroup($) {
     open F,"<$path/.group";
     while (<F>) {
         next if (m/^#/);
-        next if (m/^s+$/);
+        next if (m/^\s+$/);
         chomp;
         ($username_,$groupid_,$groupname_)=split /\s+/,$_,3;
         if   ($showgroupid) { $hGroupName{$groupid_}="$groupid_. $groupname_" }
@@ -269,7 +269,7 @@ sub GetGroupFile($) {
     open F,"<$path/.group";
     while (<F>) {
         next if (m/^#/);
-        next if (m/^s+$/);
+        next if (m/^\s+$/);
         chomp;
         ($username_,$groupid_,$groupname_)=split /\s+/,$_,3;
         if   ($showgroupid) { $hGroupName{$groupid_}="$groupid_.  $groupname_" }

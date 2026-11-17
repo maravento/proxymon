@@ -25,7 +25,6 @@ $current_refresh = $_SESSION['refresh'] ?? 5;
 $env = readEnvFile('/etc/proxymon/proxymon.env');
 $squidhost = $env['SQUID_MGR_HOST'] ?? throw new RuntimeException('SQUID_MGR_HOST missing in proxymon.env');
 $squidport = (int)($env['SQUID_MGR_PORT'] ?? throw new RuntimeException('SQUID_MGR_PORT missing in proxymon.env'));
-$configs = [$squidhost . ':' . $squidport];
 $stat = new squidstat();
 if (!$stat->connect($squidhost, $squidport)) {
     $stat->showError();
@@ -37,4 +36,4 @@ if ($data === false) {
     exit;
 }
 $data['con'] = $data['con'] ?? [];
-echo $stat->makeHtmlReport($data, false, $current_refresh);
+echo $stat->makeHtmlReport($data, $current_refresh);

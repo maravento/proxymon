@@ -82,8 +82,6 @@ FILE: README.md
 | Apache | v2.4.58 |
 | PHP | 8.3.6 |
 
-### Packages
-
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
@@ -97,11 +95,11 @@ FILE: README.md
 
 ```bash
 # other required packages (checked by pmsetup.sh, no extra setup needed)
-apt install -y wget curl git zip unzip ipset nbtscan libcgi-session-perl libgd-perl libjson-xs-perl \
+apt install -y wget curl git zip unzip ipset nbtscan libcgi-pm-perl libgd-perl libjson-xs-perl \
                 coreutils fonts-lato fonts-liberation fonts-dejavu \
                 perl python3 python3-yaml cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables \
-                gawk gzip procps logrotate
+                gzip procps logrotate diffutils
 
 # squid
 apt install -y squid-openssl squid-langpack squid-common squidclient squid-purge
@@ -208,7 +206,6 @@ proxymon/
 │   │   │   ├── en                        # English strings [0644 root:root]
 │   │   │   └── es                        # Spanish strings [0644 root:root]
 │   │   ├── pdf_report.cgi                # PDF report generator [0755 root:root]
-│   │   ├── squidmon-lib.pl               # shared Perl functions [0644 root:root]
 │   │   ├── squidmon-standalone.pl        # standalone support [0644 root:root]
 │   │   └── squidmon.cgi                  # Squidmon entry point [0755 root:root]
 │   ├── squidreports/                     # traffic reports and web assets [0755 root:root]
@@ -346,10 +343,10 @@ sudo bash pmsetup.sh --help   # or -h
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      Only interfaces with an UP link and global IPv4 are candidates. With none, abort; with one, select LAN automatically; with several, ask for LAN and omit the others. A caller can provide <code>PROXYMON_LAN</code>; validate it against the candidates and reuse it without asking for the interface. With several LAN IPv4 addresses, ask which to use unless <code>PROXYMON_SERVER_IP</code> supplies a configured address. An existing <code>proxymon.env</code> is preserved without repeating network selection. Derive the network and mask from the selected address and its actual prefix. The installer does not configure network interfaces.
+      Only interfaces with an UP link and global IPv4 are candidates. With none, abort; with one, select LAN automatically; with several, ask for LAN and omit the others. A caller can provide <code>PROXYMON_LAN</code>; validate it against the candidates and reuse it without asking for the interface. With several LAN IPv4 addresses, ask which to use unless <code>PROXYMON_SERVER_IP</code> supplies a configured address. Ask for <code>BANDATA_DNS</code>, the one or two resolvers that blocked clients may query, with no default; an unattended caller passes it in <code>PROXYMON_BANDATA_DNS</code>, or the install aborts. An existing <code>proxymon.env</code> is preserved without repeating network selection. Derive the network and mask from the selected address and its actual prefix. The installer does not configure network interfaces.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Solo son candidatas las interfaces con enlace UP e IPv4 global. Sin candidatas, aborta; con una, selecciona LAN automáticamente; con varias, pregunta LAN y omite las demás. Otro instalador puede proporcionar <code>PROXYMON_LAN</code>; se valida contra las candidatas y se reutiliza sin preguntar la interfaz. Con varias IPv4 en LAN, pregunta cuál utilizar salvo que <code>PROXYMON_SERVER_IP</code> indique una dirección configurada. Un <code>proxymon.env</code> existente se conserva sin repetir la selección de red. Calcula red y máscara desde la dirección seleccionada y su prefijo real. El instalador no configura las interfaces de red.
+      Solo son candidatas las interfaces con enlace UP e IPv4 global. Sin candidatas, aborta; con una, selecciona LAN automáticamente; con varias, pregunta LAN y omite las demás. Otro instalador puede proporcionar <code>PROXYMON_LAN</code>; se valida contra las candidatas y se reutiliza sin preguntar la interfaz. Con varias IPv4 en LAN, pregunta cuál utilizar salvo que <code>PROXYMON_SERVER_IP</code> indique una dirección configurada. Pregunta <code>BANDATA_DNS</code>, los uno o dos resolvers que pueden consultar los clientes bloqueados, sin valor por defecto; un instalador desatendido la pasa en <code>PROXYMON_BANDATA_DNS</code>, o la instalación aborta. Un <code>proxymon.env</code> existente se conserva sin repetir la selección de red. Calcula red y máscara desde la dirección seleccionada y su prefijo real. El instalador no configura las interfaces de red.
     </td>
   </tr>
 </table>
@@ -444,8 +441,9 @@ sudo bash pmsetup.sh --help   # or -h
 | `SQUID_MGR_PASSWD` | `connections.php` | Empty by default. Set it only if `squid.conf` declares `cachemgr_passwd mypassword all`, and use the very same value | Vacía de forma predeterminada. Defínala únicamente si `squid.conf` declara `cachemgr_passwd mipassword all`, y utilice el mismo valor |
 | `WARNING_HTML` | `bandata.sh` | Captive portal page where Bandata writes the current quota values | Página del portal cautivo donde Bandata escribe los valores de cuota vigentes |
 | `CACHE_PATH` | `pmsetup.sh`, `worker.php` | SquidAI cache directory, owned by `www-data` with mode `750` | Directorio de caché de SquidAI, propiedad de `www-data` con permisos `750` |
-| `MAX_BANDWIDTH_DAY`, `MAX_BANDWIDTH_WEEK`, `MAX_BANDWIDTH_MONTH` | `bandata.sh` | The three quota limits; see Bandata below | Los tres límites de cuota; consulte Bandata |
+| `MAX_BANDWIDTH_DAY`, `MAX_BANDWIDTH_WEEK`, `MAX_BANDWIDTH_MONTH` | `bandata.sh` | The three quota limits; see Bandata below. Write a number followed by an uppercase `K`, `M`, `G` or `T`, such as `500M`, `1G` or `1.5G` (`1,5G` also works). Lowercase letters (`1g`), `1GB`, `1Gi` or a number without a letter are rejected | Los tres límites de cuota; consulte Bandata. Escriba un número seguido de `K`, `M`, `G` o `T` en mayúscula, como `500M`, `1G` o `1.5G` (también vale `1,5G`). Se rechazan las minúsculas (`1g`), `1GB`, `1Gi` y un número sin letra |
 | `BANDATA_HOTSPOT`, `HOTSPOT_PATH` | `bandata.sh` | Bandata integration switch and UHM installation path. ProxyMon enables it at setup only if the voucher ACL exists and UHM uses `UNIFI_HOTSPOT_ENABLED=true`. Bandata checks both conditions on each run. | Opción de integración de Bandata y ruta de instalación de UHM. ProxyMon la habilita durante la instalación solo si existe la ACL de vouchers y UHM usa `UNIFI_HOTSPOT_ENABLED=true`. Bandata vuelve a comprobar ambas condiciones en cada ejecución. |
+| `BANDATA_DNS` | `bandata.sh` | DNS resolvers that a blocked client may query: one or two IPv4 separated by a comma, such as `192.168.0.1` or `8.8.8.8,1.1.1.1`. Use the resolver your clients receive, whether it runs on this server, on another host of the LAN or on the internet. No default: if it is missing, empty or invalid, Bandata aborts without changing blocks or rules. Only UDP is accepted, in packets of up to 128 bytes and at most 5 queries per second per client. Port 53 to any other destination stays closed for blocked clients. | Resolvers DNS que puede consultar un cliente bloqueado: una o dos IPv4 separadas por una coma, como `192.168.0.1` o `8.8.8.8,1.1.1.1`. Use el resolver que reciben sus clientes, ya esté en este servidor, en otro equipo de la LAN o en internet. Sin valor por defecto: si falta, está vacía o es inválida, Bandata aborta sin cambiar bloqueos ni reglas. Solo se acepta UDP, en paquetes de hasta 128 bytes y con un máximo de 5 consultas por segundo por cliente. El puerto 53 hacia cualquier otro destino queda cerrado para los clientes bloqueados. |
 | `UPDATE_REALNAME` | `bandata.sh` | Whether Bandata refreshes Squidreports' names, exclusions and ACL groups on each run | Indica si Bandata actualiza los nombres, exclusiones y grupos por ACL de Squidreports en cada ejecución |
 
 > **⚠️ WARNING -- Configuration defaults:** Changing the default values in `proxymon.env` is at the sysadmin's own risk.
@@ -1122,7 +1120,7 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 
 | Warning | When it appears | Cuándo aparece |
 |---|---|---|
-| `WARNING: banday.txt is missing` | The daily block list is absent when Bandata combines the three quota lists. The message names `banweek.txt` or `banmonth.txt` when that list is absent instead. | Falta la lista diaria al combinar las tres listas de bloqueos por cuota. El mensaje identifica `banweek.txt` o `banmonth.txt` cuando falta esa lista. |
+| `WARNING: banday.txt is missing -alert` | The daily block list is absent when Bandata combines the three quota lists. The message names `banweek.txt` or `banmonth.txt` when that list is absent instead. | Falta la lista diaria al combinar las tres listas de bloqueos por cuota. El mensaje identifica `banweek.txt` o `banmonth.txt` cuando falta esa lista. |
 | `WARNING: clearing all Bandata quota blocks -alert` | Bandata detects a list preparation, set preparation or IP loading failure. It then attempts to clear all quota blocks. This warning does not confirm successful removal. | Bandata detecta un fallo al preparar listas, preparar conjuntos o cargar IP. Después intenta retirar todos los bloqueos por cuota. El aviso no confirma su retirada. |
 | File and command failures | An unreadable file, a directory instead of a file, or a read error produces a different warning. The warning identifies the affected file; command failures also include the exit code. | Un archivo sin permiso de lectura, una carpeta o un error de lectura generan otro aviso. El aviso identifica el archivo afectado. Los fallos de comandos también incluyen su código de salida. |
 
@@ -1166,17 +1164,14 @@ sudo nano /etc/cron.d/proxymon
 ```bash
 2026-10-19 15:59:56 INFO: bandata start...
 2026-10-19 15:59:56 INFO: Running Bandata Day...
-2026-10-19 15:59:56 INFO: Daily Blocked:
- 192.168.0.86
+2026-10-19 15:59:56 INFO: daily blocked 192.168.0.86
 2026-10-19 15:59:56 INFO: Running Bandata Week...
-2026-10-19 15:59:57 INFO: Weekly Blocked:
- 192.168.0.86
- 192.168.0.101
- 192.168.0.127
+2026-10-19 15:59:57 INFO: weekly blocked 192.168.0.86
+2026-10-19 15:59:57 INFO: weekly blocked 192.168.0.101
+2026-10-19 15:59:57 INFO: weekly blocked 192.168.0.127
 2026-10-19 15:59:57 INFO: Running Bandata Month...
-2026-10-19 16:00:01 INFO: Monthly Blocked:
- 192.168.0.60
- 192.168.0.68
+2026-10-19 16:00:01 INFO: monthly blocked 192.168.0.60
+2026-10-19 16:00:01 INFO: monthly blocked 192.168.0.68
 2026-10-19 16:00:01 INFO: Running Ipset/Iptables Rules...
 2026-10-19 16:00:01 INFO: Applying Iptables Rules...
 2026-10-19 16:00:01 INFO: Quota rules applied; blocked IPs: 5
@@ -1601,7 +1596,7 @@ pmsetup.log                          # In pmsetup.sh's own directory, rewritten 
 #### Message examples
 
 ```text
-2026-10-17 12:00:00 INFO: Updating PHP...
+2026-10-17 12:00:00 INFO: squid.conf deployed for 192.168.10.0/24
 2026-10-17 12:00:00 INFO: blockpatterns.txt: download failed; retry 2/3
 2026-10-17 12:00:00 WARNING: blockpatterns.txt download failed -alert
 2026-10-17 12:00:00 WARNING: pmbk.sh: monthly backup setup failed -alert

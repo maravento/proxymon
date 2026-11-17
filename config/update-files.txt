@@ -18,7 +18,6 @@ squidmon/config.cgi
 squidmon/lang/en
 squidmon/lang/es
 squidmon/pdf_report.cgi
-squidmon/squidmon-lib.pl
 squidmon/squidmon-standalone.pl
 squidmon/squidmon.cgi
 squidreports/.htaccess
@@ -227,10 +226,8 @@ squidreports/tpl/metro_tpl/topsites.html
 squidreports/tpl/metro_tpl/user_detail.html
 squidreports/tpl/metro_tpl/user_month.html
 squidreports/tpl/metro_tpl/user_time.html
-squidreports/tpl/metro_tpl/userstat.html
 squidreports/tpl/metro_tpl/whousesite.html
 squidreports/user_detail.cgi
 squidreports/user_month.cgi
 squidreports/user_time.cgi
-squidreports/userstat.cgi
 squidreports/whousesite.cgi

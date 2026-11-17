@@ -75,7 +75,6 @@ if ($weekly) {
 @days=reverse @days;
 
 foreach $userpath (@days) {
-   next if ($userpath =~ m/\^./);
 
    $userpath =~ m/\/(\d*)\/(.*)$/;
    $user=$2;

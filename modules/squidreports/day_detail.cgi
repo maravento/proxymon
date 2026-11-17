@@ -170,7 +170,6 @@ ReplaceTPL(DATE,$workperiod);
 ReplaceTPL(OVERMSG,$overmsg);
 
 ApplyTPL();
-HideTPL("timereport") if ($timereport    == 0);
 HideTPL("timereport");
 HideTPL("group")      if ($showgrouplink == 0);
 HideTPL("overuser")   if ($oversize      == 0);

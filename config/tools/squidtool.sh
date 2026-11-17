@@ -58,7 +58,7 @@ package_installed() {
 }
 
 # dependencies
-for dep_pkg in perl gawk gzip grep coreutils util-linux; do
+for dep_pkg in perl gzip grep coreutils util-linux; do
     if ! package_installed "$dep_pkg"; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
@@ -311,7 +311,7 @@ report_traffic() {
 # SEARCH
 # Occurrences of a term in access.log and cache.log, rotated files included
 report_search() {
-    local search_term target_ip cutoff access_hits cache_hits access_count
+    local search_term target_ip cutoff cutoff_text access_hits cache_hits access_count
     local cache_count block_rc
     read -r -p "Enter the text to search (e.g. google): " search_term
     if [ -z "$search_term" ]; then
@@ -319,7 +319,8 @@ report_search() {
         return
     fi
     target_ip=$(ask_ip) || return
-    if ! cutoff=$(ask_cutoff all); then
+    if ! cutoff=$(ask_cutoff all) \
+        || ! cutoff_text=$(date -d "@$cutoff" '+%Y/%m/%d %H:%M:%S'); then
         log "ERROR: cannot resolve search period -abort"
         exit 1
     fi
@@ -342,7 +343,7 @@ report_search() {
     # cache.log carries no client IP, so the IP filter does not apply to it
     if ! cache_hits=$(
         zcat -f "$cache_log_file"* \
-            | gawk -v cutoff="$cutoff" '{ ts = $1 " " $2; gsub(/[\/:]/, " ", ts); t = mktime(ts); if (t < 0 || t >= cutoff) print }' \
+            | awk -v cutoff="$cutoff_text" '$1 !~ /^[0-9][0-9][0-9][0-9]\/[0-9][0-9]\/[0-9][0-9]$/ || ($1 " " $2) >= cutoff' \
             | grep -a -i -F -- "$search_term" \
             | perl -pe 's/^(\d+\.\d+)/localtime($1)/e'
         pipe_status=("${PIPESTATUS[@]}")

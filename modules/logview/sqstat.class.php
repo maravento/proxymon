@@ -25,7 +25,7 @@ private $fp;
 		
 	}
 	
-    function formatXHTML($body,$refresh,$use_js=false){
+    function formatXHTML($body,$refresh){
 	    $text='<!DOCTYPE html>'."\n".
 	    '<html>'."\n".
 	    '<head>'."\n".
@@ -70,9 +70,8 @@ private $fp;
             </script>' . "\n";
         }
 	    $text.='<title>SqStat '.SQSTAT_VERSION.'</title>'."\n";
-	    if($use_js) $text.='<script src="zhabascript.js" type="text/javascript"></script>'."\n";
 	    $text.='</head>'."\n".
-	    ($use_js?'<body onload="jsInit();"><div id="dhtmltooltip"></div><img id="dhtmlpointer" src="arrow.gif">':'<body>')."\n"
+	    '<body>'."\n"
 	    .$body."\n".'</body>'."\n".'</html>';
 	    return $text;
     }
@@ -212,22 +211,7 @@ private $fp;
 
 		return $parsed;
 	}
-	function implode_with_keys($array, $glue) {
-		$ret = [];
-		foreach ($array as $key=>$v){
-			// This value ends up inside a JS string literal that itself
-			// sits inside an HTML attribute (onMouseover="ddrivetip('...')").
-			// The browser decodes HTML entities before the JS parses the
-			// attribute, so htmlspecialchars() alone isn't enough — a raw
-			// quote survives that round-trip and breaks out of the JS
-			// string. addslashes() first escapes it for the JS context so
-			// the backslash (untouched by htmlspecialchars) survives and
-			// the decoded quote stays literal inside the string.
-			$ret[]=$key.'='.htmlspecialchars(addslashes($v), ENT_QUOTES, 'UTF-8');
-		}
-		return implode($glue, $ret);
-	}
-	function makeHtmlReport($data,$use_js=true,$current_refresh=0){
+	function makeHtmlReport($data,$current_refresh=0){
 		if($this->use_sessions){
 			if (session_status() !== PHP_SESSION_ACTIVE) {
                 session_name('PROXYMON_SQSTAT');
@@ -262,14 +246,7 @@ private $fp;
 		global $current_refresh;
         $refresh = $current_refresh;
 		$text='';
-		if(count($GLOBALS["configs"])==1) $servers=$GLOBALS["squidhost"].':'.$GLOBALS["squidport"];
-		else{	
-			$servers='<select onchange="this.form.submit();" name="config">';
-			foreach ($GLOBALS["configs"] as $key=>$v){
-				$servers.='<option '.($GLOBALS["config"]==$key?' selected="selected" ':'').' value="'.$key.'">'.htmlspecialchars($v).'</option>';
-			}
-			$servers.='</select>';
-		}
+		$servers=$GLOBALS["squidhost"].':'.$GLOBALS["squidport"];
 		$text.='<div class="header"><form method="post" action="'.htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8').'">'.
 		'<div class="live-controls"><div class="live-info"><span class="live-title">Squid RealTime stat for the '.$servers.' proxy server ('.htmlspecialchars($data["server_version"], ENT_QUOTES, 'UTF-8').').</span>'.
 		'<div class="live-refresh">Auto refresh: <input name="refresh" type="text" size="4" value="'.$refresh.'"/> sec. <input type="submit" value="Update"/> <input name="stop" type="submit" value="Stop"/></div>'.
@@ -338,10 +315,8 @@ private $fp;
 				$total_curr += $curr_speed;
 				$user_curr += $curr_speed;
 				
-				if($use_js) $js='onMouseout="hideddrivetip()" onMouseover="ddrivetip(\''.$this->implode_with_keys($con,'<br/>').'\')"';
-				else $js='';
 				$table.='<tr'.( (++$con_color % 2 == 0) ? ' class="odd"' : '' ).'><td id="white"></td>'.
-				'<td nowrap '.$js.' width="80%" >'.$uri.'</td>';
+				'<td nowrap width="80%" >'.$uri.'</td>';
 				if($this->use_sessions){
 					$table .= '<td nowrap align="right">'.( (round($curr_speed, 2) > 0) ? sprintf("%01.2f KB/s", $curr_speed) : '' ).'</td>'.
 					'<td nowrap align="right">'.( (round($avg_speed, 2) > 0) ? sprintf("%01.2f KB/s", $avg_speed) : '' ). '</td>';
@@ -374,7 +349,7 @@ $user_curr, $user_avg);
 			$text.=$stat_row.$table.$stat_row;
 		}
 		$text .= '</table>';
-        return $this->formatXHTML($text,$refresh,$use_js);
+        return $this->formatXHTML($text,$refresh);
 	}
 }
 ?>

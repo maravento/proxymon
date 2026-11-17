@@ -941,6 +941,14 @@ async function processQuery(userText) {
       }
     }
 
+    if (intent.type === 'awaiting_username') {
+      pendingConfirmation = { type: 'awaiting_username' };
+      removeTyping();
+      appendMessage('ai', `<p>${t.userAskWhich}</p>`);
+      btn.disabled = false;
+      return;
+    }
+
     // 2. Fallback for keywords loaded from dataset.md
     if (intent.type !== 'ambiguous' && intent.type !== 'user_profile') {
       for (const [intentType, keywords] of Object.entries(fallbackKeywords)) {
@@ -1568,15 +1576,6 @@ function exportReportPDF(userName, ip, date, bubbleHTML) {
 // BM25 ranks sections of the dataset against the query and the top result
 // determines the intent. Each intent section has a canonical id.
 
-const INTENT_SECTION_MAP = {
-  'INTENCIÓN: perfil_usuario': 'user_profile',
-  'INTENCIÓN: red_global': 'network',
-  'INTENCIÓN: security_incidents': 'security_incidents',
-  'INTENCIÓN: accesos_bloqueados': 'blocked',
-  'INTENCIÓN: tlds_bloqueados': 'blocked_tlds',
-  'INTENCIÓN: listar_usuarios': 'list_users',
-};
-
 function detectIntentFromDataset(query) {
   if (!bm25Corpus || !bm25Corpus.paragraphs.length) return { type: 'general' };
 
@@ -1754,7 +1753,6 @@ let genericWords = new Set([]);
 let ambiguousWords = [];
 let implicitEntityWords = [];
 let implicitConsumptionWords = [];
-let extractionPatterns = [];
 let systemPromptBase = '';
 let systemPromptRestrictions = [];
 let fallbackKeywords = {}; // { intentType: ['keyword', ...] }
@@ -1794,11 +1792,6 @@ function loadControlLists(markdownText) {
     implicitConsumptionWords = implicitConsumptionMatch[1].split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
   }
 
-  // name extraction patterns
-  const extractionMatch = markdownText.match(/### Patrones \| Patterns\n\n([^\n#]+)/);
-  if (extractionMatch) {
-    extractionPatterns = extractionMatch[1].split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
-  }
 
   // system prompt — base instruction
   const sysBaseMatch = markdownText.match(/### Instrucción base \| Base instruction\n\n([\s\S]*?)(?=\n###|\n---|\n##|$)/);

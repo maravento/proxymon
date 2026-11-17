@@ -49,7 +49,7 @@ if ! flock -n 200; then
     exit 1
 fi
 
-for dep_pkg in curl python3 coreutils util-linux iproute2 libc-bin; do
+for dep_pkg in curl python3 coreutils util-linux iproute2 libc-bin diffutils; do
     if [ "$(dpkg-query -W -f='${db:Status-Status}' "$dep_pkg" 2>/dev/null)" != installed ]; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1

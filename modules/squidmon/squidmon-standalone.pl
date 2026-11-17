@@ -7,8 +7,6 @@
 
 use strict;
 use warnings;
-use URI::URL;
-use Cwd;
 use File::Basename ();
 require (File::Basename::dirname(__FILE__).'/../ProxymonEnv.pm');
 my $proxymon_settings=ProxymonEnv::read_env();

@@ -26,7 +26,6 @@ $co = new CGI;
 $year  = $co->param('year');
 $month = $co->param('month');
 $user  = $co->param('user');
-$mode  = $co->param('mode');
 
 print "Content-Type: text/html\n\n";
 
@@ -43,7 +42,6 @@ $workperiod = "$MonthName[$month] $year";
 ReplaceTPL( WORKPERIOD, $workperiod );
 
 $week_id=0;
-$week_date=$date;
 
 $average = 0;
 $days    = 0;

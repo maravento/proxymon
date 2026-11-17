@@ -11,13 +11,11 @@ sub FixDay($) {
   my @userlist=glob ("$path/*");
   my $userfile;
   my @report;
-  my $bug=0;
   my $site;
   my $size;
   my $rest;
   
   foreach $userfile (@userlist) {
-     $bug=0;
      undef @report;
 
      unless (-f $userfile) {
@@ -40,14 +38,7 @@ sub FixDay($) {
          $newsize=2147483648+(2147483648+$size);
 
          print "\nBug Found : $path -> $userfile ($size -> $newsize)\n";
-         $bug=1;
-         $report[$i]=sprintf("%-29s %12s %s",$site,$newsize,$rest);
        }
-     }
-     if ($bug) {
-#        open F,">","$userfile" or die "can't open file '$userfile' - $!\n";
-#        print F foreach @report;
-#        close F;
      }
   }
 }

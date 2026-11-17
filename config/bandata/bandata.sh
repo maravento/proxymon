@@ -100,6 +100,7 @@ fi
 # validation -- one variable per thing validated; use directly with =~
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
+UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
 UH_UINT='^(0|[1-9][0-9]*)$'
 UH_SINT='^(0|-?[1-9][0-9]*)$'
 UH_MAX=9223372036854775807
@@ -215,14 +216,23 @@ for env_key in MAX_BANDWIDTH_DAY MAX_BANDWIDTH_WEEK MAX_BANDWIDTH_MONTH; do
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
-    elif ! quota_bytes=$(LC_ALL=C numfmt --from=iec "${!env_key/,/.}" 2>/dev/null) \
+    elif ! [[ "${!env_key}" =~ ^[0-9]+([.,][0-9]+)?[KMGT]$ ]] \
+        || ! quota_bytes=$(LC_ALL=C numfmt --from=iec "${!env_key/,/.}" 2>/dev/null) \
         || [[ -z "$quota_bytes" ]]; then
-        key_errors+=("$env_key invalid size, expected 500M, 1G or 1.5G")
+        key_errors+=("$env_key invalid size (e.g. 1G)")
     elif [ "$env_key" = MAX_BANDWIDTH_DAY ] \
         && ! uh_fits "$quota_bytes"; then
         key_errors+=("$env_key exceeds the Bash integer range")
     fi
 done
+# Resolvers that blocked clients may query; at most two, no default
+if ! grep -q "^BANDATA_DNS=" "$proxymon_env"; then
+    key_errors+=("BANDATA_DNS missing line")
+elif [[ -z "${BANDATA_DNS:-}" ]]; then
+    key_errors+=("BANDATA_DNS not set")
+elif ! [[ "$BANDATA_DNS" =~ $UH_DNS ]] || [[ "$BANDATA_DNS" == *,*,* ]]; then
+    key_errors+=("BANDATA_DNS invalid, expected 1-2 IPv4")
+fi
 if (( ${#key_errors[@]} > 0 )); then
     for key_error in "${key_errors[@]}"; do
         log "WARNING: $key_error -alert"
@@ -435,8 +445,9 @@ else
 
     day_count=$(wc -l < "$BLOCK_LIST_DAY" 2>/dev/null || echo 0)
     if [ "$day_count" -gt 0 ]; then
-        log "INFO: Daily Blocked:"
-        sed 's/^/ /' "$BLOCK_LIST_DAY" | tee -a "$log_file"
+        while IFS= read -r blocked_ip; do
+            log "INFO: daily blocked $blocked_ip"
+        done < "$BLOCK_LIST_DAY"
     else
         log "INFO: No daily blocks"
     fi
@@ -506,8 +517,9 @@ if [ "$today_dow" -eq 1 ]; then
 
     week_count=$(wc -l < "$BLOCK_LIST_WEEK" 2>/dev/null || echo 0)
     if [ "$week_count" -gt 0 ]; then
-        log "INFO: Weekly Blocked:"
-        sed 's/^/ /' "$BLOCK_LIST_WEEK" | tee -a "$log_file"
+        while IFS= read -r blocked_ip; do
+            log "INFO: weekly blocked $blocked_ip"
+        done < "$BLOCK_LIST_WEEK"
     else
         log "INFO: No weekly blocks"
     fi
@@ -578,8 +590,9 @@ fi
 
 month_count=$(wc -l < "$BLOCK_LIST_MONTH" 2>/dev/null || echo 0)
 if [ "$month_count" -gt 0 ]; then
-    log "INFO: Monthly Blocked:"
-    sed 's/^/ /' "$BLOCK_LIST_MONTH" | tee -a "$log_file"
+    while IFS= read -r blocked_ip; do
+        log "INFO: monthly blocked $blocked_ip"
+    done < "$BLOCK_LIST_MONTH"
 else
     log "INFO: No monthly blocks"
 fi
@@ -615,29 +628,29 @@ if ! all_bans=$(
     {
         for block_list in "$BLOCK_LIST_DAY" "$BLOCK_LIST_WEEK" "$BLOCK_LIST_MONTH"; do
             if [ ! -e "$block_list" ]; then
-                log "WARNING: $(basename "$block_list") is missing" >&2
+                log "WARNING: $(basename "$block_list") is missing -alert" >&2
                 exit 1
             elif [ ! -f "$block_list" ]; then
-                log "WARNING: $(basename "$block_list") is not a regular file" >&2
+                log "WARNING: $(basename "$block_list") is not a regular file -alert" >&2
                 exit 1
             elif [ ! -r "$block_list" ]; then
-                log "WARNING: $(basename "$block_list") is not readable" >&2
+                log "WARNING: $(basename "$block_list") is not readable -alert" >&2
                 exit 1
             fi
             cat -- "$block_list"
             read_status=$?
             if [ "$read_status" -ne 0 ]; then
-                log "WARNING: cannot read $(basename "$block_list"); cat exit $read_status" >&2
+                log "WARNING: cannot read $(basename "$block_list"); cat exit $read_status -alert" >&2
                 exit 1
             fi
         done
     } | $sort_ips | uniq
     read_status=("${PIPESTATUS[@]}")
     if [ "${read_status[1]}" -ne 0 ]; then
-        log "WARNING: quota IP sort failed; sort exit ${read_status[1]}" >&2
+        log "WARNING: quota IP sort failed; sort exit ${read_status[1]} -alert" >&2
     fi
     if [ "${read_status[2]}" -ne 0 ]; then
-        log "WARNING: quota IP deduplication failed; uniq exit ${read_status[2]}" >&2
+        log "WARNING: quota IP deduplication failed; uniq exit ${read_status[2]} -alert" >&2
     fi
     (( read_status[0] == 0 && read_status[1] == 0 && read_status[2] == 0 ))
 ); then
@@ -678,7 +691,7 @@ iptables_rule() {
     iptables -C "$@" 2>/dev/null && return 0
     if ! iptables -A "$@"; then
         rules_failed=1
-        log "WARNING: cannot apply rule: iptables -A $* -alert"
+        log "WARNING: cannot add rule to $1 -alert"
     fi
 }
 
@@ -693,7 +706,7 @@ iptables_insert() {
     # shellcheck disable=SC2086
     if ! iptables $table -I "$chain" 1 "$@"; then
         rules_failed=1
-        log "WARNING: cannot apply rule: iptables $table -I $chain 1 $* -alert"
+        log "WARNING: cannot insert rule in $chain -alert"
     fi
 }
 
@@ -704,6 +717,10 @@ for bandata_chain in BANDATA_FWD BANDATA_IN; do
             rules_failed=1
             log "WARNING: cannot create chain $bandata_chain -alert"
         }
+    iptables -F "$bandata_chain" 2>/dev/null || {
+        rules_failed=1
+        log "WARNING: cannot flush chain $bandata_chain -alert"
+    }
 done
 
 # Jump into dedicated chains from FORWARD/INPUT position 1
@@ -711,9 +728,17 @@ iptables_insert FORWARD -i "$LAN" -j BANDATA_FWD
 
 iptables_insert INPUT -i "$LAN" -j BANDATA_IN
 
-# Populate BANDATA_FWD (order matters within this chain only)
-iptables_rule BANDATA_FWD -m set --match-set bandata src -p udp --dport 53 -j ACCEPT
+# DNS: only the resolvers in BANDATA_DNS
+for dns_ip in ${BANDATA_DNS//,/ }; do
+    for bandata_chain in BANDATA_IN BANDATA_FWD; do
+        iptables_rule "$bandata_chain" -m set --match-set bandata src -d "$dns_ip" -p udp --dport 53 \
+            -m length --length 0:128 \
+            -m hashlimit --hashlimit-name bandata-dns --hashlimit-upto 5/second --hashlimit-burst 20 \
+            --hashlimit-mode srcip -j ACCEPT
+    done
+done
 
+# Populate BANDATA_FWD (order matters within this chain only)
 iptables_rule BANDATA_FWD -m set --match-set bandata src -p tcp --dport 80 -j ACCEPT
 
 iptables_rule BANDATA_FWD -m set --match-set bandata src -j DROP
