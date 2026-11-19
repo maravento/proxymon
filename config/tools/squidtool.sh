@@ -20,6 +20,9 @@ set -uo pipefail
 # REQUIREMENTS
 # ------------------------------------------------------------------------------
 
+# awk is a command, not a package: check it before its first use
+command -v awk >/dev/null 2>&1 || { echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: awk not found -abort" >&2; exit 1; }
+
 # root check
 if [ "$(id -u)" != "0" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
@@ -58,7 +61,7 @@ package_installed() {
 }
 
 # dependencies
-for dep_pkg in perl gzip grep coreutils util-linux; do
+for dep_pkg in perl gzip grep coreutils util-linux sed; do
     if ! package_installed "$dep_pkg"; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
@@ -75,7 +78,7 @@ fi
 # VARIABLES
 # ------------------------------------------------------------------------------
 
-# validation -- one variable per thing validated; use directly with =~
+# validation -one variable per thing validated; use directly with =~
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
 
@@ -479,6 +482,10 @@ squid_log_dir="$SQUID_LOG_DIR"
 squid_log_file="$SQUID_LOG_FILE"
 cache_log_file="$squid_log_dir/cache.log"
 
+# ------------------------------------------------------------------------------
+# REPORT PATHS
+# ------------------------------------------------------------------------------
+
 # REPORT DIR
 # Root owns the whole chain down to the reports, so nothing else can swap a
 # path for a symlink while this script writes. Apache serves them through
@@ -496,7 +503,7 @@ if ! chmod 755 "$report_dir"; then
     exit 1
 fi
 
-# KEY GUARD
+# ACCESS LOG
 # Every report below reads this file, so a path that no longer matches the
 # filesystem produces an empty report instead of an error.
 if ! ls "$squid_log_file"* >/dev/null 2>&1; then

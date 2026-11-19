@@ -116,7 +116,7 @@ usermod -aG proxy www-data
 systemctl enable squid.service
 squid -z
 cp -f /etc/logrotate.d/squid{,.bak} &>/dev/null
-sed -i '/sharedscripts/a \    create 0644 proxy proxy' /etc/logrotate.d/squid
+sed -i '/sharedscripts/a \    create 0640 proxy proxy' /etc/logrotate.d/squid
 sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
 sed -i -E 's/^([[:space:]]*)(hourly|daily|monthly|yearly)$/\1weekly/' /etc/logrotate.d/squid
 
@@ -147,18 +147,16 @@ sed -i \
   -e 's/^\s*max_input_time\s*=.*/max_input_time = 120/' \
   -e 's/^;\s*max_input_time\s*=.*/max_input_time = 120/' \
   -e 's/^\s*memory_limit\s*=.*/memory_limit = 1024M/' \
-  -e 's/^\s*post_max_size\s*=.*/post_max_size = 64M/' \
+  -e 's/^\s*post_max_size\s*=.*/post_max_size = 72M/' \
   -e 's/^\s*upload_max_filesize\s*=.*/upload_max_filesize = 64M/' \
   -e 's/^\s*;*\s*opcache.memory_consumption\s*=.*/opcache.memory_consumption = 256/' \
   -e 's/^\s*;*\s*realpath_cache_size\s*=.*/realpath_cache_size = 16M/' \
   /etc/php/$PHP_VERSION/apache2/php.ini
 
 # apache
-apt install -y apache2 apache2-doc apache2-utils apache2-dev \
-                apache2-suexec-pristine libaprutil1t64 libaprutil1-dev \
-                libtest-fatal-perl
+apt install -y apache2 apache2-bin apache2-data apache2-doc apache2-utils
+apt install -y --reinstall apache2-doc
 systemctl enable apache2.service
-apt -qq install -y --reinstall apache2-doc
 cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null
 sed -i \
   -e 's/^\(StartServers[[:space:]]*\)5/\110/' \
@@ -307,7 +305,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `sudo ./pmsetup.sh` | Opens the interactive menu with options to install, update, uninstall or exit. | Abre el menú interactivo con opciones para instalar, actualizar, desinstalar o salir. |
 | `sudo ./pmsetup.sh --install` | Installs and configures Proxy Monitor, including Apache rules, `proxymon.env`, ACL lists, Apache and PHP settings, and scheduled tasks. Stops if the configured `WEB_ROOT` already exists; use `--update` or `--uninstall` in that case. | Instala y configura Proxy Monitor, incluidas las reglas de Apache, `proxymon.env`, las listas ACL, los ajustes de Apache y PHP y las tareas programadas. Se detiene si el directorio configurado en `WEB_ROOT` ya existe; en ese caso, use `--update` o `--uninstall`. |
 | `sudo ./pmsetup.sh --update` | Updates code and permissions without prompting for input. Preserves configuration and operational data. | Actualiza el código y los permisos sin solicitar datos. Conserva la configuración y los datos de operación. |
-| `sudo ./pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. It removes the project only and never uninstalls APT packages: other projects and the system may share them. | Solicita confirmación antes de desinstalar Proxy Monitor. Elimina solo el proyecto y nunca desinstala paquetes APT, porque otros proyectos y el sistema pueden compartirlos. |
+| `sudo ./pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. It removes the project only and never uninstalls APT packages: other projects and the system may share them. `apache2.conf`, `conf-available/security.conf` and `mods-available/mpm_prefork.conf` are kept as they are; to go back to the originals, copy each `.bak` over its file (`sudo cp -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf`, same for the other two) and restart Apache. | Solicita confirmación antes de desinstalar Proxy Monitor. Elimina solo el proyecto y nunca desinstala paquetes APT, porque otros proyectos y el sistema pueden compartirlos. `apache2.conf`, `conf-available/security.conf` y `mods-available/mpm_prefork.conf` se conservan tal como están; para volver a los originales, copia cada `.bak` sobre su archivo (`sudo cp -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf`, igual con los otros dos) y reinicia Apache. |
 | `sudo ./pmsetup.sh -h` / `sudo ./pmsetup.sh --help` | Displays help with the available installer options. | Muestra la ayuda con las opciones disponibles del instalador. |
 
 > Traffic that bypasses Squid does not appear in its reports. The results in **Squidmon Search** and **Traffic Search** are examples. Actual results vary with your environment, the amount of log history, and the resources available to process ACLs.
@@ -425,7 +423,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `LLM_ENV_FILE` | `pmsetup.sh`, `worker.php`, `pmbk.sh` | SquidAI credential file. Default: `/etc/proxymon/.env`. | Archivo de credenciales de SquidAI. Valor inicial: `/etc/proxymon/.env`. |
 | `REPORT_STATS_PATH` | `pmsetup.sh`, Squidreports, SquidAI, `pmbk.sh` | Additional Detail and Analyze statistics. Default: the original report directory followed by `stats`. Remains separate from Bandata's original reports. | Estadísticas adicionales de Detail y Analyze. Valor inicial: directorio de informes originales seguido de `stats`. Permanece separado de los informes originales utilizados por Bandata. |
 | `LAN` | `bandata.sh` | LAN interface the quota rules apply to | Interfaz LAN a la que se aplican las reglas de cuota |
-| `SERVER_IP` | `pmsetup.sh`, `worker.php` | Server's own IPv4; excluded from the reports | IPv4 del servidor; se excluye de los informes |
+| `SERVER_IP` | `pmsetup.sh` | Server's own LAN IPv4. The installer writes it into the Squid template and into the Apache listener of the warning portal | IPv4 LAN del servidor. El instalador la escribe en la plantilla de Squid y en la escucha de Apache del portal de avisos |
 | `RANGE` | `pmsetup.sh`, `squidreports.pl`, `analytics.cgi` | LAN network in CIDR notation. Used by Analyze and regenerated subnet statistics. Unmatched addresses remain individual. Missing, empty or invalid values stop these consumers. Does not configure Apache access. | Red LAN en formato CIDR. La utilizan Analyze y las estadísticas por subred regeneradas. Las direcciones sin coincidencia permanecen individuales. Un valor ausente, vacío o inválido detiene estos consumidores. No configura el acceso de Apache. |
 | `REPORT_IP_GLOB` | `bandata.sh` | Filename glob derived from the actual LAN prefix: `/16` → `192.168.*.*`, `/24` or `/25` → `192.168.10.*` in these examples. Bandata applies `RANGE` as an exact network filter | Patrón calculado desde el prefijo LAN real: `/16` → `192.168.*.*`, `/24` o `/25` → `192.168.10.*` en estos ejemplos. Bandata aplica `RANGE` como filtro exacto de red |
 | `SQUIDREPORTS_DIR` | `bandata.sh`, Squidreports | Squidreports installation directory | Directorio de instalación de Squidreports |
@@ -1110,10 +1108,10 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      Bandata is a script that sets data usage limits —daily, weekly, and monthly— for IP addresses on a LAN monitored with Squid, and automatically blocks those that exceed the established quotas.<br><br>• Weekends are excluded from the calculation.<br><br>• The limits must match those configured in Squid Report.<br><br>• Bandata can generate <code>realname.cfg</code> to map IP addresses to names and <code>skipuser.cfg</code> to exclude IP addresses from Squidreports reports. It reads MAC ACLs, <code>/etc/hosts</code>, and, when enabled, the captive portal's <code>uhm-auth.txt</code>.<br><br>• On its first run Bandata writes <code>/etc/logrotate.d/bandata</code> if that file is missing, so <code>/var/log/bandata.log</code> never needs a manual truncate. The generated rule rotates the log daily, keeps seven rotations compressed, and recreates it as <code>640 root adm</code>. An existing file is left untouched, so your own changes are preserved.<br><br>Bandata calculates usage from available Squidreports reports. If reports are missing or incomplete, calculated usage may be lower than actual usage.<br><br>When reports cannot be read, lists cannot be built or rules cannot be published, Bandata attempts to clear the affected blocks and logs a <code>WARNING: ... -alert</code>. Missing report folders are reported as <code>INFO</code>; usage is calculated from the available days.
+      Bandata is a script that sets data usage limits —daily, weekly, and monthly— for IP addresses on a LAN monitored with Squid, and automatically blocks those that exceed the established quotas.<br><br>• Weekends are excluded from the calculation.<br><br>• The limits must match those configured in Squid Report.<br><br>• Bandata can generate <code>realname.cfg</code> to map IP addresses to names and <code>skipuser.cfg</code> to exclude IP addresses from Squidreports reports. It reads MAC ACLs, <code>/etc/hosts</code>, and, when enabled, the captive portal's <code>uhm-auth.txt</code>.<br><br>• On its first run Bandata writes <code>/etc/logrotate.d/bandata</code> if that file is missing, so <code>/var/log/bandata.log</code> never needs a manual truncate. The generated rule rotates the log weekly, keeps seven rotations compressed, and recreates it as <code>640 root adm</code>. An existing file is left untouched, so your own changes are preserved.<br><br>Bandata calculates usage from available Squidreports reports. If reports are missing or incomplete, calculated usage may be lower than actual usage.<br><br>When reports cannot be read, lists cannot be built or rules cannot be published, Bandata attempts to clear the affected blocks and logs a <code>WARNING: ... -alert</code>. Missing report folders are not logged; usage is calculated from the available days.<br><br>• Bandata does not enable IPv4 forwarding. If this host also routes the LAN, enable it in your firewall (<code>net.ipv4.ip_forward=1</code>).
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Bandata es un script que establece límites de consumo de datos —diario, semanal y mensual— para direcciones IP de una LAN monitorizada con Squid, y bloquea automáticamente aquellas que superan las cuotas establecidas.<br><br>• Los fines de semana quedan excluidos del cálculo.<br><br>• Los límites deben coincidir con los configurados en Squid Report.<br><br>• Bandata puede generar <code>realname.cfg</code> para asociar IP con nombres y <code>skipuser.cfg</code> para excluir IP de los informes de Squidreports. Toma los datos de las ACL MAC, de <code>/etc/hosts</code> y, si está activado, de <code>uhm-auth.txt</code> del portal cautivo.<br><br>• En su primera ejecución, Bandata crea <code>/etc/logrotate.d/bandata</code> si ese archivo no existe, por lo que <code>/var/log/bandata.log</code> nunca necesita un truncado manual. La regla generada rota el log a diario, conserva siete rotaciones comprimidas y lo recrea como <code>640 root adm</code>. Si el archivo ya existe, no lo modifica, por lo que sus cambios se conservan.<br><br>Bandata calcula el consumo con los informes disponibles de Squidreports. Si faltan informes o están incompletos, el consumo calculado puede ser inferior al real.<br><br>Cuando no puede leer informes, construir listas o publicar reglas, Bandata intenta vaciar los bloqueos afectados y registra <code>WARNING: ... -alert</code>. Las carpetas de informes ausentes se notifican como <code>INFO</code>; el consumo se calcula con los días disponibles.
+      Bandata es un script que establece límites de consumo de datos —diario, semanal y mensual— para direcciones IP de una LAN monitorizada con Squid, y bloquea automáticamente aquellas que superan las cuotas establecidas.<br><br>• Los fines de semana quedan excluidos del cálculo.<br><br>• Los límites deben coincidir con los configurados en Squid Report.<br><br>• Bandata puede generar <code>realname.cfg</code> para asociar IP con nombres y <code>skipuser.cfg</code> para excluir IP de los informes de Squidreports. Toma los datos de las ACL MAC, de <code>/etc/hosts</code> y, si está activado, de <code>uhm-auth.txt</code> del portal cautivo.<br><br>• En su primera ejecución, Bandata crea <code>/etc/logrotate.d/bandata</code> si ese archivo no existe, por lo que <code>/var/log/bandata.log</code> nunca necesita un truncado manual. La regla generada rota el log semanalmente, conserva siete rotaciones comprimidas y lo recrea como <code>640 root adm</code>. Si el archivo ya existe, no lo modifica, por lo que sus cambios se conservan.<br><br>Bandata calcula el consumo con los informes disponibles de Squidreports. Si faltan informes o están incompletos, el consumo calculado puede ser inferior al real.<br><br>Cuando no puede leer informes, construir listas o publicar reglas, Bandata intenta vaciar los bloqueos afectados y registra <code>WARNING: ... -alert</code>. Las carpetas de informes ausentes no se registran; el consumo se calcula con los días disponibles.<br><br>• Bandata no activa el reenvío IPv4. Si este equipo también enruta la LAN, actívelo en su cortafuegos (<code>net.ipv4.ip_forward=1</code>).
     </td>
   </tr>
 </table>
@@ -1139,15 +1137,15 @@ find /var/www/proxymon/squidreports/report -type f -name '[0-9]*.[0-9]*.[0-9]*.[
 
 ```text
 # The day reports cannot be read
-2026-10-17 12:00:00 WARNING: cannot read day reports, day cleared -alert
+2026-10-17 12:00:00 WARNING: cannot read day reports -alert
 
 # A block list cannot be built from the reports
-2026-10-17 12:00:00 WARNING: cannot build daily list, day cleared -alert
-2026-10-17 12:00:00 WARNING: cannot build weekly list, week cleared -alert
-2026-10-17 12:00:00 WARNING: cannot build monthly list, month cleared -alert
+2026-10-17 12:00:00 WARNING: cannot build daily list -alert
+2026-10-17 12:00:00 WARNING: cannot build weekly list -alert
+2026-10-17 12:00:00 WARNING: cannot build monthly list -alert
 
 # The kernel set is incomplete or cannot be put in service
-2026-10-17 12:00:00 WARNING: block set half loaded, all blocks cleared -alert
+2026-10-17 12:00:00 WARNING: clearing all Bandata quota blocks -alert
 2026-10-17 12:00:00 WARNING: cannot activate new set, all blocks cleared -alert
 ```
 
@@ -1162,20 +1160,13 @@ sudo nano /etc/cron.d/proxymon
 ###### Terminal output example
 
 ```bash
-2026-10-19 15:59:56 INFO: bandata start...
-2026-10-19 15:59:56 INFO: Running Bandata Day...
-2026-10-19 15:59:56 INFO: daily blocked 192.168.0.86
-2026-10-19 15:59:56 INFO: Running Bandata Week...
-2026-10-19 15:59:57 INFO: weekly blocked 192.168.0.86
-2026-10-19 15:59:57 INFO: weekly blocked 192.168.0.101
-2026-10-19 15:59:57 INFO: weekly blocked 192.168.0.127
-2026-10-19 15:59:57 INFO: Running Bandata Month...
-2026-10-19 16:00:01 INFO: monthly blocked 192.168.0.60
-2026-10-19 16:00:01 INFO: monthly blocked 192.168.0.68
-2026-10-19 16:00:01 INFO: Running Ipset/Iptables Rules...
-2026-10-19 16:00:01 INFO: Applying Iptables Rules...
-2026-10-19 16:00:01 INFO: Quota rules applied; blocked IPs: 5
-2026-10-19 16:00:01 INFO: bandata done
+2026-11-19 08:00:55 INFO: bandata start...
+2026-11-19 08:00:55 INFO: daily blocked 192.168.10.169
+2026-11-19 08:00:55 INFO: daily blocked 192.168.10.194
+2026-11-19 08:01:00 INFO: monthly blocked 192.168.10.60
+2026-11-19 08:01:00 INFO: monthly blocked 192.168.10.61
+2026-11-19 08:01:00 INFO: Quota rules applied; blocked IPs: 4
+2026-11-19 08:01:00 INFO: bandata done
 ```
 
 ###### Warning Portal

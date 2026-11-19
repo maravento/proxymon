@@ -81,8 +81,8 @@ function readEnvFile(string $path): array {
             }
         }
         // Expand $VAR / ${VAR} references against keys already parsed above,
-        // the same way bash resolves them when this file is sourced by
-        // bandata.sh or the installer (e.g. REPORT_PATH=$SQUIDREPORTS_DIR/report).
+        // the same way load_proxymon_env (proxymonenv.sh) resolves them
+        // for bandata.sh and the installer (e.g. REPORT_PATH=$SQUIDREPORTS_DIR/report).
         if (!preg_match('/_(?:PASSWD|API_KEY)$/', $key)) {
             $val = preg_replace_callback(
                 '/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/',
@@ -1451,7 +1451,7 @@ function extractDomain(string $url, bool $groupWww = true): string {
         $host = parse_url($url, PHP_URL_HOST);
     }
     
-    // If it fails, try cleaning up malformed URLs (ej: https:///dominio.com)
+    // If it fails, try cleaning up malformed URLs (e.g. https:///domain.com)
     if (!$host) {
         // Delete protocol and clean slashes
         $cleaned = preg_replace('#^[a-z]+:///*#i', '', $url);

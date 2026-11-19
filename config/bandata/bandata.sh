@@ -23,6 +23,9 @@ set -uo pipefail
 # path for cron
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# awk is a command, not a package: check it before its first use
+command -v awk >/dev/null 2>&1 || { echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: awk not found -abort" >&2; exit 1; }
+
 # root check
 if [ "$(id -u)" != "0" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
@@ -97,7 +100,7 @@ fi
 # VARIABLES
 # ------------------------------------------------------------------------------
 
-# validation -- one variable per thing validated; use directly with =~
+# validation -one variable per thing validated; use directly with =~
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
@@ -111,8 +114,7 @@ UH_BOOL='^(true|false)$'
 # FUNCTIONS
 # ------------------------------------------------------------------------------
 
-# INTEGER RANGE
-# Check signed Bash integer limits
+# validation - integer is representable as a signed 64-bit value
 uh_fits() {
     local value="${1-}" limit
     [[ "$value" =~ $UH_SINT ]] || return 1
@@ -242,8 +244,8 @@ if (( ${#key_errors[@]} > 0 )); then
 fi
 unset key_errors key_error env_key checked_port quota_bytes
 
-# KEY GUARD
-# Each key above is valid on its own. These two relations are not.
+# LAN INTERFACE
+# LAN must name an interface that exists on this host
 if [ ! -e "/sys/class/net/$LAN" ]; then
     log "ERROR: interface '$LAN' does not exist -abort"
     exit 1
@@ -373,19 +375,13 @@ fi
 # BANDAY
 # ------------------------------------------------------------------------------
 
-log "INFO: Running Bandata Day..."
-
 # path to day report
 day_logs_dir=$REPORT_PATH/$(date +"%Y%m%d")
 # bandata day rule
 if [[ "$today_dow" -eq 6 || "$today_dow" -eq 7 ]]; then
     clear_list "$BLOCK_LIST_DAY"
-    if [ "$list_failed" -eq 0 ]; then
-        log "INFO: Weekend Excluded"
-    fi
 else
     if [ ! -d "$day_logs_dir" ]; then
-        log "INFO: day report folder $(basename "$day_logs_dir") not found -skip"
         clear_list "$BLOCK_LIST_DAY"
     else
         tmp_day=$(mktemp)
@@ -448,8 +444,6 @@ else
         while IFS= read -r blocked_ip; do
             log "INFO: daily blocked $blocked_ip"
         done < "$BLOCK_LIST_DAY"
-    else
-        log "INFO: No daily blocks"
     fi
 fi
 
@@ -462,8 +456,6 @@ fi
 # "+1 month -1 day"). Not portable to BSD/macOS date. This project
 # targets Linux only (already requires ipset/iptables).
 
-log "INFO: Running Bandata Week..."
-
 if [ "$today_dow" -eq 1 ]; then
     week_dirs=()
     for weekday_offset in {0..4}; do
@@ -472,7 +464,6 @@ if [ "$today_dow" -eq 1 ]; then
     done
 
     if [ ${#week_dirs[@]} -eq 0 ]; then
-        log "INFO: No weekday report folders found for last week"
         clear_list "$BLOCK_LIST_WEEK"
     else
         # Each reading decides, because a partial list would total only part of
@@ -520,18 +511,12 @@ if [ "$today_dow" -eq 1 ]; then
         while IFS= read -r blocked_ip; do
             log "INFO: weekly blocked $blocked_ip"
         done < "$BLOCK_LIST_WEEK"
-    else
-        log "INFO: No weekly blocks"
     fi
-else
-    log "INFO: Weekly check runs on Monday only"
 fi
 
 # ------------------------------------------------------------------------------
 # BANMONTH
 # ------------------------------------------------------------------------------
-
-log "INFO: Running Bandata Month..."
 
 # Build weekday directories for current month (excluding weekends)
 month_prefix=$(date +"%Y%m")
@@ -546,7 +531,6 @@ for day_num in $(seq -w 1 "$days_in_month"); do
 done
 
 if [ ${#month_dirs[@]} -eq 0 ]; then
-    log "INFO: No weekday report folders found for current month"
     clear_list "$BLOCK_LIST_MONTH"
 else
     # Each reading decides, as in the week: a partial list would total only
@@ -593,15 +577,12 @@ if [ "$month_count" -gt 0 ]; then
     while IFS= read -r blocked_ip; do
         log "INFO: monthly blocked $blocked_ip"
     done < "$BLOCK_LIST_MONTH"
-else
-    log "INFO: No monthly blocks"
 fi
 
 # ------------------------------------------------------------------------------
 # IPSET RULES
 # ------------------------------------------------------------------------------
 
-log "INFO: Running Ipset/Iptables Rules..."
 # Every preparation step decides whether the new set may be published. A
 # failed create or flush leaves bandata_new holding the previous contents,
 # and swapping that in would reinstate blocks that are no longer current.
@@ -618,10 +599,6 @@ ipset -! flush bandata_new || {
     load_failed=1
     log "WARNING: cannot flush ipset 'bandata_new' -alert"
 }
-
-# FORWARDING
-# Enable IPv4 packet forwarding
-sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
 
 # Load IPs to bandata_new
 if ! all_bans=$(
@@ -683,8 +660,6 @@ else
     ipset destroy bandata_new 2>/dev/null || true
 fi
 
-log "INFO: Applying Iptables Rules..."
-
 # Add a rule only when it is absent, and remember any failure.
 rules_failed=0
 iptables_rule() {
@@ -713,7 +688,8 @@ iptables_insert() {
 # Create dedicated chains if they don't exist. A second run finds them
 # already there, so only a real creation failure is worth reporting.
 for bandata_chain in BANDATA_FWD BANDATA_IN; do
-    iptables -L "$bandata_chain" -n >/dev/null 2>&1 ||         iptables -N "$bandata_chain" || {
+    iptables -L "$bandata_chain" -n >/dev/null 2>&1 \
+        || iptables -N "$bandata_chain" || {
             rules_failed=1
             log "WARNING: cannot create chain $bandata_chain -alert"
         }
@@ -848,9 +824,7 @@ update_squidreports_realname() {
     # Squidreports reads both files from its own directory, which belongs to
     # www-data. Staging through mktemp keeps this root write on a name no
     # other user can reach, and the mv replaces the target name as a whole.
-    if [ -z "$final_output" ] && [ "$BANDATA_HOTSPOT" = true ]; then
-        log "INFO: No MAC data processed for realname.cfg"
-    else
+    if [ -n "$final_output" ] || [ "$BANDATA_HOTSPOT" != true ]; then
         cfg_tmp=$(mktemp)
         if ! { { [ -z "$final_output" ] || printf '%s\n' "$final_output"; } > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
             && mv -fT -- "$cfg_tmp" "$REALNAME_CFG"; }; then
@@ -859,9 +833,7 @@ update_squidreports_realname() {
         fi
     fi
 
-    if [ -z "$skip_output" ]; then
-        log "INFO: No excluded data for skipuser.cfg"
-    else
+    if [ -n "$skip_output" ]; then
         cfg_tmp=$(mktemp)
         if ! { echo "$skip_output" > "$cfg_tmp" && chmod 644 "$cfg_tmp" \
             && mv -fT -- "$cfg_tmp" "$SKIPUSERS_CFG"; }; then

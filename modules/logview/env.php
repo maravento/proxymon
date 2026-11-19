@@ -20,8 +20,8 @@ function readEnvFile(string $path): array {
             }
         }
         // Expand $VAR / ${VAR} references against keys already parsed above,
-        // the same way bash resolves them when this file is sourced by
-        // bandata.sh or the installer (e.g. SQUID_LOG_FILE=$SQUID_LOG_DIR/access.log).
+        // the same way load_proxymon_env (proxymonenv.sh) resolves them
+        // for bandata.sh and the installer (e.g. SQUID_LOG_FILE=$SQUID_LOG_DIR/access.log).
         if (!preg_match('/_(?:PASSWD|API_KEY)$/', $key)) {
             $val = preg_replace_callback(
                 '/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/',

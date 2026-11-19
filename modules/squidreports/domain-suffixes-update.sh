@@ -20,13 +20,19 @@ set -uo pipefail
 # REQUIREMENTS
 # ------------------------------------------------------------------------------
 
+# path for cron
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# awk is a command, not a package: check it before its first use
+command -v awk >/dev/null 2>&1 || { echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: awk not found -abort" >&2; exit 1; }
+
+# root check
 if [ "$(id -u)" != "0" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
     exit 1
 fi
 
+# logging
 log_file="/var/log/proxymon.log"
 log() {
     local log_msg="$(date '+%Y-%m-%d %H:%M:%S') $1"
@@ -38,6 +44,7 @@ log() {
     fi
 }
 
+# prevent overlapping runs
 script_lock="/var/lock/$(basename "$0" .sh).lock"
 (umask 077; : >> "$script_lock") || {
     log "ERROR: cannot open $(basename "$script_lock") -abort"
@@ -49,7 +56,8 @@ if ! flock -n 200; then
     exit 1
 fi
 
-for dep_pkg in curl python3 coreutils util-linux iproute2 libc-bin diffutils; do
+# dependencies
+for dep_pkg in curl python3 coreutils util-linux iproute2 libc-bin diffutils grep; do
     if [ "$(dpkg-query -W -f='${db:Status-Status}' "$dep_pkg" 2>/dev/null)" != installed ]; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
@@ -234,13 +242,14 @@ temporary_dir=$(mktemp -d "$SQUIDREPORTS_DIR/domain-suffixes-update.XXXXXX") || 
 download_file="$temporary_dir/public_suffix_list.dat"
 candidate_file="$temporary_dir/domain-suffixes.txt"
 
-log "INFO: downloading Public Suffix List"
 if ! curl --fail --silent --show-error --location --proto '=https' \
     --proto-redir '=https' --connect-timeout 15 --max-time 90 --retry 2 \
     https://publicsuffix.org/list/public_suffix_list.dat --output "$download_file"; then
-    log "ERROR: Public Suffix List download failed -abort"
+    log "PARTIAL: https://publicsuffix.org/list/public_suffix_list.dat"
+    log "ERROR: public_suffix_list.dat not available -abort"
     exit 1
 fi
+log "SAVED: public_suffix_list.dat"
 
 if ! rule_count=$(python3 - "$download_file" "$candidate_file" 2>"$temporary_dir/validation.error" <<'PY'
 import re

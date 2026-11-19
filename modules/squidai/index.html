@@ -540,12 +540,12 @@ FILE: squidai/index.html
 
 <!-- Mobile FAQ Menu -->
 <div class="mobile-menu-bar">
-  <button class="mobile-menu-btn" onclick="askForUser()">👤 Usuario</button>
-  <button class="mobile-menu-btn" onclick="quickAsk(t.queryTopDomains)">🌐 Dominios</button>
-  <button class="mobile-menu-btn" onclick="quickAsk(t.queryTopConsumers)">📊 Consumo</button>
-  <button class="mobile-menu-btn" onclick="quickAsk(t.queryBlockedDomains)">🔒 Bloqueados</button>
-  <button class="mobile-menu-btn" onclick="quickAsk(t.querySecurityIncidents)">🔴 Seguridad</button>
-  <button class="mobile-menu-btn" onclick="clearChat()">🗑️ Limpiar</button>
+  <button class="mobile-menu-btn" onclick="askForUser()">👤 User</button>
+  <button class="mobile-menu-btn" onclick="quickAsk(t.queryTopDomains)">🌐 Domains</button>
+  <button class="mobile-menu-btn" onclick="quickAsk(t.queryTopConsumers)">📊 Consumers</button>
+  <button class="mobile-menu-btn" onclick="quickAsk(t.queryBlockedDomains)">🔒 Blocked</button>
+  <button class="mobile-menu-btn" onclick="quickAsk(t.querySecurityIncidents)">🔴 Security</button>
+  <button class="mobile-menu-btn" onclick="clearChat()">🗑️ Clear</button>
 </div>
 
 <!-- Main -->
@@ -2013,7 +2013,7 @@ function renderUserList(users) {
 
 function getSeverity(pattern, hits) {
   const p = (pattern || '').toLowerCase();
-  // CRITICAL sin importar hits
+  // CRITICAL regardless of hits
   if (p.includes('jndi') || p.includes('.onion')) return 'CRITICAL';
   // Direct IPv4 and P2P patterns: by hits
   if (hits >= 20) return 'CRITICAL';

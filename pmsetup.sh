@@ -248,13 +248,15 @@ install_apache2() {
     done
     if (( ${#missing_pkgs[@]} == 0 )); then
         info "apache2 and php already present"
-        return 0
+    else
+        retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
+            || { err "[1/2] cannot install ${missing_pkgs[*]}"; abort "[2/2] install them with apt, then re-run -abort"; }
+        systemctl enable apache2 &>/dev/null || true
+        info "Installed: ${missing_pkgs[*]}"
     fi
-
-    retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y "${missing_pkgs[@]}" \
-        || { err "[1/2] cannot install ${missing_pkgs[*]}"; abort "[2/2] install them with apt, then re-run -abort"; }
-    systemctl enable apache2 &>/dev/null || true
-    info "Installed: ${missing_pkgs[*]}"
+    # apache2-doc breaks after apache2 installs or upgrades; reinstall it always
+    retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y --reinstall apache2-doc \
+        || abort "cannot reinstall apache2-doc -abort"
 }
 
 # Installs squid-openssl, the flavour that also supports SSL bump. An existing
@@ -444,7 +446,7 @@ PY
 
 proxymon_env="/etc/proxymon/proxymon.env"
 
-# validation -- one variable per thing validated; use directly with =~
+# validation -one variable per thing validated; use directly with =~
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
 UH_UINT='^(0|[1-9][0-9]*)$'
@@ -777,8 +779,7 @@ update_cleanup() {
     exit "$status"
 }
 
-# INTEGER RANGE
-# Check signed Bash integer limits
+# validation - integer is representable as a signed 64-bit value
 uh_fits() {
     local value="${1-}" limit
     [[ "$value" =~ $UH_SINT ]] || return 1
@@ -991,7 +992,7 @@ check_apache_config() {
 }
 
 run_initial_checks() {
-    local failure_message="cannot check Proxymon requirements"
+    local failure_message
     info "running initial checks"
     failure_message="cannot check Apache and PHP settings"
     check_apache_config
@@ -1014,14 +1015,11 @@ check_repo() {
     fi
 }
 
-# IFACES
-# List network interfaces other than loopback
+# check ipv4 interfaces
 list_ifaces() {
     ip -br link show 2>/dev/null | awk '$1 != "lo" {sub(/@.*/, "", $1); printf "%s %s\n", $1, ($2 == "UP") ? "UP" : "DOWN"}'
 }
 
-# IPV4 INTERFACES
-# Offer only interfaces with an active link and configured global IPv4
 list_ipv4_ifaces() {
     local iface state
     while read -r iface state; do
@@ -1033,7 +1031,6 @@ list_ipv4_ifaces() {
     done < <(list_ifaces)
 }
 
-# check ipv4 interfaces
 check_ipv4_interfaces() {
     local max_attempts=24 attempt=1
 
@@ -1394,7 +1391,7 @@ print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
                 echo "$user_answer"
                 return
             fi
-            echo "'$user_answer' is not a valid size (e.g. 500M, 1G, 1.5G). Try again." >&2
+            info "invalid size; use 500M, 1G or 1.5G -retry" >&2
         done
     }
     failure_message="cannot read the daily bandwidth limit"
@@ -1418,13 +1415,15 @@ print(".".join(octets[:fixed] + ["*"] * (4 - fixed)))
         fi
         echo "DNS for blocked clients: $bandata_dns"
     else
-        while true; do
+        local dns_attempt
+        for dns_attempt in 1 2 3; do
             failure_message="cannot read the DNS for blocked clients"
             read -rp "DNS for blocked clients (one or two IPv4, e.g. 192.168.0.1 or 8.8.8.8,1.1.1.1): " bandata_dns || { report_failure; exit 1; }
             if [[ "$bandata_dns" =~ $UH_DNS ]] && [[ "$bandata_dns" != *,*,* ]]; then
                 break
             fi
-            echo "'$bandata_dns' is not one or two IPv4 separated by a comma. Try again." >&2
+            [ "$dns_attempt" -lt 3 ] || abort "no valid DNS for blocked clients -abort"
+            info "invalid DNS for blocked clients -retry"
         done
     fi
 
@@ -1647,10 +1646,6 @@ do_install() {
     install_apache2
     failure_message="cannot install Squid packages"
     install_squid
-    failure_message="cannot check Proxymon requirements"
-
-    failure_message="cannot check the required network port"
-
     failure_message="cannot create proxymon.env"
     create_proxymon_env
     load_proxymon_env "$proxymon_env" || abort "cannot load proxymon.env -abort"
@@ -2264,23 +2259,8 @@ do_uninstall() {
             || warn "cannot remove ipset bandata; remove manually -alert"
     fi
 
-    if [[ -f "/etc/apache2/mods-available/mpm_prefork.conf.bak" ]]; then
-        failure_message="cannot restore mpm_prefork.conf"
-        mv -f /etc/apache2/mods-available/mpm_prefork.conf.bak /etc/apache2/mods-available/mpm_prefork.conf
-        info "mpm_prefork configuration restored"
-    fi
-
-    if [[ -f "/etc/apache2/conf-available/security.conf.bak" ]]; then
-        failure_message="cannot restore Apache security.conf"
-        mv -f /etc/apache2/conf-available/security.conf.bak /etc/apache2/conf-available/security.conf
-        info "security.conf restored"
-    fi
-
-    if [[ -f "/etc/apache2/apache2.conf.bak" ]]; then
-        failure_message="cannot restore apache2.conf"
-        mv -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf
-        info "apache2.conf restored"
-    fi
+    # mpm_prefork.conf, security.conf and apache2.conf stay as they are:
+    # they may hold user data. Their .bak copies remain.
 
     if [[ -f "/etc/apache2/sites-available/proxymon.conf" ]]; then
         a2dissite proxymon.conf 2>/dev/null || true
@@ -2294,10 +2274,6 @@ do_uninstall() {
         failure_message="cannot remove warning.conf"
         rm -f /etc/apache2/sites-available/warning.conf
         info "Warning site disabled"
-    fi
-
-    if [[ -x "$CONFIG_DIR/tools/pmbk.sh" ]]; then
-        "$CONFIG_DIR/tools/pmbk.sh" --uninstall || true
     fi
 
     if [[ -d "$WEB_ROOT" ]]; then

@@ -34,6 +34,10 @@ sub LOCKREMOVER();
 
 use File::Basename;
 use Time::Local;
+use POSIX qw(strftime);
+
+# Print one dated log line to stderr, in the project log format
+sub LogMsg($) { print STDERR strftime('%Y-%m-%d %H:%M:%S', localtime) . " $_[0]\n"; }
 
 push (@INC,(fileparse($0))[1]);
 
@@ -115,7 +119,7 @@ if ($ARGV[0] eq "yesterday") {
 
 if ($ARGV[0] =~ m/^(\d\d\d\d)(\d\d)(\d\d)$/) {
    if ($2 < 1 || $2 > 12 || $3 < 1 || $3 > 31) {
-	  print STDERR "ERROR: '$ARGV[0]' is not a valid YYYYMMDD date\n";
+	  LogMsg("ERROR: $ARGV[0] is not a valid YYYYMMDD date -abort");
 	  exit 1;
    }
    $filterdate=$ARGV[0];
@@ -136,7 +140,7 @@ print ">>> use file :: $logpath/$filename\n" if ($debug);
 # would still end with status zero. The source is checked here, and the
 # reader's own exit status is checked after the loop.
 unless (-f "$logpath/$filename" && -r _) {
-   print STDERR "ERROR: can't read log file '$logpath/$filename'\n";
+   LogMsg("ERROR: cannot read " . basename($filename) . " -abort");
    exit 1;
 }
 my $readsource = "$logpath/$filename";
@@ -152,27 +156,27 @@ unless ($filterdate) {
    my $temp_fh;
    ($temp_fh,$tempsource) = File::Temp::tempfile("squidreports-XXXXXX", TMPDIR => 1);
    unless (open SRC, "$catname $logpath/$filename|") {
-	  print STDERR "ERROR: can't read log file '$logpath/$filename'\n";
+	  LogMsg("ERROR: cannot read " . basename($filename) . " -abort");
 	  exit 1;
    }
    while (<SRC>) {
 	  unless (print $temp_fh $_) {
-		 print STDERR "ERROR: can't write a temporary copy of '$logpath/$filename': $!\n";
+		 my $error = "$!"; LogMsg("ERROR: [1/2] cannot copy " . basename($filename) . " to a temporary file"); LogMsg("ERROR: [2/2] $error -abort");
 		 exit 1;
 	  }
    }
    unless (close SRC) {
-	  print STDERR "ERROR: '$catname $logpath/$filename' failed, report not written\n";
+	  LogMsg("ERROR: reading " . basename($filename) . " failed; no report -abort");
 	  exit 1;
    }
    unless (close $temp_fh) {
-	  print STDERR "ERROR: can't write a temporary copy of '$logpath/$filename': $!\n";
+	  my $error = "$!"; LogMsg("ERROR: [1/2] cannot copy " . basename($filename) . " to a temporary file"); LogMsg("ERROR: [2/2] $error -abort");
 	  exit 1;
    }
    $readsource = $tempsource;
    $readcat	= "cat";
 }
-open(FF, "$readcat $readsource|") or die "can't access log file\n";
+open(FF, "$readcat $readsource|") or do { LogMsg("ERROR: cannot read " . basename($filename) . " -abort"); exit 1 };
 
 InitSkipUser();
 
@@ -291,7 +295,7 @@ while (<FF>) {
 	  # means the source interleaves dates, so the run stops before that
 	  # day is overwritten with a partial total.
 	  if (defined $closedday{$date}) {
-		 print STDERR "ERROR: date '$date' reappears after being closed; source '$filename' is out of order\n";
+		 LogMsg("ERROR: [1/2] date $date repeats in " . basename($filename)); LogMsg("ERROR: [2/2] source out of order, report not written -abort");
 		 exit 1;
 	  }
 	  if ($firstrun) {
@@ -416,7 +420,7 @@ while (<FF>) {
 unless (close FF) {
    # A non zero status from cat, zcat or bzcat means the log was only read
    # in part. Publishing that as a complete day would hide the loss.
-   print STDERR "ERROR: '$catname $logpath/$filename' failed, report not written\n";
+   LogMsg("ERROR: reading " . basename($filename) . " failed; no report -abort");
    exit 1;
 }
 
@@ -493,14 +497,14 @@ sub OpenAtomic($) {
   # A plain "$file.$$.tmp" was listed as one more user while publishing.
   my ($dir,$base)=($file =~ m#^(.*)/([^/]+)$#) ? ($1,$2) : (".",$file);
   my $tmp="$dir/.tmp.$$.$base";
-  open(my $fh,'>',$tmp) or die "can't create file $tmp - $!";
+  open(my $fh,'>',$tmp) or do { my $error = "$!"; LogMsg("ERROR: [1/2] cannot create report file for $base"); LogMsg("ERROR: [2/2] $error -abort"); exit 1 };
   return ($fh,$tmp);
 }
 
 sub CloseAtomic($$$) {
   my ($fh,$tmp,$file)=@_;
-  close $fh or die "can't write $tmp - $!";
-  rename $tmp,$file or die "can't rename $tmp to $file - $!";
+  close $fh or do { my $error = "$!"; LogMsg("ERROR: [1/2] cannot write report file for " . basename($file)); LogMsg("ERROR: [2/2] $error -abort"); exit 1 };
+  rename $tmp,$file or do { my $error = "$!"; LogMsg("ERROR: [1/2] cannot publish report for " . basename($file)); LogMsg("ERROR: [2/2] $error -abort"); exit 1 };
 }
 
 # write a "key <tab> bytes <tab> hits" report, sorted by bytes
@@ -546,7 +550,7 @@ sub MakeReport() {
 
 	unless ( -d $reppath )
 	{
-	  mkdir $reppath, 0755 or die "Can't create dir '$reppath': $!";
+	  mkdir $reppath, 0755 or do { my $error = "$!"; LogMsg("ERROR: [1/2] cannot create report folder $workday"); LogMsg("ERROR: [2/2] $error -abort"); exit 1 };
 	}
 
 	my ($totalfh,$totaltmp)=OpenAtomic("$reppath/.total");
@@ -659,7 +663,7 @@ sub MakeReport() {
 
 	CreateGroupFile($reppath);
 	File::Copy::copy(ProxymonEnv::required($main::proxymon_settings,'REALNAME_CFG'),"$reppath/.realname")
-	  or die "Cannot copy configured realname file\n";
+	  or do { LogMsg("ERROR: cannot copy realname.cfg to the report -abort"); exit 1 };
 }
 
 sub InitSkipUser() {
@@ -680,10 +684,16 @@ sub InitSkipUser() {
 # and run as well.
 sub LockLSQ() {
    open LOCK,">>",$lockfilepath
-	  or die "ERROR: cannot open '$lockfilepath': $!\n";
+	  or do { my $error = "$!"; LogMsg("ERROR: [1/2] cannot open squidreports lockfile"); LogMsg("ERROR: [2/2] $error -abort"); exit 1 };
 
    unless (flock LOCK, ($waitlock ? LOCK_EX : (LOCK_EX | LOCK_NB))) {
-	  print STDERR "ERROR: cannot lock '$lockfilepath': $!\n";
+	  if ($waitlock) {
+		 my $error = "$!";
+		 LogMsg("ERROR: [1/2] cannot lock squidreports lockfile");
+		 LogMsg("ERROR: [2/2] $error -abort");
+	  } else {
+		 LogMsg("INFO: squidreports.pl already running -skip");
+	  }
 	  close LOCK;
 	  return 0;
    }
