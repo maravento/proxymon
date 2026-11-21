@@ -16,7 +16,7 @@
 #parse access.log
 # make per user report in 'report' direcotry
 
-#usage: lightparse.pl {param}
+#usage: squidreports.pl {param}
 #if param omit				 - parse full access.log file
 #	today					 - only current day
 #	yesterday				 - yesterday
@@ -25,7 +25,7 @@
 #	--wait-lock				 - wait for another generator instead of exiting
 
 # function prototypes
-sub MakeReport();
+sub MakeReport(;$);
 sub InitSkipUser();
 sub getLPS($$);
 sub LockLSQ();
@@ -77,6 +77,7 @@ my %closedday	= ();
 my $totallines	= 0;
 my $parsedlines = 0;
 my $daylines	= 0;
+my $forceempty	= 0;
 
 my $catname	  ="cat";
 my $filename = File::Basename::basename(ProxymonEnv::required($proxymon_settings,'SQUID_LOG_FILE'));
@@ -88,7 +89,7 @@ exit($waitlock ? 1 : 0) unless (LockLSQ()); #Lock LSQ (block multiple instance)
 
 if ($skipurl eq "") {
    $skipurl = "skipurl MUST be defined!!!";
-   print "WARNING !!! \$skipurl is empty\n";
+   LogMsg("WARNING: skipurl is empty in squidreports.cfg -alert");
 }	
 
 ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime;
@@ -144,6 +145,11 @@ unless (-f "$logpath/$filename" && -r _) {
    exit 1;
 }
 my $readsource = "$logpath/$filename";
+# A past day may already sit in the last rotation. Both files are read in
+# order; the date filter keeps only the requested day.
+if (($ARGV[0] eq "yesterday" || $ARGV[0] =~ m/^\d{8}$/) && -f "$logpath/$filename.1" && -r _) {
+   $readsource = "$logpath/$filename.1 $logpath/$filename";
+}
 my $readcat    = $catname;
 
 # Without a date filter the source can hold several days, and MakeReport()
@@ -304,20 +310,8 @@ while (<FF>) {
 	  } else {
 		MakeReport();
 		$closedday{$workday}=1;
-		$analytics = {};
-		undef %totalsize; undef %sitesize; undef %sitehit;undef %totalhit;undef %totalputpost;
-	undef %hashhost;undef %hashname;
-		undef %bigfile; $bigfilecnt=0;
-	undef %sitetime;undef %sitetimesize;
-	undef %usercachehit;undef %usercachemiss;undef %userelapsed;
-	undef %sitecachehit;undef %sitecachemiss;undef %siteelapsed;
-	undef %userbigsize;undef %userbigurl;
-	undef %mimesize;undef %mimehit;undef %extsize;undef %exthit;
-	undef %subnetsize;undef %subnethit;
-		$daylines=0;
+		ResetDay();
 		$workday=$date;
-	$sqlreq=0;
-	$CacheHIT=0;$CacheMISS=0;
 	  }
 	}
 	$daylines++;
@@ -426,10 +420,16 @@ unless (close FF) {
 
 MakeReport();
 
-# Any date left in %denied had denials but no allowed traffic, so it never
-# reached MakeReport(). Its report is published here.
-foreach my $pendingdate (sort keys %denied) {
-  WriteDenied($pendingdate);
+# A day with denials still needs current zero-traffic totals.
+$closedday{$workday}=1 if $daylines;
+ResetDay();
+for my $pendingdate (sort keys %denied) {
+  if ($closedday{$pendingdate}) {
+    WriteDenied($pendingdate);
+    next;
+  }
+  $workday=$pendingdate;
+  MakeReport(1);
 }
 
 StopIp2Name();
@@ -538,11 +538,24 @@ sub WriteDenied($) {
   delete $denied{$date};
 }
 
-sub MakeReport() {
-	#generate report
-	#use global var 
+sub ResetDay {
+    $analytics = {};
+    undef %totalsize; undef %sitesize; undef %sitehit; undef %totalhit; undef %totalputpost;
+    undef %hashhost; undef %hashname;
+    undef %bigfile; $bigfilecnt=0;
+    undef %sitetime; undef %sitetimesize;
+    undef %usercachehit; undef %usercachemiss; undef %userelapsed;
+    undef %sitecachehit; undef %sitecachemiss; undef %siteelapsed;
+    undef %userbigsize; undef %userbigurl;
+    undef %mimesize; undef %mimehit; undef %extsize; undef %exthit;
+    undef %subnetsize; undef %subnethit;
+    $daylines=0;
+    $sqlreq=0;
+    $CacheHIT=0; $CacheMISS=0;
+}
 
-	return if ($daylines < 1);
+sub MakeReport(;$) {
+    return if ($daylines < 1 && !$_[0]);
 
 	print ">>> Make Report $workday ($daylines - log line parsed)\n" if ($debug);
 
@@ -571,8 +584,8 @@ sub MakeReport() {
 	  foreach $tsite (sort {$sitesize{$tuser}{$b} <=> $sitesize{$tuser}{$a}} keys %{$sitesize{$tuser}} ) {
 		  printf $repfh ("%-29s %12s %10s\t",$tsite,$sitesize{$tuser}{$tsite},$sitehit{$tuser}{$tsite});
 	  if ($timereport != 0) {
-			for ($hour=0;$hour<24;$hour++) {
-		printf $repfh ("%d-%s ",int($sitetime{$tuser}{$tsite}[$hour]/3600),$sitetimesize{$tuser}{$tsite}[$hour]+0);
+			for (my $column=0;$column<24;$column++) {
+		printf $repfh ("%d-%s ",int($sitetime{$tuser}{$tsite}[$column]/3600),$sitetimesize{$tuser}{$tsite}[$column]+0);
 		}
 	  }
 		  print $repfh "\n";
@@ -628,6 +641,7 @@ sub MakeReport() {
 	CloseAtomic($sitefh,$sitetmp,"$statdir/.sitestat");
 
 	my ($analyticsfh,$analyticstmp)=OpenAtomic("$statdir/analyzer.json");
+	$analytics->{$_} //= {} for qw(mime hours clients sites);
 	print $analyticsfh JSON::PP->new->canonical->encode({version=>1,data=>$analytics});
 	CloseAtomic($analyticsfh,$analyticstmp,"$statdir/analyzer.json");
 
@@ -705,7 +719,7 @@ sub UnLockLSQ() {
 }
 
 sub LOCKREMOVER() {
-   print "INT happents, exit\n";
+   LogMsg("ERROR: interrupted by SIGINT -abort");
    exit;
 }
 

@@ -63,7 +63,7 @@ package_installed() {
 }
 
 # dependencies
-for dep_pkg in ipset findutils coreutils iptables util-linux sed grep procps logrotate; do
+for dep_pkg in ipset findutils coreutils iptables util-linux sed grep procps logrotate perl; do
     if ! package_installed "$dep_pkg"; then
         log "ERROR: dependency '$dep_pkg' is not installed -abort"
         exit 1
@@ -100,7 +100,7 @@ fi
 # VARIABLES
 # ------------------------------------------------------------------------------
 
-# validation -one variable per thing validated; use directly with =~
+# validation - one variable per thing validated; use directly with =~
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
@@ -201,6 +201,9 @@ for env_key in RANGE WARNING_PORT LAN REPORT_IP_GLOB SQUIDREPORTS_DIR REPORT_PAT
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
+    elif [[ " SQUIDREPORTS_DIR REPORT_PATH REALNAME_CFG SKIPUSERS_CFG ACL_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH WARNING_HTML HOTSPOT_PATH " == *" $env_key "* ]] \
+         && [[ "${!env_key}" != /* || "${!env_key}" == / ]]; then
+        key_errors+=("$env_key invalid absolute path")
     elif [ "$env_key" = RANGE ] && ! [[ "${!env_key}" =~ $UH_CIDR ]]; then
         key_errors+=("$env_key invalid IPv4/prefix")
     elif [ "$env_key" = WARNING_PORT ] && { checked_port="${!env_key}"; ! [[ "$checked_port" =~ $UH_UINT ]] || [ "${#checked_port}" -gt 5 ] || [ "$checked_port" -lt 1 ] || [ "$checked_port" -gt 65535 ]; }; then
@@ -267,7 +270,7 @@ max_bw_month=$(LC_ALL=C numfmt --from=iec "${MAX_BANDWIDTH_MONTH/,/.}")
 # MAIN
 # ------------------------------------------------------------------------------
 
-log "INFO: bandata start..."
+echo "$(date '+%Y-%m-%d %H:%M:%S') INFO: bandata start..."
 
 # PREFLIGHT CHECKS
 # Self-heal: remove orphaned .tmp files left by a previous run that failed
@@ -475,7 +478,7 @@ if [ "$today_dow" -eq 1 ]; then
             awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
             log "WARNING: cannot total weekly reports -alert"
             clear_list "$BLOCK_LIST_WEEK"
-        elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
+        elif ! over_limit_ips=$(echo "$user_totals" | perl -MMath::BigInt -lane '$sum{$F[0]} //= Math::BigInt->new(0); $sum{$F[0]} += $F[1]; END { print "$sum{$_}\t$_" for keys %sum }' | sort -k1,1); then
             log "WARNING: cannot add up weekly totals -alert"
             clear_list "$BLOCK_LIST_WEEK"
         else
@@ -487,7 +490,7 @@ if [ "$today_dow" -eq 1 ]; then
                 log "WARNING: cannot read allow list -alert"
                 clear_list "$BLOCK_LIST_WEEK"
             else
-                echo "$over_limit_ips" | awk -v max="$max_bw_week" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
+                echo "$over_limit_ips" | quota_max="$max_bw_week" perl -MMath::BigInt -lane 'print $F[1] if Math::BigInt->new($F[0]) > Math::BigInt->new($ENV{quota_max})' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_WEEK}.tmp"
                 pipe_status=("${PIPESTATUS[@]}")
                 if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
                    && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
@@ -542,7 +545,7 @@ else
         awk '/^total:/{sub(".*/", "", FILENAME); print FILENAME" "$NF}' {}); then
         log "WARNING: cannot total monthly reports -alert"
         clear_list "$BLOCK_LIST_MONTH"
-    elif ! over_limit_ips=$(echo "$user_totals" | awk '{ arr[$1]+=$2 } END { for (key in arr) printf("%s\t%s\n", arr[key], key) }' | sort -k1,1); then
+    elif ! over_limit_ips=$(echo "$user_totals" | perl -MMath::BigInt -lane '$sum{$F[0]} //= Math::BigInt->new(0); $sum{$F[0]} += $F[1]; END { print "$sum{$_}\t$_" for keys %sum }' | sort -k1,1); then
         log "WARNING: cannot add up monthly totals -alert"
         clear_list "$BLOCK_LIST_MONTH"
     else
@@ -553,7 +556,7 @@ else
             log "WARNING: cannot read allow list -alert"
             clear_list "$BLOCK_LIST_MONTH"
         else
-            echo "$over_limit_ips" | awk -v max="$max_bw_month" '$1 > max {print $2}' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
+            echo "$over_limit_ips" | quota_max="$max_bw_month" perl -MMath::BigInt -lane 'print $F[1] if Math::BigInt->new($F[0]) > Math::BigInt->new($ENV{quota_max})' | grep -wvFf <(printf '%s\n' "$allow_ips") | $sort_ips | uniq > "${BLOCK_LIST_MONTH}.tmp"
             pipe_status=("${PIPESTATUS[@]}")
             if [ "${pipe_status[0]}" -eq 0 ] && [ "${pipe_status[1]}" -eq 0 ] \
                && [ "${pipe_status[2]}" -le 1 ] && [ "${pipe_status[3]}" -eq 0 ] \
@@ -916,4 +919,4 @@ else
     log "WARNING: cannot read bandata; block count unavailable -alert"
 fi
 
-log "INFO: bandata done"
+echo "$(date '+%Y-%m-%d %H:%M:%S') INFO: bandata done"

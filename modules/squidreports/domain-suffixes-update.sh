@@ -20,9 +20,6 @@ set -uo pipefail
 # REQUIREMENTS
 # ------------------------------------------------------------------------------
 
-# path for cron
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
 # awk is a command, not a package: check it before its first use
 command -v awk >/dev/null 2>&1 || { echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: awk not found -abort" >&2; exit 1; }
 
@@ -242,10 +239,19 @@ temporary_dir=$(mktemp -d "$SQUIDREPORTS_DIR/domain-suffixes-update.XXXXXX") || 
 download_file="$temporary_dir/public_suffix_list.dat"
 candidate_file="$temporary_dir/domain-suffixes.txt"
 
-if ! curl --fail --silent --show-error --location --proto '=https' \
+psl_url="https://publicsuffix.org/list/public_suffix_list.dat"
+http_code=$(curl --silent --show-error --location --proto '=https' \
     --proto-redir '=https' --connect-timeout 15 --max-time 90 --retry 2 \
-    https://publicsuffix.org/list/public_suffix_list.dat --output "$download_file"; then
-    log "PARTIAL: https://publicsuffix.org/list/public_suffix_list.dat"
+    --write-out '%{http_code}' "$psl_url" --output "$download_file")
+curl_status=$?
+if [ "$curl_status" -ne 0 ] || [ "$http_code" != 200 ]; then
+    case "$http_code" in
+        000|"") log "TIMEOUT: $psl_url" ;;
+        404|410) log "BROKEN: $psl_url" ;;
+        5??) log "BUSY: $psl_url" ;;
+        200) log "PARTIAL: $psl_url" ;;
+        *) log "HTTP_ERROR: $psl_url (HTTP $http_code)" ;;
+    esac
     log "ERROR: public_suffix_list.dat not available -abort"
     exit 1
 fi

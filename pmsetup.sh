@@ -146,7 +146,7 @@ configure_locations() {
     done
     location_defaults=(
         [TOOL_REPORT_DIR]="$CONFIG_DIR/tools/reports"
-        [SQUIDMON_CONFIG]="$WEB_ROOT/squidmon/etc/config"
+        [SQUIDMON_CONFIG]="$CONFIG_DIR/squidmon/config"
         [LLM_ENV_FILE]="$CONFIG_DIR/.env"
         [REPORT_STATS_PATH]="${REPORT_PATH:-$WEB_ROOT/squidreports/report}stats"
     )
@@ -221,7 +221,7 @@ package_installed() {
 # dependencies
 # Every package the deployed components need. Installed by install_deps
 # in --install and --update.
-apt_deps=(python3-yaml wget curl git zip unzip ipset nbtscan libcgi-pm-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gzip procps logrotate diffutils)
+apt_deps=(python3-yaml wget curl git zip unzip ipset nbtscan libcgi-pm-perl libgd-perl libjson-xs-perl coreutils fonts-lato fonts-liberation fonts-dejavu perl python3 cron sudo util-linux iproute2 passwd findutils sed grep hostname ncurses-bin systemd libc-bin iptables gzip procps logrotate diffutils bzip2)
 
 # Install the missing packages of apt_deps
 install_deps() {
@@ -238,13 +238,18 @@ install_deps() {
 }
 
 # Installs Apache and PHP. Kept apart from apt_deps because they are
-# proxymon's own serving layer, installed only by --install.
+# proxymon's own serving layer, used by --install and --update.
 install_apache2() {
-    local dep_pkg missing_pkgs=()
+    local dep_pkg apache_missing=no missing_pkgs=()
 
     for dep_pkg in apache2 apache2-bin apache2-data apache2-doc apache2-utils \
                    php libapache2-mod-php php-cli php-curl; do
-        package_installed "$dep_pkg" || missing_pkgs+=("$dep_pkg")
+        if ! package_installed "$dep_pkg"; then
+            missing_pkgs+=("$dep_pkg")
+            if [[ "$dep_pkg" == apache2* ]]; then
+                apache_missing=yes
+            fi
+        fi
     done
     if (( ${#missing_pkgs[@]} == 0 )); then
         info "apache2 and php already present"
@@ -254,7 +259,10 @@ install_apache2() {
         systemctl enable apache2 &>/dev/null || true
         info "Installed: ${missing_pkgs[*]}"
     fi
-    # apache2-doc breaks after apache2 installs or upgrades; reinstall it always
+    if [[ "${1:-install}" == update && "$apache_missing" == no ]]; then
+        return 0
+    fi
+    # apache2-doc breaks after apache2 installs or upgrades.
     retry_cmd "install packages" env DEBIAN_FRONTEND=noninteractive apt-get -qq install -y --reinstall apache2-doc \
         || abort "cannot reinstall apache2-doc -abort"
 }
@@ -318,78 +326,34 @@ set_squid_logrotate() {
     local rotate_file=/etc/logrotate.d/squid
     local hook="runuser -u www-data -- $WEB_ROOT/squidreports/squidreports.pl yesterday --wait-lock"
 
-    if [ ! -f "$rotate_file" ]; then
-        warn "Squid logrotate missing; rotation unchanged -alert"
-        return 0
+    # The file is replaced, not edited: edits pile up and depend on what the
+    # package shipped. The previous file is kept as .bak in the same path.
+    if [ -f "$rotate_file" ]; then
+        failure_message="cannot back up Squid logrotate settings"
+        cp -f "$rotate_file" "$rotate_file.bak"
     fi
-    cp -f "$rotate_file"{,.bak} &>/dev/null || true
-    if grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
-        info "$rotate_file already weekly -skip"
-    else
-        failure_message="cannot edit Squid logrotate settings"
-        sed -i -E 's/^([[:space:]]*)(hourly|daily|monthly|yearly)$/\1weekly/' \
-            "$rotate_file"
-        if ! grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
-            failure_message="cannot edit Squid logrotate settings"
-            sed -i '0,/{[[:space:]]*$/s//&\n    weekly/' "$rotate_file"
-        fi
-        if grep -qE '^[[:space:]]*weekly$' "$rotate_file"; then
-            info "$rotate_file set to weekly -fixed"
-        else
-            warn "cannot set weekly in ${rotate_file#/etc/} -alert"
-        fi
-    fi
-    failure_message="cannot edit Squid logrotate settings"
-    sed -i '/^[[:space:]]*nocreate$/d' "$rotate_file"
-    if grep -qE '^[[:space:]]*create[[:space:]]+0640[[:space:]]+proxy[[:space:]]+proxy$' "$rotate_file"; then
-        info "${rotate_file#/etc/} creates the log as 0640 proxy -skip"
-    elif ! grep -qE '^[[:space:]]*sharedscripts' "$rotate_file"; then
-        warn "squid has no sharedscripts, create not added -alert"
-    else
-        failure_message="cannot edit Squid logrotate settings"
-        sed -i '/^[[:space:]]*sharedscripts/a \    create 0640 proxy proxy' "$rotate_file"
-        info "${rotate_file#/etc/} set to create 0640 proxy -fixed"
-    fi
-    if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$rotate_file"; then
-        info "$rotate_file already rotate 7 -skip"
-    else
-        failure_message="cannot edit Squid logrotate settings"
-        sed -i -E 's/^([[:space:]]*)rotate[[:space:]]+[0-9]+$/\1rotate 7/' "$rotate_file"
-        if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$rotate_file"; then
-            info "$rotate_file set to rotate 7 -fixed"
-        else
-            warn "cannot set rotate 7 in ${rotate_file#/etc/} -alert"
-        fi
-    fi
-    local rotate_option
-    for rotate_option in compress delaycompress missingok notifempty; do
-        if ! grep -qE "^[[:space:]]*$rotate_option$" "$rotate_file"; then
-            failure_message="cannot edit Squid logrotate settings"
-            sed -i -E "0,/^([[:space:]]*)rotate[[:space:]]+7$/s//&\n\1$rotate_option/" "$rotate_file"
-            info "${rotate_file#/etc/} set to $rotate_option -fixed"
-        fi
-    done
-    local size_directive size_directives=""
-    for size_directive in size maxsize; do
-        if grep -qE "^[[:space:]]*$size_directive[[:space:]]" "$rotate_file"; then
-            size_directives="${size_directives:+$size_directives|}$size_directive"
-        fi
-    done
-    if [ -n "$size_directives" ]; then
-        warn "$(basename "$rotate_file") allows log rotation by $size_directives -alert"
-    fi
-    if grep -qE "^[[:space:]]*$hook$" "$rotate_file"; then
-        info "squidreports.pl yesterday already in rotation -skip"
-    elif grep -qE '^[[:space:]]*prerotate' "$rotate_file"; then
-        info "$rotate_file has prerotate defined -skip"
-    elif ! grep -qE '^[[:space:]]*sharedscripts' "$rotate_file"; then
-        warn "[1/2] Squidreports: squid has no sharedscripts"
-        warn "[2/2] not added before log rotation -alert"
-    else
-        failure_message="cannot edit Squid logrotate settings"
-        sed -i "/^[[:space:]]*sharedscripts/a \\    prerotate\n        $hook\n    endscript" "$rotate_file"
-        info "squidreports.pl yesterday added to rotation -fixed"
-    fi
+    failure_message="cannot write Squid logrotate settings"
+    cat > "$rotate_file" <<EOF
+${SQUID_LOG_DIR:-/var/log/squid}/*.log {
+    weekly
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 proxy proxy
+    sharedscripts
+    prerotate
+        $hook
+    endscript
+    postrotate
+        test ! -e /run/squid.pid || test ! -x /usr/sbin/squid || /usr/sbin/squid -k rotate
+    endscript
+}
+EOF
+    chown root:root "$rotate_file"
+    chmod 644 "$rotate_file"
+    info "${rotate_file#/etc/} replaced, previous kept as .bak -fixed"
 }
 
 squid_preexisting=1
@@ -446,7 +410,7 @@ PY
 
 proxymon_env="/etc/proxymon/proxymon.env"
 
-# validation -one variable per thing validated; use directly with =~
+# validation - one variable per thing validated; use directly with =~
 UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
 UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
 UH_UINT='^(0|[1-9][0-9]*)$'
@@ -1592,18 +1556,40 @@ register_project_cron() {
 # Apache keeps 14 rotations by default; the projects keep 7
 set_apache_logrotate() {
     local apache_rotate="/etc/logrotate.d/apache2"
-    [ -f "$apache_rotate" ] || { warn "apache2 has no logrotate file -alert"; return 0; }
-    if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$apache_rotate"; then
-        info "${apache_rotate#/etc/} already rotate 7 -skip"
+    # Replaced, not edited; the package rotation and reload are kept.
+    if [ -f "$apache_rotate" ]; then
+        cp -f "$apache_rotate" "$apache_rotate.bak" \
+            || { warn "cannot back up ${apache_rotate#/etc/} -alert"; return 0; }
+    fi
+    if ! cat > "$apache_rotate" <<'EOF'
+/var/log/apache2/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root adm
+    sharedscripts
+    prerotate
+        if [ -d /etc/logrotate.d/httpd-prerotate ]; then
+            run-parts /etc/logrotate.d/httpd-prerotate
+        fi
+    endscript
+    postrotate
+        if pgrep -f ^/usr/sbin/apache2 > /dev/null; then
+            invoke-rc.d apache2 reload 2>&1 | logger -t apache2.logrotate
+        fi
+    endscript
+}
+EOF
+    then
+        warn "cannot write ${apache_rotate#/etc/} -alert"
         return 0
     fi
-    cp -f "$apache_rotate"{,.bak} &>/dev/null || true
-    sed -i -E 's/^([[:space:]]*)rotate[[:space:]]+[0-9]+$/\1rotate 7/' "$apache_rotate"
-    if grep -qE '^[[:space:]]*rotate[[:space:]]+7$' "$apache_rotate"; then
-        info "${apache_rotate#/etc/} set to rotate 7 -fixed"
-    else
-        warn "cannot set rotate 7 in ${apache_rotate#/etc/} -alert"
-    fi
+    chown root:root "$apache_rotate" && chmod 644 "$apache_rotate" \
+        || { warn "cannot set ${apache_rotate#/etc/} permissions -alert"; return 0; }
+    info "${apache_rotate#/etc/} replaced, previous kept as .bak -fixed"
 }
 
 install_project_logrotate() {
@@ -1629,12 +1615,71 @@ EOF
     chown root:root "$rotate_file" || return 1
     chmod 644 "$rotate_file" || return 1
     info "updated $rotate_file"
+    cat > /etc/logrotate.d/bandata <<'EOF'
+/var/log/bandata.log {
+    weekly
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root adm
+}
+EOF
+    [ "$?" -eq 0 ] || return 1
+    chown root:root /etc/logrotate.d/bandata || return 1
+    chmod 644 /etc/logrotate.d/bandata || return 1
+    info "updated /etc/logrotate.d/bandata"
     set_apache_logrotate
 }
 
+prepare_squidmon_config() {
+    local template="$1" target="$2"
+    if [ "$target" = "$CONFIG_DIR/squidmon/config" ]; then
+        [ ! -L "$CONFIG_DIR/squidmon" ] && [ ! -L "$target" ] || return 1
+        install -d -m 750 -o www-data -g www-data "$CONFIG_DIR/squidmon" || return 1
+        if [ -e "$target" ]; then
+            [ -f "$target" ] && chown www-data:www-data "$target" && chmod 600 "$target" || return 1
+        else
+            install -m 600 -o www-data -g www-data "$template" "$target" || return 1
+        fi
+    else
+        mkdir -p "$(dirname "$target")" || return 1
+        [ -f "$target" ] || cp "$template" "$target" || return 1
+        chown -h www-data:www-data "$target" || return 1
+    fi
+}
+
+migrate_squidmon_config() (
+    local old_path="$SQUIDMON_CONFIG" new_path="$CONFIG_DIR/squidmon/config" env_tmp
+    [ -f "$old_path" ] && [ ! -L "$old_path" ] || return 1
+    [ ! -L "$new_path" ] || return 1
+    if [ -e "$new_path" ] && ! cmp -s -- "$old_path" "$new_path"; then
+        return 1
+    fi
+    prepare_squidmon_config "$old_path" "$new_path" || return 1
+    env_tmp=$(mktemp "${proxymon_env}.XXXXXX") || return 1
+    trap 'rm -f -- "$env_tmp"' EXIT
+    sed "s|^SQUIDMON_CONFIG=.*|SQUIDMON_CONFIG=$new_path|" "$proxymon_env" > "$env_tmp" \
+        && grep -qxF "SQUIDMON_CONFIG=$new_path" "$env_tmp" \
+        && chmod --reference="$proxymon_env" "$env_tmp" \
+        && chown --reference="$proxymon_env" "$env_tmp" \
+        && mv -fT -- "$env_tmp" "$proxymon_env"
+)
+
 do_install() {
     check_requirements install
-    local failure_message
+    local failure_message change_answer
+    if [ "${PROXYMON_CONFIRM_CONFIG_CHANGES:-}" != yes ]; then
+        echo "Install will add missing packages and change, with a .bak first:"
+        echo "ports.conf, apache2.conf, security.conf, mpm_prefork.conf, php.ini, logrotate files"
+        read -r -p "Continue? (y/N): " change_answer \
+            || abort "cannot read install confirmation -abort"
+        if [[ ! "$change_answer" =~ ^[Yy]$ ]]; then
+            info "install cancelled -skip"
+            exit 0
+        fi
+    fi
     failure_message="cannot install required packages"
     install_deps
     failure_message="cannot read locations from proxymon.env"
@@ -1937,14 +1982,12 @@ EOF
     failure_message="cannot set permissions on squidreports.pl"
     chmod +x "$WEB_ROOT/squidreports/squidreports.pl"
     secure_web_code "$WEB_ROOT" 0 || abort "cannot secure web code -abort"
-    if [ "$SQUIDMON_CONFIG" != "$WEB_ROOT/squidmon/etc/config" ]; then
-        failure_message="cannot create the Squid Monitor config directory"
-        mkdir -p "$(dirname "$SQUIDMON_CONFIG")"
-        failure_message="cannot copy $(basename "$WEB_ROOT")"
-        [ -f "$SQUIDMON_CONFIG" ] || cp "$WEB_ROOT/squidmon/etc/config" "$SQUIDMON_CONFIG"
+    if [ "$SQUIDMON_CONFIG" = "$WEB_ROOT/squidmon/etc/config" ]; then
+        migrate_squidmon_config || abort "cannot migrate Squidmon settings -abort"
+    else
+        prepare_squidmon_config "$WEB_ROOT/squidmon/etc/config" "$SQUIDMON_CONFIG" \
+            || abort "cannot prepare Squidmon settings -abort"
     fi
-    failure_message="cannot set owner of Squid Monitor config"
-    chown -h www-data:www-data "$SQUIDMON_CONFIG"
 
     # acl/ is pruned: its permissions belong to the ACL block, per rules.md 14
     find "$CONFIG_DIR/bandata" "$CONFIG_DIR/tools" -path "$ACL_BANDATA_PATH" \
@@ -2026,9 +2069,9 @@ EOF
     info "Apache configuration OK"
     systemctl restart apache2 || abort "cannot restart apache2 -abort"
 
-    info "Check Active Apache sites:"
     failure_message="cannot list enabled Apache sites"
-    a2query -s
+    active_sites=$(a2query -s | awk '{print $1}' | paste -sd ' ')
+    info "Active Apache sites: $active_sites"
 
     register_project_cron || abort "cannot write proxymon cron -abort"
 
@@ -2114,6 +2157,7 @@ secure_web_code() (
 do_update() {
     check_requirements update
     install_deps
+    install_apache2 update
     configure_locations
     [ -d "$WEB_ROOT" ] || abort "proxymon is not installed -abort"
     [ -f /etc/apache2/ports.conf ] && [ ! -L /etc/apache2/ports.conf ] \
@@ -2141,6 +2185,25 @@ do_update() {
     update_target /etc/logrotate.d/squid.bak
     update_target /etc/logrotate.d/squid
     update_target /etc/logrotate.d/proxymon
+    update_target /etc/logrotate.d/bandata
+    update_target /etc/logrotate.d/apache2
+    update_target /etc/logrotate.d/apache2.bak
+    for file in squidreports/weekly.cgi squidreports/ip2name/ip2name.dhcp; do
+        if [ -e "$WEB_ROOT/$file" ] || [ -L "$WEB_ROOT/$file" ]; then
+            update_target "$WEB_ROOT/$file"
+        fi
+    done
+    if [ "$SQUIDMON_CONFIG" = "$WEB_ROOT/squidmon/etc/config" ]; then
+        [ -f "$SQUIDMON_CONFIG" ] || update_error "source is not a file: config"
+        if [ -f "$CONFIG_DIR/squidmon/config" ] && [ ! -L "$CONFIG_DIR/squidmon/config" ]; then
+            cmp -s -- "$SQUIDMON_CONFIG" "$CONFIG_DIR/squidmon/config" \
+                || update_error "Squidmon settings differ at the migration destination"
+        fi
+        update_target "$SQUIDMON_CONFIG"
+        update_target "$proxymon_env"
+        update_target "$CONFIG_DIR/squidmon" d750 www-data:www-data
+        update_target "$CONFIG_DIR/squidmon/config" 600 www-data:www-data
+    fi
     update_target "$REPORT_PATH" d755 www-data:www-data
     update_target "$REPORT_STATS_PATH" d755 www-data:www-data
     update_target "$TOOL_REPORT_DIR" d755 root:root
@@ -2153,6 +2216,9 @@ do_update() {
     update_wait_jobs
     update_apply
     secure_web_code "$WEB_ROOT" 0 || update_error "cannot set web code permissions"
+    if [ "$SQUIDMON_CONFIG" = "$WEB_ROOT/squidmon/etc/config" ]; then
+        migrate_squidmon_config || update_error "cannot migrate Squidmon settings"
+    fi
     # Repair the ACL directory modes set by --install; lists are never rewritten
     acl_prepare "$ACL_PATH" 700 600
     acl_prepare "$ACL_SQUID_PATH" 755 644
@@ -2324,9 +2390,9 @@ do_uninstall() {
     systemctl daemon-reload || abort "cannot reload systemd configuration -abort"
     systemctl restart apache2 || abort "cannot restart apache2 -abort"
 
-    info "Remaining Apache sites:"
     failure_message="cannot list enabled Apache sites"
-    a2query -s
+    remaining_sites=$(a2query -s | awk '{print $1}' | paste -sd ' ')
+    info "Remaining Apache sites: $remaining_sites"
 
     info "Proxy Monitor uninstalled successfully"
     info "Restart to clear remaining temporary Bandata rules"

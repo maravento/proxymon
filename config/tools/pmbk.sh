@@ -179,6 +179,14 @@ fi
 # LOAD
 load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
 
+backup_dir="/etc/bak/proxymon"
+if ! grep -q "^BACKUP_DIR=" "$proxymon_env" \
+   || [[ "${BACKUP_DIR:-}" != "$backup_dir" ]] \
+   || [[ "$(readlink -m -- "$backup_dir")" != "$backup_dir" ]]; then
+    log "ERROR: BACKUP_DIR must be $backup_dir -abort"
+    exit 1
+fi
+
 # KEY CHECK
 key_errors=()
 for env_key in CONFIG_DIR WEB_ROOT REPORT_PATH REPORT_STATS_PATH SQUIDMON_CONFIG TOOL_REPORT_DIR LLM_ENV_FILE ACL_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH; do
@@ -186,6 +194,9 @@ for env_key in CONFIG_DIR WEB_ROOT REPORT_PATH REPORT_STATS_PATH SQUIDMON_CONFIG
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
+    elif [[ " CONFIG_DIR WEB_ROOT REPORT_PATH REPORT_STATS_PATH SQUIDMON_CONFIG TOOL_REPORT_DIR LLM_ENV_FILE ACL_PATH ACL_SQUID_PATH ACL_BANDATA_PATH ALLOW_LIST BLOCK_LIST_DAY BLOCK_LIST_WEEK BLOCK_LIST_MONTH " == *" $env_key "* ]] \
+         && [[ "${!env_key}" != /* || "${!env_key}" == / ]]; then
+        key_errors+=("$env_key invalid absolute path")
     fi
 done
 if (( ${#key_errors[@]} > 0 )); then
@@ -197,12 +208,6 @@ if (( ${#key_errors[@]} > 0 )); then
 fi
 unset key_errors key_error env_key
 
-backup_dir="/etc/bak/proxymon"
-if [[ "${BACKUP_DIR:-}" != "$backup_dir" ]] \
-   || [[ "$(readlink -m -- "$backup_dir")" != "$backup_dir" ]]; then
-    log "ERROR: BACKUP_DIR must be $backup_dir -abort"
-    exit 1
-fi
 backup_zip="${backup_dir}/pmbk_$(date +%Y%m%d_%H%M%S).zip"
 installed_path="$CONFIG_DIR/tools/$(basename "$0")"
 
@@ -325,14 +330,13 @@ if (
         exit 1
     fi
     # keep only the last 3
+    backup_pattern=".*/pmbk_[0-9]{8}_[0-9]{6}[.]zip"
     retention_ok=1
-    find "$backup_dir" -mindepth 1 -maxdepth 1 ! -name 'pmbk_*.zip' -exec rm -rf {} + \
-        || retention_ok=0
-    old_backups=("$backup_dir"/pmbk_*.zip)
-    if (( ${#old_backups[@]} > 3 )); then
-        printf '%s\0' "${old_backups[@]}" | sort -z | head -z -n -3 | xargs -0 -r rm -f -- \
-            || retention_ok=0
-    fi
+    find "$backup_dir" -mindepth 1 -maxdepth 1 -regextype posix-extended \
+        \( ! -type f -o ! -regex "$backup_pattern" \) -exec rm -rf -- {} + || retention_ok=0
+    find "$backup_dir" -mindepth 1 -maxdepth 1 -regextype posix-extended \
+        -type f -regex "$backup_pattern" -print0 |
+        sort -z | head -z -n -3 | xargs -0 -r rm -f -- || retention_ok=0
     (( retention_ok )) || log "WARNING: backup retention incomplete -alert"
 else
     zip_status=$?

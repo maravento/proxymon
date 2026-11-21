@@ -114,7 +114,7 @@ for ($i=1;$i<=12;$i++) {
 
 ## --
 
-@days=sort glob("$reportpath/$year$month*"); @days=reverse @days;
+@days=sort grep { -f "$_/.total" } glob("$reportpath/$year$month*"); @days=reverse @days;
 
 foreach $daypath (@days) {
     open FF,"<$daypath/.total" or MyDie("can't open file $daypath/.total<br>"); 
