@@ -723,19 +723,7 @@ function deniedRows(string $date, ?string $ip = null, ?array $report = null): Ge
         return;
     }
 
-    $rotated = glob(SQUID_LOG_DIR . '/access.log.*');
-    if ($rotated) {
-        // Only files without an additional extension (.gz is not readable directly via fopen)
-        $rotated = array_filter($rotated, fn($f) => preg_match('/access\.log\.\d+$/', $f));
-        usort($rotated, function($a, $b) {
-            $na = (int)preg_replace('/^.*\.(\d+)$/', '$1', $a);
-            $nb = (int)preg_replace('/^.*\.(\d+)$/', '$1', $b);
-            return $nb - $na; // descending suffix = ascending age
-        });
-    } else {
-        $rotated = [];
-    }
-    $logFiles = array_merge($rotated, [SQUID_LOG_FILE]);
+    $logFiles = [SQUID_LOG_FILE . '.1', SQUID_LOG_FILE];
 
     $logSources = 0;
     foreach ($logFiles as $logFile) {
@@ -890,22 +878,7 @@ function parseAccessLog(string $ip, string $date, bool $groupWww = true): array 
     $startTs    = strtotime($targetDate . ' 00:00:00');
     $endTs      = strtotime('+1 day', (int)$startTs);
 
-    // Possible logs: access.log, access.log.1, etc.
-    // Order chronologically (oldest first): higher .N suffix = older,
-    // and the active access.log (most recent) goes last. This makes the
-    // "already past target window" early-exit below safe across rotation.
-    $rotated = glob(SQUID_LOG_DIR . '/access.log.*');
-    if ($rotated) {
-        $rotated = array_filter($rotated, fn($f) => preg_match('/access\.log\.\d+$/', $f));
-        usort($rotated, function($a, $b) {
-            $na = (int)preg_replace('/^.*\.(\d+)$/', '$1', $a);
-            $nb = (int)preg_replace('/^.*\.(\d+)$/', '$1', $b);
-            return $nb - $na; // descending suffix = ascending age
-        });
-    } else {
-        $rotated = [];
-    }
-    $logFiles = array_merge($rotated, [SQUID_LOG_FILE]);
+    $logFiles = [SQUID_LOG_FILE . '.1', SQUID_LOG_FILE];
 
     foreach ($logFiles as $logFile) {
         if (!file_exists($logFile)) continue;

@@ -4,7 +4,10 @@
 # config.cgi
 use strict;
 use warnings;
+use Cwd qw(abs_path);
 use File::Basename ();
+use File::Temp qw(tempfile);
+use IO::Handle ();
 
 our ($module_name, %text, %config, %in, $config_file, %config_defaults);
 
@@ -72,22 +75,28 @@ if (defined $in{'action'} && $in{'action'} eq 'save') {
         'refresh_interval' => int($in{'refresh_interval'}) || $config_defaults{'refresh_interval'}
     );
 
-    # Write config file
-    if (open(my $fh, '>', $config_file)) {
-        foreach my $key (sort keys %config) {
-            if ($key eq 'acl_list') {
-                my $acl_value = $config{$key};
-                $acl_value =~ s/\r?\n/\\n/g;
-                print $fh "$key=$acl_value\n";
-            } else {
-                print $fh "$key=$config{$key}\n";
-            }
+    my $path = -l $config_file ? abs_path($config_file) : $config_file;
+    my $stage;
+    my $saved = eval {
+        die "Invalid configuration path" unless defined($path) && (!-e $path || -f $path);
+        my $mode = -f $path ? ((stat($path))[2] & 0777) : 0600;
+        my ($fh, $temp) = tempfile('.squidmon-XXXXXX', DIR => File::Basename::dirname($path));
+        $stage = $temp;
+        for my $key (sort keys %config) {
+            my $value = $config{$key};
+            $value =~ s/\r?\n/\\n/g if $key eq 'acl_list';
+            print {$fh} "$key=$value\n" or die "Cannot write configuration";
         }
-        close($fh);
+        $fh->flush() && $fh->sync() && close($fh) or die "Cannot finish writing configuration";
+        chmod($mode, $stage) && rename($stage, $path) or die "Cannot publish configuration";
+        1;
+    };
+    if ($saved) {
         $message = 'Configuration saved successfully!';
         $message_type = 'success';
     } else {
-        $message = 'Error saving configuration. Check file permissions.';
+        unlink $stage if defined $stage;
+        $message = 'Error saving configuration: disk write failed.';
         $message_type = 'error';
     }
     }

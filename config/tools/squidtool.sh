@@ -78,9 +78,13 @@ fi
 # VARIABLES
 # ------------------------------------------------------------------------------
 
-# validation -one variable per thing validated; use directly with =~
+# validation - one variable per thing validated; use directly with =~
 UH_IPV4='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])$'
 UH_UINT='^(0|[1-9][0-9]*)$'
+# validation - signed integer only; use directly with =~
+UH_SINT='^(0|-?[1-9][0-9]*)$'
+UH_MAX=9223372036854775807
+UH_MIN=-9223372036854775808
 
 proxymon_env="/etc/proxymon/proxymon.env"
 
@@ -98,10 +102,78 @@ ask_ip() {
     printf '%s' "$ip_answer"
 }
 
+# validation - integer is representable as a signed 64-bit value
+uh_fits() {
+    local value="${1-}" limit
+    [[ "$value" =~ $UH_SINT ]] || return 1
+    if [[ "${value:0:1}" == - ]]; then
+        limit="${UH_MIN#-}"
+        value="${value#-}"
+    else
+        limit="$UH_MAX"
+    fi
+    (( ${#value} < ${#limit} )) && return 0
+    (( ${#value} > ${#limit} )) && return 1
+    [[ "$value" > "$limit" ]] && return 1
+    return 0
+}
+
+# calculation - checked signed 64-bit arithmetic, no external process
+uh_calc() {
+    local op="${1-}" a="${2-}" b="${3-}" product
+    [ "$#" -eq 3 ] || return 1
+    uh_fits "$a" || return 1
+    uh_fits "$b" || return 1
+    case "$op" in
+        add)
+            (( b > 0 && a > UH_MAX - b )) && return 1
+            (( b < 0 && a < UH_MIN - b )) && return 1
+            printf '%s\n' "$(( a + b ))"
+            ;;
+        sub)
+            (( b < 0 && a > UH_MAX + b )) && return 1
+            (( b > 0 && a < UH_MIN + b )) && return 1
+            printf '%s\n' "$(( a - b ))"
+            ;;
+        mul)
+            if (( a == 0 || b == 0 )); then
+                printf '%s\n' 0
+                return 0
+            fi
+            if (( b == -1 )); then
+                (( a == UH_MIN )) && return 1
+                printf '%s\n' "$(( -a ))"
+                return 0
+            fi
+            if (( a == -1 )); then
+                (( b == UH_MIN )) && return 1
+                printf '%s\n' "$(( -b ))"
+                return 0
+            fi
+            product=$(( a * b ))
+            (( product / b != a )) && return 1
+            printf '%s\n' "$product"
+            ;;
+        div)
+            (( b == 0 )) && return 1
+            (( a == UH_MIN && b == -1 )) && return 1
+            printf '%s\n' "$(( a / b ))"
+            ;;
+        mod)
+            (( b == 0 )) && return 1
+            printf '%s\n' "$(( a % b ))"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
 # Prints the epoch before which entries are ignored, or 0 for no limit.
 # $1 is the default shown to the user: a number of hours, or "all".
 ask_cutoff() {
-    local default_hours="$1" hours_answer now_epoch
+    local default_hours="$1" hours_answer now_epoch hours_seconds cutoff_epoch
     if [ "$default_hours" = "all" ]; then
         read -r -p "Hours to analyze, e.g. 24, 48, 72 (enter for all history): " hours_answer
         [ -z "$hours_answer" ] && { printf '0'; return 0; }
@@ -121,7 +193,12 @@ ask_cutoff() {
     # The epoch is read in an assignment, because arithmetic would turn a
     # failing date into a zero and yield a negative cutoff with success.
     now_epoch=$(date +%s) || return 1
-    printf '%s' "$(( now_epoch - hours_answer * 3600 ))"
+    if ! hours_seconds=$(uh_calc mul "$hours_answer" 3600) \
+        || ! cutoff_epoch=$(uh_calc sub "$now_epoch" "$hours_seconds"); then
+        log "WARNING: hours '$hours_answer' out of range -fallback" >&2
+        cutoff_epoch=$(( now_epoch - 72 * 3600 ))
+    fi
+    printf '%s' "$cutoff_epoch"
 }
 
 cutoff_label() {
@@ -211,18 +288,25 @@ EOF
 
 # Leaves the report readable by the panel and prints where to open it
 publish_report() {
-    local report_file="$1" server_ip
-    if ! chown root:root "$report_file"; then
+    local report_tmp="$1" report_file="$2" server_ip
+    if ! chown root:root "$report_tmp"; then
+        rm -f -- "$report_tmp"
         log "ERROR: cannot set owner and group: $(basename "$report_file") -abort"
         exit 1
     fi
-    if ! chmod 644 "$report_file"; then
+    if ! chmod 644 "$report_tmp"; then
+        rm -f -- "$report_tmp"
         log "ERROR: cannot set $(basename "$report_file") permissions -abort"
         exit 1
     fi
-    server_ip=$(grep -oP "^Listen \K[0-9.]+(?=:${panel_port})" /etc/apache2/ports.conf 2>/dev/null | head -1)
+    if ! mv -fT -- "$report_tmp" "$report_file"; then
+        rm -f -- "$report_tmp"
+        log "ERROR: cannot publish $(basename "$report_file") -abort"
+        exit 1
+    fi
+    server_ip=$(grep -oP "^Listen \K[0-9.]+(?=:${PANEL_PORT})" /etc/apache2/ports.conf 2>/dev/null | head -1)
     server_ip="${server_ip:-localhost}"
-    echo "Report: http://${server_ip}:${panel_port}/proxymon/squidtool/$(basename "$report_file")"
+    echo "Report: http://${server_ip}:${PANEL_PORT}/proxymon/squidtool/$(basename "$report_file")"
     echo "File  : $report_file"
 }
 
@@ -238,7 +322,7 @@ report_traffic() {
 
     log "INFO: traffic report -- ip=${target_ip:-all} cutoff=$cutoff"
 
-    if ! rows=$(zcat -f "$squid_log_file"* | awk -v cutoff="$cutoff" -v ip="$target_ip" '
+    if ! rows=$(zcat -f "$SQUID_LOG_FILE"* | awk -v cutoff="$cutoff" -v ip="$target_ip" '
         $1 > cutoff {
             if (ip != "" && $3 != ip) next
             if (match($7, /https?:\/\/[^\/]+/)) {
@@ -255,7 +339,7 @@ report_traffic() {
     if [ -n "$target_ip" ]; then
         rows=$(printf '%s\n' "$rows" | awk 'NF >= 3')
     else
-        rows=$(printf '%s\n' "$rows" | awk -v min="$min_hits" 'NF >= 3 && $1 + 0 >= min')
+        rows=$(printf '%s\n' "$rows" | awk -v min="$SQUIDTOOL_MIN_HITS" 'NF >= 3 && $1 + 0 >= min')
     fi
     # fi carries the status of the branch that ran, so one test covers both.
     filter_rc=$?
@@ -269,7 +353,7 @@ report_traffic() {
         exit 1
     fi
     if ! alert_count=$(printf '%s\n' "$rows" |
-        awk -v th="$alert_threshold" 'NF >= 3 && $1 + 0 >= th' | count_lines); then
+        awk -v th="$SQUIDTOOL_ALERT_THRESHOLD" 'NF >= 3 && $1 + 0 >= th' | count_lines); then
         log "ERROR: cannot count traffic alerts -abort"
         exit 1
     fi
@@ -278,6 +362,8 @@ report_traffic() {
     # status is read on the next line, because bash would disable set -e if the
     # subshell hung from a || list. The period is resolved before the block,
     # since set -e ignores a failing substitution used as an argument.
+    report_tmp=$(mktemp "$TOOL_REPORT_DIR/.squid_traffic.XXXXXX") || {
+        log "ERROR: cannot create temporary report -abort"; exit 1; }
     (
         set -e
         period_label=$(cutoff_label "$cutoff")
@@ -287,28 +373,29 @@ report_traffic() {
         echo "<div class='metric'><span class='metric-name'>Period</span><span class='metric-value'>${period_label}</span></div>"
         echo "<div class='metric'><span class='metric-name'>Rows</span><span class='metric-value'>${row_count}</span></div>"
         if [ "$alert_count" -gt 0 ]; then
-            echo "<div class='metric'><span class='metric-name'>Above ${alert_threshold} requests</span><span class='metric-value alert'>${alert_count}</span></div>"
+            echo "<div class='metric'><span class='metric-name'>Above ${SQUIDTOOL_ALERT_THRESHOLD} requests</span><span class='metric-value alert'>${alert_count}</span></div>"
         fi
         echo "</div>"
         if [ "$row_count" -eq 0 ]; then
             echo "<p>No requests found for selected period.</p>"
         else
             echo "<table><tr><th>Requests</th><th>IP</th><th>Domain</th></tr>"
-            printf '%s\n' "$rows" | html_escape | awk -v th="$alert_threshold" 'NF >= 3 {
+            printf '%s\n' "$rows" | html_escape | awk -v th="$SQUIDTOOL_ALERT_THRESHOLD" 'NF >= 3 {
                 printf "<tr><td%s>%s</td><td>%s</td><td>%s</td></tr>\n", ($1 + 0 >= th ? " class=\"alert\"" : ""), $1, $2, $3
             }'
             echo "</table>"
         fi
         html_close
-    ) > "$traffic_html"
+    ) > "$report_tmp"
     block_rc=$?
     if [ "$block_rc" -ne 0 ]; then
+        rm -f -- "$report_tmp"
         log "ERROR: cannot write $(basename "$traffic_html") -abort"
         exit 1
     fi
 
     log "INFO: traffic rows=$row_count alerts=$alert_count"
-    publish_report "$traffic_html"
+    publish_report "$report_tmp" "$traffic_html"
 }
 
 # SEARCH
@@ -331,7 +418,7 @@ report_search() {
     log "INFO: search '$search_term' -- ip=${target_ip:-all} cutoff=$cutoff"
 
     if ! access_hits=$(
-        zcat -f "$squid_log_file"* \
+        zcat -f "$SQUID_LOG_FILE"* \
             | awk -v cutoff="$cutoff" -v ip="$target_ip" '$1 > cutoff { if (ip == "" || $3 == ip) print }' \
             | grep -a -i -F -- "$search_term" \
             | perl -pe 's/^(\d+\.\d+)/localtime($1)/e'
@@ -370,6 +457,8 @@ report_search() {
     # status is read on the next line, because bash would disable set -e if the
     # subshell hung from a || list. The term and the period are resolved before
     # the block, since set -e ignores a failing substitution used as an argument.
+    report_tmp=$(mktemp "$TOOL_REPORT_DIR/.squid_search.XXXXXX") || {
+        log "ERROR: cannot create temporary report -abort"; exit 1; }
     (
         set -e
         term_label=$(printf '%s' "$search_term" | html_escape)
@@ -399,15 +488,16 @@ report_search() {
             echo "</pre>"
         fi
         html_close
-    ) > "$search_html"
+    ) > "$report_tmp"
     block_rc=$?
     if [ "$block_rc" -ne 0 ]; then
+        rm -f -- "$report_tmp"
         log "ERROR: cannot write $(basename "$search_html") -abort"
         exit 1
     fi
 
     log "INFO: search access=$access_count cache=$cache_count"
-    publish_report "$search_html"
+    publish_report "$report_tmp" "$search_html"
 }
 
 # ------------------------------------------------------------------------------
@@ -447,10 +537,8 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/proxymonenv.sh"
 # Reads proxymon.env and derives the report paths from its values.
 # A file that cannot be read aborts the run here.
 load_proxymon_env "$proxymon_env" || { log "ERROR: cannot load proxymon.env -abort"; exit 1; }
-report_dir="${TOOL_REPORT_DIR:-}"
-traffic_html="$report_dir/squid_traffic.html"
-search_html="$report_dir/squid_search.html"
-panel_port="${PANEL_PORT:-}"
+traffic_html="$TOOL_REPORT_DIR/squid_traffic.html"
+search_html="$TOOL_REPORT_DIR/squid_search.html"
 
 # KEY CHECK
 # Collect every failure first, then decide -- a single abort reports them all
@@ -460,6 +548,9 @@ for env_key in SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR PANEL_PORT SQUIDTOOL
         key_errors+=("$env_key missing line")
     elif [[ -z "${!env_key:-}" ]]; then
         key_errors+=("$env_key not set")
+    elif [[ " SQUID_LOG_DIR SQUID_LOG_FILE TOOL_REPORT_DIR " == *" $env_key "* ]] \
+         && [[ "${!env_key}" != /* || "${!env_key}" == / ]]; then
+        key_errors+=("$env_key invalid absolute path")
     elif [[ "$env_key" == SQUIDTOOL_MIN_HITS || "$env_key" == SQUIDTOOL_ALERT_THRESHOLD ]] \
          && ! [[ "${!env_key}" =~ $UH_UINT ]]; then
         key_errors+=("$env_key invalid integer")
@@ -475,12 +566,8 @@ if (( ${#key_errors[@]} > 0 )); then
     exit 1
 fi
 unset key_errors key_error env_key checked_port
-min_hits="$SQUIDTOOL_MIN_HITS"
-alert_threshold="$SQUIDTOOL_ALERT_THRESHOLD"
 
-squid_log_dir="$SQUID_LOG_DIR"
-squid_log_file="$SQUID_LOG_FILE"
-cache_log_file="$squid_log_dir/cache.log"
+cache_log_file="$SQUID_LOG_DIR/cache.log"
 
 # ------------------------------------------------------------------------------
 # REPORT PATHS
@@ -490,15 +577,15 @@ cache_log_file="$squid_log_dir/cache.log"
 # Root owns the whole chain down to the reports, so nothing else can swap a
 # path for a symlink while this script writes. Apache serves them through
 # an Alias in proxymon.conf and only needs read access.
-if ! mkdir -p "$report_dir"; then
-    log "ERROR: cannot create $report_dir -abort"
+if ! mkdir -p "$TOOL_REPORT_DIR"; then
+    log "ERROR: cannot create $TOOL_REPORT_DIR -abort"
     exit 1
 fi
-if ! chown root:root "$report_dir"; then
+if ! chown root:root "$TOOL_REPORT_DIR"; then
     log "ERROR: TOOL_REPORT_DIR: cannot set owner/group -abort"
     exit 1
 fi
-if ! chmod 755 "$report_dir"; then
+if ! chmod 755 "$TOOL_REPORT_DIR"; then
     log "ERROR: TOOL_REPORT_DIR: cannot set permissions -abort"
     exit 1
 fi
@@ -506,8 +593,8 @@ fi
 # ACCESS LOG
 # Every report below reads this file, so a path that no longer matches the
 # filesystem produces an empty report instead of an error.
-if ! ls "$squid_log_file"* >/dev/null 2>&1; then
-    log "ERROR: access log not found in $squid_log_dir -abort"
+if ! ls "$SQUID_LOG_FILE"* >/dev/null 2>&1; then
+    log "ERROR: access log not found in $SQUID_LOG_DIR -abort"
     exit 1
 fi
 

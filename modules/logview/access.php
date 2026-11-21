@@ -629,7 +629,7 @@ function poll() {
   fetch('api.php?since=' + fileOffset + '&fileid=' + encodeURIComponent(fileId))
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if (pollVersion !== viewVersion) return;
+      if (pollVersion !== viewVersion || !liveOn) return;
       if (typeof data.offset === 'number') fileOffset = data.offset;
       if (data.file_id) fileId = data.file_id;
 

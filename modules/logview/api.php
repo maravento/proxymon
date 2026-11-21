@@ -198,7 +198,7 @@ if (isset($_GET['since'])) {
         $rotated = true;
     }
     if ($file_size === 0) {
-        echo json_encode(['rows' => [], 'offset' => 0, 'rotated' => true, 'file_id' => $file_id], JSON_INVALID_UTF8_SUBSTITUTE);
+        echo json_encode(['rows' => [], 'offset' => 0, 'rotated' => isset($rotated), 'file_id' => $file_id], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
     $fh = fopen(LOG_FILE, 'rb');
@@ -273,7 +273,7 @@ if ($last_nl !== false) {
     $buf = '';
 }
 
-$all_lines = explode("\n", $buf);
+$all_lines = ($buf === '') ? [] : explode("\n", $buf);
 // Keep the last N complete lines. The partial line at the head of the buffer
 // was already dropped above, so no extra slot is needed here.
 $last = array_slice($all_lines, -$lines_req);

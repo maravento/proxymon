@@ -52,7 +52,7 @@ FILE: README.md
       <ul>
         <li>At least one interface must have an UP link and configured global IPv4.</li>
         <li>Internet access is required when installing or updating packages and downloading components.</li>
-        <li>The selected LAN IPv4 must be static and persistent.</li>
+        <li>Configure a persistent static IPv4 for the LAN. The installer checks the active address and rejects it if Linux marks it as dynamic.</li>
       </ul>
       <p>The operation continues if the applicable requirements above are met; otherwise, it aborts.</p>
     </td>
@@ -61,7 +61,7 @@ FILE: README.md
       <ul>
         <li>Al menos una interfaz debe tener enlace UP e IPv4 global configurada.</li>
         <li>Se requiere Internet para instalar o actualizar paquetes y descargar componentes.</li>
-        <li>La IPv4 LAN seleccionada debe ser estática y persistente.</li>
+        <li>Configure una IPv4 estática y persistente para la LAN. El instalador comprueba la dirección activa y la rechaza si Linux la marca como dinámica.</li>
       </ul>
       <p>La operación continúa si se cumplen los requisitos anteriores que correspondan; de lo contrario, aborta.</p>
     </td>
@@ -85,10 +85,10 @@ FILE: README.md
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> installs Apache and PHP when they are missing. <code>--install</code> and <code>--update</code> also install every missing package the project needs. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• The installer installs missing supporting packages listed below.<br><br>• The Squid, PHP and Apache blocks below are optional tuning, not prerequisites.</p>
+      <p>• <code>pmsetup.sh</code> installs Apache and PHP when they are missing. <code>--install</code> and <code>--update</code> also install every missing package the project needs. It also installs <code>squid-openssl</code>, the flavour that supports SSL bump, when no Squid is present.<br><br>• An existing Squid is left untouched, including its <code>squid.conf</code>. Only a Squid installed by the installer receives the bundled template.<br><br>• The installer sets weekly rotation in <code>/etc/logrotate.d/squid</code> in both cases. It also sets <code>rotate 7</code> in <code>/etc/logrotate.d/apache2</code>, backing it up first.<br><br>• The installer installs missing supporting packages listed below.<br><br>• The table after the list shows the PHP and Apache settings the installer applies.</p>
     </td>
     <td style="width: 50%; vertical-align: top;">
-      <p>• <code>pmsetup.sh</code> instala Apache y PHP cuando faltan. <code>--install</code> y <code>--update</code> también instalan todos los paquetes que falten al proyecto. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• El instalador instala los paquetes auxiliares que falten de la lista siguiente.<br><br>• Los bloques de Squid, PHP y Apache de abajo son ajustes opcionales, no requisitos.</p>
+      <p>• <code>pmsetup.sh</code> instala Apache y PHP cuando faltan. <code>--install</code> y <code>--update</code> también instalan todos los paquetes que falten al proyecto. También instala <code>squid-openssl</code>, la variante que admite SSL bump, cuando no hay ningún Squid presente.<br><br>• Un Squid existente no se modifica, tampoco su <code>squid.conf</code>. Solo un Squid instalado por el instalador recibe la plantilla incluida.<br><br>• El instalador fija la rotación semanal en <code>/etc/logrotate.d/squid</code> en ambos casos. También fija <code>rotate 7</code> en <code>/etc/logrotate.d/apache2</code>, con respaldo previo.<br><br>• El instalador instala los paquetes auxiliares que falten de la lista siguiente.<br><br>• La tabla posterior a la lista muestra los ajustes de PHP y Apache que aplica el instalador.</p>
     </td>
   </tr>
 </table>
@@ -100,76 +100,14 @@ apt install -y wget curl git zip unzip ipset nbtscan libcgi-pm-perl libgd-perl l
                 perl python3 python3-yaml cron sudo util-linux iproute2 passwd findutils sed \
                 grep hostname ncurses-bin systemd libc-bin iptables \
                 gzip procps logrotate diffutils
-
-# squid
-apt install -y squid-openssl squid-langpack squid-common squidclient squid-purge
-mkdir -p /var/log/squid &>/dev/null
-touch /var/log/squid/{access,cache,store,deny}.log &>/dev/null
-chown proxy:proxy /var/log/squid/*.log
-chmod 640 /var/log/squid/*.log
-for cache_type in rock ufs; do
-    mkdir -p /var/spool/squid/${cache_type} 2>/dev/null
-done
-chown -R proxy:proxy /var/spool/squid
-chmod -R 700 /var/spool/squid
-usermod -aG proxy www-data
-systemctl enable squid.service
-squid -z
-cp -f /etc/logrotate.d/squid{,.bak} &>/dev/null
-sed -i '/sharedscripts/a \    create 0640 proxy proxy' /etc/logrotate.d/squid
-sed -i 's/rotate 2/rotate 7/' /etc/logrotate.d/squid
-sed -i -E 's/^([[:space:]]*)(hourly|daily|monthly|yearly)$/\1weekly/' /etc/logrotate.d/squid
-
-# php
-apt install -y php libapache2-mod-php php-cli php-curl
-# Detect PHP version
-if command -v php &>/dev/null; then
-    PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null)
-    echo "PHP version detected: $PHP_VERSION"
-else
-    echo "Error: PHP not installed"
-    exit 1
-fi
-# Ensure php.ini exists for Apache
-if [ ! -f /etc/php/$PHP_VERSION/apache2/php.ini ]; then
-    if [ -f /etc/php/$PHP_VERSION/cli/php.ini ]; then
-        mkdir -p /etc/php/$PHP_VERSION/apache2
-        cp /etc/php/$PHP_VERSION/cli/php.ini /etc/php/$PHP_VERSION/apache2/php.ini
-        echo "php.ini copied to /etc/php/$PHP_VERSION/apache2/"
-    else
-        echo "Error: php.ini not found"
-        exit 1
-    fi
-fi
-cp -f /etc/php/$PHP_VERSION/apache2/php.ini{,.bak} &>/dev/null
-sed -i \
-  -e 's/^\s*;*\s*max_execution_time\s*=.*/max_execution_time = 120/' \
-  -e 's/^\s*max_input_time\s*=.*/max_input_time = 120/' \
-  -e 's/^;\s*max_input_time\s*=.*/max_input_time = 120/' \
-  -e 's/^\s*memory_limit\s*=.*/memory_limit = 1024M/' \
-  -e 's/^\s*post_max_size\s*=.*/post_max_size = 72M/' \
-  -e 's/^\s*upload_max_filesize\s*=.*/upload_max_filesize = 64M/' \
-  -e 's/^\s*;*\s*opcache.memory_consumption\s*=.*/opcache.memory_consumption = 256/' \
-  -e 's/^\s*;*\s*realpath_cache_size\s*=.*/realpath_cache_size = 16M/' \
-  /etc/php/$PHP_VERSION/apache2/php.ini
-
-# apache
-apt install -y apache2 apache2-bin apache2-data apache2-doc apache2-utils
-apt install -y --reinstall apache2-doc
-systemctl enable apache2.service
-cp -f /etc/apache2/mods-available/mpm_prefork.conf{,.bak} &>/dev/null
-sed -i \
-  -e 's/^\(StartServers[[:space:]]*\)5/\110/' \
-  -e 's/^\(MinSpareServers[[:space:]]*\)5/\110/' \
-  -e 's/^\(MaxSpareServers[[:space:]]*\)10/\115/' \
-  -e 's/^\(MaxRequestWorkers[[:space:]]*\)150/\1200/' \
-  -e 's/^\(MaxConnectionsPerChild[[:space:]]*\)0/\11000/' \
-  /etc/apache2/mods-available/mpm_prefork.conf
-# Enable modules
-a2dismod -q mpm_event || true
-a2enmod -q mpm_prefork || true
-a2enmod -q php || true
 ```
+
+| Setting | Value | Description | Descripción |
+| ------- | ----- | ----------- | ----------- |
+| `php.ini` (Apache) | `max_execution_time = 120`, `max_input_time = 120`, `memory_limit = 1024M`, `post_max_size = 72M`, `upload_max_filesize = 64M`, `opcache.memory_consumption = 256`, `realpath_cache_size = 16M` | Limits for long reports and queries; a `.bak` is saved first | Límites para informes y consultas largas; antes se guarda un `.bak` |
+| `mpm_prefork.conf` | `StartServers 10`, `MinSpareServers 10`, `MaxSpareServers 15`, `MaxRequestWorkers 200`, `MaxConnectionsPerChild 1000` | Apache worker pool; a `.bak` is saved first | Procesos de Apache; antes se guarda un `.bak` |
+| Apache modules | `mpm_prefork` and `php` enabled, `mpm_event` disabled | Modules PHP needs under Apache | Módulos que PHP necesita en Apache |
+| `/etc/logrotate.d/squid` | `weekly`, `rotate 7`, `create 0640 proxy proxy` | Squid log rotation; a `.bak` is saved first | Rotación del log de Squid; antes se guarda un `.bak` |
 
 ## REPOSITORY STRUCTURE
 
@@ -302,11 +240,19 @@ sudo bash pmsetup.sh --help   # or -h
 
 | Command | Description | Descripción |
 | --- | --- | --- |
-| `sudo ./pmsetup.sh` | Opens the interactive menu with options to install, update, uninstall or exit. | Abre el menú interactivo con opciones para instalar, actualizar, desinstalar o salir. |
-| `sudo ./pmsetup.sh --install` | Installs and configures Proxy Monitor, including Apache rules, `proxymon.env`, ACL lists, Apache and PHP settings, and scheduled tasks. Stops if the configured `WEB_ROOT` already exists; use `--update` or `--uninstall` in that case. | Instala y configura Proxy Monitor, incluidas las reglas de Apache, `proxymon.env`, las listas ACL, los ajustes de Apache y PHP y las tareas programadas. Se detiene si el directorio configurado en `WEB_ROOT` ya existe; en ese caso, use `--update` o `--uninstall`. |
-| `sudo ./pmsetup.sh --update` | Updates code and permissions without prompting for input. Preserves configuration and operational data. | Actualiza el código y los permisos sin solicitar datos. Conserva la configuración y los datos de operación. |
-| `sudo ./pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. It removes the project only and never uninstalls APT packages: other projects and the system may share them. `apache2.conf`, `conf-available/security.conf` and `mods-available/mpm_prefork.conf` are kept as they are; to go back to the originals, copy each `.bak` over its file (`sudo cp -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf`, same for the other two) and restart Apache. | Solicita confirmación antes de desinstalar Proxy Monitor. Elimina solo el proyecto y nunca desinstala paquetes APT, porque otros proyectos y el sistema pueden compartirlos. `apache2.conf`, `conf-available/security.conf` y `mods-available/mpm_prefork.conf` se conservan tal como están; para volver a los originales, copia cada `.bak` sobre su archivo (`sudo cp -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf`, igual con los otros dos) y reinicia Apache. |
-| `sudo ./pmsetup.sh -h` / `sudo ./pmsetup.sh --help` | Displays help with the available installer options. | Muestra la ayuda con las opciones disponibles del instalador. |
+| `sudo bash pmsetup.sh` | Opens the interactive menu with options to install, update, uninstall or exit. | Abre el menú interactivo con opciones para instalar, actualizar, desinstalar o salir. |
+| `sudo bash pmsetup.sh --install` | Installs and configures Proxy Monitor, including Apache rules, `proxymon.env`, ACL lists, Apache and PHP settings, and scheduled tasks. Stops if the configured `WEB_ROOT` already exists; use `--update` or `--uninstall` in that case. | Instala y configura Proxy Monitor, incluidas las reglas de Apache, `proxymon.env`, las listas ACL, los ajustes de Apache y PHP y las tareas programadas. Se detiene si el directorio configurado en `WEB_ROOT` ya existe; en ese caso, use `--update` o `--uninstall`. |
+| `sudo bash pmsetup.sh --update` | Updates code and permissions without prompting for input. Preserves configuration and operational data. | Actualiza el código y los permisos sin solicitar datos. Conserva la configuración y los datos de operación. |
+| `sudo bash pmsetup.sh --uninstall` | Requests confirmation before uninstalling Proxy Monitor. It removes the project only and never uninstalls APT packages: other projects and the system may share them. `apache2.conf`, `conf-available/security.conf` and `mods-available/mpm_prefork.conf` are kept as they are; to go back to the originals, copy each `.bak` over its file (`sudo cp -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf`, same for the other two) and restart Apache. | Solicita confirmación antes de desinstalar Proxy Monitor. Elimina solo el proyecto y nunca desinstala paquetes APT, porque otros proyectos y el sistema pueden compartirlos. `apache2.conf`, `conf-available/security.conf` y `mods-available/mpm_prefork.conf` se conservan tal como están; para volver a los originales, copia cada `.bak` sobre su archivo (`sudo cp -f /etc/apache2/apache2.conf.bak /etc/apache2/apache2.conf`, igual con los otros dos) y reinicia Apache. |
+| `sudo bash pmsetup.sh -h` / `sudo bash pmsetup.sh --help` | Displays help with the available installer options. | Muestra la ayuda con las opciones disponibles del instalador. |
+
+> Before installing packages, Proxy Monitor lists existing files it will change. Enter or Yes accepts `[Y/n]` and saves adjacent `.bak` copies. No cancels the installation.
+>
+> Antes de instalar paquetes, Proxy Monitor enumera los archivos existentes que cambiará. Enter o Sí acepta `[Y/n]` y guarda copias `.bak` junto a los originales. No cancela la instalación.
+
+> For unattended installation, set `PROXYMON_CONFIRM_CONFIG_CHANGES=yes` only after approving changes to the existing Apache, PHP and logrotate configuration.
+>
+> Para instalar sin interacción, establece `PROXYMON_CONFIRM_CONFIG_CHANGES=yes` después de aprobar los cambios en la configuración existente de Apache, PHP y logrotate.
 
 > Traffic that bypasses Squid does not appear in its reports. The results in **Squidmon Search** and **Traffic Search** are examples. Actual results vary with your environment, the amount of log history, and the resources available to process ACLs.
 >
@@ -341,10 +287,10 @@ sudo bash pmsetup.sh --help   # or -h
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      Only interfaces with an UP link and global IPv4 are candidates. With none, abort; with one, select LAN automatically; with several, ask for LAN and omit the others. A caller can provide <code>PROXYMON_LAN</code>; validate it against the candidates and reuse it without asking for the interface. With several LAN IPv4 addresses, ask which to use unless <code>PROXYMON_SERVER_IP</code> supplies a configured address. Ask for <code>BANDATA_DNS</code>, the one or two resolvers that blocked clients may query, with no default; an unattended caller passes it in <code>PROXYMON_BANDATA_DNS</code>, or the install aborts. An existing <code>proxymon.env</code> is preserved without repeating network selection. Derive the network and mask from the selected address and its actual prefix. The installer does not configure network interfaces.
+      Only interfaces with an UP link and global IPv4 are candidates. With none, abort; with one, select LAN automatically; with several, ask for LAN and omit the others. A caller can provide <code>PROXYMON_LAN</code>; validate it against the candidates and reuse it without asking for the interface. With several LAN IPv4 addresses, ask which to use unless <code>PROXYMON_SERVER_IP</code> supplies a configured address. Ask for <code>BANDATA_DNS</code>, the one or two resolvers that blocked clients may query, with no default; an unattended caller passes it in <code>PROXYMON_BANDATA_DNS</code>, or the install aborts. If <code>proxymon.env</code> already exists, the installer preserves its values. The installation still checks the LAN and IPv4 selection. Derive the network and mask from the selected address and its actual prefix. The installer does not configure network interfaces.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      Solo son candidatas las interfaces con enlace UP e IPv4 global. Sin candidatas, aborta; con una, selecciona LAN automáticamente; con varias, pregunta LAN y omite las demás. Otro instalador puede proporcionar <code>PROXYMON_LAN</code>; se valida contra las candidatas y se reutiliza sin preguntar la interfaz. Con varias IPv4 en LAN, pregunta cuál utilizar salvo que <code>PROXYMON_SERVER_IP</code> indique una dirección configurada. Pregunta <code>BANDATA_DNS</code>, los uno o dos resolvers que pueden consultar los clientes bloqueados, sin valor por defecto; un instalador desatendido la pasa en <code>PROXYMON_BANDATA_DNS</code>, o la instalación aborta. Un <code>proxymon.env</code> existente se conserva sin repetir la selección de red. Calcula red y máscara desde la dirección seleccionada y su prefijo real. El instalador no configura las interfaces de red.
+      Solo son candidatas las interfaces con enlace UP e IPv4 global. Sin candidatas, aborta; con una, selecciona LAN automáticamente; con varias, pregunta LAN y omite las demás. Otro instalador puede proporcionar <code>PROXYMON_LAN</code>; se valida contra las candidatas y se reutiliza sin preguntar la interfaz. Con varias IPv4 en LAN, pregunta cuál utilizar salvo que <code>PROXYMON_SERVER_IP</code> indique una dirección configurada. Pregunta <code>BANDATA_DNS</code>, los uno o dos resolvers que pueden consultar los clientes bloqueados, sin valor por defecto; un instalador desatendido la pasa en <code>PROXYMON_BANDATA_DNS</code>, o la instalación aborta. Si <code>proxymon.env</code> ya existe, el instalador conserva sus valores. La instalación sigue comprobando la selección de LAN e IPv4. Calcula red y máscara desde la dirección seleccionada y su prefijo real. El instalador no configura las interfaces de red.
     </td>
   </tr>
 </table>
@@ -354,10 +300,10 @@ sudo bash pmsetup.sh --help   # or -h
 <table width="100%">
   <tr>
     <td style="width: 50%; vertical-align: top;">
-      • <code>update</code> updates the web content under <code>WEB_ROOT</code>, the root scripts under <code>CONFIG_DIR</code> and their permissions.<br><br>• Preserves PHP configuration, ACL lists and both configuration files (<code>proxymon.env</code> and the LLM <code>.env</code>) unchanged. Applies these values to Apache paths, Listen directives and the parser, Bandata and backup cron entries; retains other virtualhost directives.<br><br>• Creates a backup with <code>pmbk.sh</code> before stopping Apache, replaces the code and resumes Apache according to its recorded state.<br><br>• Application code and its directories are owned by <code>root</code>; preserved data and configuration retain their ownership.<br><br>• Repairs the owner and mode that <code>install</code> sets on the ACL directories (<code>ACL_PATH</code>, <code>ACL_SQUID_PATH</code>, <code>ACL_BANDATA_PATH</code>) and on their lists, without rewriting their content.<br><br>• Does not change the ownership or permissions of the shared <code>/var/www</code> directory.<br><br>• Rejects symbolic links in code directories and replaces code files without following destination links.<br><br>• The copy excludes the preserved files and directories listed below.
+      • <code>update</code> updates the web content under <code>WEB_ROOT</code>, the root scripts under <code>CONFIG_DIR</code> and their permissions.<br><br>• Preserves PHP configuration, ACL lists and the LLM <code>.env</code>. When Squidmon still uses the original default location, the installer copies its settings outside the web tree and updates only <code>SQUIDMON_CONFIG</code> in <code>proxymon.env</code>. Applies these values to Apache paths, Listen directives and the parser, Bandata and backup cron entries; retains other virtualhost directives.<br><br>• Creates a backup with <code>pmbk.sh</code> before stopping Apache, replaces the code and resumes Apache according to its recorded state.<br><br>• Application code and its directories are owned by <code>root</code>; preserved data and configuration retain their ownership.<br><br>• Repairs the owner and mode that <code>install</code> sets on the ACL directories (<code>ACL_PATH</code>, <code>ACL_SQUID_PATH</code>, <code>ACL_BANDATA_PATH</code>) and on their lists, without rewriting their content.<br><br>• Does not change the ownership or permissions of the shared <code>/var/www</code> directory.<br><br>• Rejects symbolic links in code directories and replaces code files without following destination links.<br><br>• The copy excludes the preserved files and directories listed below.
     </td>
     <td style="width: 50%; vertical-align: top;">
-      • <code>update</code> actualiza el contenido web de <code>WEB_ROOT</code>, los scripts ejecutados como root de <code>CONFIG_DIR</code> y sus permisos.<br><br>• Conserva la configuración de PHP, las listas ACL y ambos archivos de configuración (<code>proxymon.env</code> y <code>.env</code> del LLM) sin modificaciones. Aplica estos valores a las rutas de Apache, sus directivas Listen y las entradas de cron del parser, Bandata y copias; mantiene las demás directivas de los virtualhosts.<br><br>• Crea una copia de seguridad con <code>pmbk.sh</code> antes de detener Apache, reemplaza el código y reanuda Apache según su estado registrado.<br><br>• El código de la aplicación y sus directorios pertenecen a <code>root</code>; los datos y la configuración preservados conservan sus propietarios.<br><br>• Repara el propietario y los permisos que <code>install</code> fija en las carpetas ACL (<code>ACL_PATH</code>, <code>ACL_SQUID_PATH</code>, <code>ACL_BANDATA_PATH</code>) y en sus listas, sin reescribir su contenido.<br><br>• No cambia el propietario ni los permisos del directorio compartido <code>/var/www</code>.<br><br>• Rechaza enlaces simbólicos en directorios de código y reemplaza archivos de código sin seguir enlaces de destino.<br><br>• La copia excluye los archivos y directorios preservados que se enumeran a continuación.
+      • <code>update</code> actualiza el contenido web de <code>WEB_ROOT</code>, los scripts ejecutados como root de <code>CONFIG_DIR</code> y sus permisos.<br><br>• Conserva la configuración de PHP, las listas ACL y el <code>.env</code> del LLM. Si Squidmon aún usa la ubicación inicial, el instalador copia su configuración fuera del árbol web y actualiza solo <code>SQUIDMON_CONFIG</code> en <code>proxymon.env</code>. Aplica estos valores a las rutas de Apache, sus directivas Listen y las entradas de cron del parser, Bandata y copias; mantiene las demás directivas de los virtualhosts.<br><br>• Crea una copia de seguridad con <code>pmbk.sh</code> antes de detener Apache, reemplaza el código y reanuda Apache según su estado registrado.<br><br>• El código de la aplicación y sus directorios pertenecen a <code>root</code>; los datos y la configuración preservados conservan sus propietarios.<br><br>• Repara el propietario y los permisos que <code>install</code> fija en las carpetas ACL (<code>ACL_PATH</code>, <code>ACL_SQUID_PATH</code>, <code>ACL_BANDATA_PATH</code>) y en sus listas, sin reescribir su contenido.<br><br>• No cambia el propietario ni los permisos del directorio compartido <code>/var/www</code>.<br><br>• Rechaza enlaces simbólicos en directorios de código y reemplaza archivos de código sin seguir enlaces de destino.<br><br>• La copia excluye los archivos y directorios preservados que se enumeran a continuación.
     </td>
   </tr>
 </table>
@@ -366,11 +312,13 @@ sudo bash pmsetup.sh --help   # or -h
 | ---- | ------------ | ----------- |
 | `squidreports/report` | Daily Squidreports reports | Informes diarios de Squidreports |
 | `squidreports/reportstats` | Additional statistics; preserved by `update` and included in the `pmbk.sh` backup | Estadísticas adicionales; conservadas por `update` e incluidas en la copia de `pmbk.sh` |
+| `squidreports/domain-suffixes.txt` | Public Suffix List used to group sites by domain | Lista pública de sufijos usada para agrupar sitios por dominio |
 | `squidreports/realname.cfg` | Hostname mappings | Correspondencia entre IP y nombres de equipo |
 | `squidreports/skipuser.cfg` | Excluded users | Usuarios excluidos |
 | `squidreports/squidreports.cfg` | Squidreports configuration | Configuración de Squidreports |
 | `squidreports/group.cfg` | User groups | Grupos de usuarios |
-| `squidmon/etc/config` | Squidmon configuration file | Archivo de configuración de Squidmon |
+| `squidmon/etc/config` | Original Squidmon settings retained on disk | Configuración original de Squidmon conservada en disco |
+| `/etc/proxymon/squidmon/config` | Default live Squidmon settings | Configuración activa predeterminada de Squidmon |
 | `warning/warning.html` | Captive portal warning page | Página de aviso del portal cautivo |
 | `/etc/proxymon/bandata/acl` | Bandata quota lists | Listas de cuota de Bandata |
 
@@ -419,7 +367,7 @@ sudo bash pmsetup.sh --help   # or -h
 | `TOOL_REPORT_DIR` | `pmsetup.sh`, `squidtool.sh`, `pmbk.sh` | Directory for generated traffic and log-search HTML reports, served through Apache's Squidtool alias. | Directorio de informes HTML de tráfico y búsqueda, publicado mediante el alias Squidtool de Apache. |
 | `SQUIDTOOL_MIN_HITS` | `squidtool.sh` | Minimum requests per row in traffic reports without an IP filter. Default: `20`, written automatically without a prompt. Changing this default is not recommended. Reports for one IP show all rows. Accepts nonnegative integers without leading zeros. | Mínimo de solicitudes por fila en informes de tráfico sin filtro de IP. Valor inicial: `20`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Los informes de una IP muestran todas las filas. Acepta enteros no negativos sin ceros iniciales. |
 | `SQUIDTOOL_ALERT_THRESHOLD` | `squidtool.sh` | Request threshold for highlighting and counting traffic rows as alerts. Default: `300`, written automatically without a prompt. Changing this default is not recommended. Accepts nonnegative integers without leading zeros. | Umbral de solicitudes para resaltar y contar filas de tráfico como alertas. Valor inicial: `300`, escrito automáticamente sin preguntas. No se recomienda modificar este valor. Acepta enteros no negativos sin ceros iniciales. |
-| `SQUIDMON_CONFIG` | `pmsetup.sh`, Squidmon, `pmbk.sh` | Squidmon settings file. Its log source comes from `SQUID_LOG_FILE`. | Archivo de configuración de Squidmon. Su registro de origen proviene de `SQUID_LOG_FILE`. |
+| `SQUIDMON_CONFIG` | `pmsetup.sh`, Squidmon, `pmbk.sh` | Default: `$CONFIG_DIR/squidmon/config` (0600, `www-data:www-data`). Custom locations need a parent directory writable by the web service for atomic saves. Squidmon reads `SQUID_LOG_FILE`. | Valor inicial: `$CONFIG_DIR/squidmon/config` (0600, `www-data:www-data`). Las ubicaciones personalizadas requieren un directorio contenedor escribible por el servicio web para guardar de forma atómica. Squidmon lee `SQUID_LOG_FILE`. |
 | `LLM_ENV_FILE` | `pmsetup.sh`, `worker.php`, `pmbk.sh` | SquidAI credential file. Default: `/etc/proxymon/.env`. | Archivo de credenciales de SquidAI. Valor inicial: `/etc/proxymon/.env`. |
 | `REPORT_STATS_PATH` | `pmsetup.sh`, Squidreports, SquidAI, `pmbk.sh` | Additional Detail and Analyze statistics. Default: the original report directory followed by `stats`. Remains separate from Bandata's original reports. | Estadísticas adicionales de Detail y Analyze. Valor inicial: directorio de informes originales seguido de `stats`. Permanece separado de los informes originales utilizados por Bandata. |
 | `LAN` | `bandata.sh` | LAN interface the quota rules apply to | Interfaz LAN a la que se aplican las reglas de cuota |
@@ -495,12 +443,12 @@ sudo bash pmsetup.sh --help   # or -h
 | --- | --- | --- | --- |
 | Squidmon | `access.log`, supplemented by `access.log.1` when needed | `access.log`, completado con `access.log.1` cuando hace falta | Recent activity / Actividad reciente |
 | Logview | `access.log`, supplemented by `access.log.1` on initial load when needed; searches include both | `access.log`, completado con `access.log.1` en la carga inicial cuando hace falta; las búsquedas incluyen ambos | Recent activity and searches / Actividad reciente y búsquedas |
-| SquidAI | Squidreports reports, `access.log` and available uncompressed `access.log.N` files | Informes de Squidreports, `access.log` y archivos `access.log.N` disponibles sin comprimir | Available report history and uncompressed logs / Histórico disponible en informes y registros sin comprimir |
+| SquidAI | Squidreports reports, `access.log` and `access.log.1` | Informes de Squidreports, `access.log` y `access.log.1` | Available report history and uncompressed logs / Histórico disponible en informes y registros sin comprimir |
 | `squidtool.sh` | `access.log` and every rotated file | `access.log` y todos los rotados | Full retention / Retención completa |
 
-SquidAI uses the daily Squidreports `.denied` file for blocked domains, patterns, TLDs and direct IPv4 incidents. If the report is missing or empty, it reads the active and uncompressed rotated logs. Denied reports do not include byte counts.
+SquidAI uses the daily Squidreports `.denied` file for blocked domains, patterns, TLDs and direct IPv4 incidents. If the report is missing or empty, it reads the active log and its first rotation. Denied reports do not include byte counts.
 
-SquidAI usa el archivo diario `.denied` de Squidreports para consultar bloqueos por dominio, patrón, TLD y acceso directo a IPv4. Si el informe falta o está vacío, lee el registro activo y los rotados sin comprimir. Los informes de solicitudes denegadas no incluyen los bytes.
+SquidAI usa el archivo diario `.denied` de Squidreports para consultar bloqueos por dominio, patrón, TLD y acceso directo a IPv4. Si el informe falta o está vacío, lee el registro activo y su primera rotación. Los informes de solicitudes denegadas no incluyen los bytes.
 
 ### Modules
 
