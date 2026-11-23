@@ -32,6 +32,39 @@ if [ "$(id -u)" != "0" ]; then
 fi
 
 # error handling
+install_php_hardening() (
+    local conf_dir="${1%/*}/conf.d" target staged
+    [ -d "$conf_dir" ] || return 1
+    target="$conf_dir/99-project-php-hardening.ini"
+    staged=$(mktemp -- "$target.XXXXXXXX") || return 1
+    trap 'rm -f -- "$staged"' EXIT
+    cat > "$staged" <<'PHP_HARDENING' || return 1
+expose_php = Off
+display_errors = Off
+display_startup_errors = Off
+log_errors = On
+allow_url_include = Off
+enable_dl = Off
+session.use_strict_mode = 1
+session.use_only_cookies = 1
+session.cookie_httponly = 1
+session.upload_progress.enabled = 0
+file_uploads = Off
+upload_max_filesize = 2M
+post_max_size = 8M
+max_file_uploads = 20
+PHP_HARDENING
+    [ ! -L "$target" ] || return 1
+    if [ -e "$target" ]; then
+        [ -f "$target" ] || return 1
+        if cmp -s -- "$staged" "$target" && [ "$(stat -c %a -- "$target")" = 644 ]; then
+            return 0
+        fi
+        [ -f "$target.bak" ] || cp -p -- "$target" "$target.bak" || return 1
+    fi
+    chmod 0644 -- "$staged" && mv -fT -- "$staged" "$target"
+)
+
 report_failure() {
     local failure_text="$failure_message"
     failure_text+=" -abort"
@@ -2343,20 +2376,12 @@ do_install() {
       -e 's/^\s*max_input_time\s*=.*/max_input_time = 120/' \
       -e 's/^;\s*max_input_time\s*=.*/max_input_time = 120/' \
       -e 's/^\s*;*\s*memory_limit\s*=.*/memory_limit = 1024M/' \
-      -e 's/^\s*;*\s*post_max_size\s*=.*/post_max_size = 72M/' \
-      -e 's/^\s*;*\s*upload_max_filesize\s*=.*/upload_max_filesize = 64M/' \
       -e 's/^\s*;*\s*opcache.memory_consumption\s*=.*/opcache.memory_consumption = 256/' \
       -e 's/^\s*;*\s*realpath_cache_size\s*=.*/realpath_cache_size = 16M/' \
       -e 's/^\s*;*\s*allow_url_fopen\s*=.*/allow_url_fopen = Off/' \
-      -e 's/^\s*;*\s*expose_php\s*=.*/expose_php = Off/' \
-      -e 's/^\s*;*\s*display_errors\s*=.*/display_errors = Off/' \
-      -e 's/^\s*;*\s*display_startup_errors\s*=.*/display_startup_errors = Off/' \
-      -e 's/^\s*;*\s*log_errors\s*=.*/log_errors = On/' \
-      -e 's/^\s*;*\s*session\.upload_progress\.enabled\s*=.*/session.upload_progress.enabled = 0/' \
-      -e 's/^\s*;*\s*session.use_strict_mode\s*=.*/session.use_strict_mode = 1/' \
-      -e 's/^\s*;*\s*session.cookie_httponly\s*=.*/session.cookie_httponly = 1/' \
       -e 's/^\s*;*\s*session.cookie_samesite\s*=.*/session.cookie_samesite = Strict/' \
      /etc/php/$php_version/apache2/php.ini
+    install_php_hardening "/etc/php/$php_version/apache2/php.ini" || abort "cannot edit Apache php.ini -abort"
 
     # Hardening
     if [ -f /etc/apache2/conf-available/security.conf ]; then

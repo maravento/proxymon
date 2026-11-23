@@ -639,6 +639,7 @@ FILE: squidai/index.html
 
 // ── INTERFACE TEXTS (loaded from dataset.md in runtime) ────
 const LANG = (navigator.language || navigator.userLanguage || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+document.documentElement.lang = LANG;
 
 // ── SOURCE OF TRUTH: dataset.md ─────────────────────────────────
 // All business strings live ONLY in dataset.md
@@ -706,7 +707,7 @@ async function checkLLMStatus() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch('worker.php?action=llm_proxy', {
+    const res = await fetch(`worker.php?action=llm_proxy&lang=${LANG}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -1420,7 +1421,7 @@ async function loadUserReport(user, date) {
       `LISTA NEGRA (JSON):\n${JSON.stringify(blacklistData)}\n\n` +
       `Usuario: ${user.name} (${user.ip}) — Fecha: ${date}`;
 
-    conversationHistory.push({ role: 'user', parts: [{ text: `Full report for ${user.name} on ${date}` }] });
+    conversationHistory.push({ role: 'user', parts: [{ text: `${t.queryFullReport}: ${user.name}, ${date}` }] });
     trimHistory();
     const reply = await callLLM(systemPrompt, conversationHistory);
     conversationHistory.push({ role: 'model', parts: [{ text: reply }] });
@@ -2088,7 +2089,7 @@ function renderBlockTable(data, title, mode) {
   if (data.error) return `<p class="warn-line">⚠️ ${data.error}</p>`;
   const missingWarning = renderMissingListsWarning(data);
   const incidents = data.incidents || [];
-  if (!incidents.length) return missingWarning || `<p class="ok-line">✅ ${title}: no records today.</p>`;
+  if (!incidents.length) return missingWarning || `<p class="ok-line">✅ ${title}: ${t.noRecordsToday}</p>`;
 
   const count = data.incident_count ?? data.count ?? incidents.length;
   const nameLabel = t.labelName;
@@ -2103,7 +2104,7 @@ function renderBlockTable(data, title, mode) {
     }).join('');
     return `${missingWarning}<p>${title} <span style="color:var(--text-muted);font-size:12px">${t.recordCount(count)}</span></p>
       <table>
-        <thead><tr><th>IP</th><th class="name-cell">${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>Pattern</th></tr></thead>
+        <thead><tr><th>IP</th><th class="name-cell">${nameLabel}</th><th class="hits-cell">${hitsLabel}</th><th>${t.labelPattern}</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
@@ -2160,7 +2161,7 @@ async function callLLM(systemInstruction, history, attempt = 1) {
   let res;
   try {
     res = await fetch(
-      'worker.php?action=llm_proxy',
+      `worker.php?action=llm_proxy&lang=${LANG}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
     );
     } catch (networkErr) {
@@ -2226,7 +2227,7 @@ function formatAIReply(text) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--accent)">$1</code>')
-    .replace(/(⚠️\s*ALERTA:.+)/g, '<div class="alert-line">$1</div>')
+    .replace(/(⚠️\s*ALERTA?:.+)/g, '<div class="alert-line">$1</div>')
     .replace(/(✅.+)/g, '<div class="ok-line">$1</div>')
     .split('\n\n').map(p => {
       if (p.includes('|')) return convertTable(p);
