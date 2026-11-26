@@ -365,7 +365,7 @@ set_squid_logrotate() {
 
     # The file is replaced, not edited: edits pile up and depend on what the
     # package shipped. The previous file is kept as .bak in the same path.
-    if [ -f "$rotate_file" ]; then
+    if [ -f "$rotate_file" ] && [ ! -f "$rotate_file.bak" ]; then
         failure_message="cannot back up Squid logrotate settings"
         cp -f "$rotate_file" "$rotate_file.bak"
     fi
@@ -2086,7 +2086,7 @@ register_project_cron() {
 set_apache_logrotate() {
     local apache_rotate="/etc/logrotate.d/apache2"
     # Replaced, not edited; the package rotation and reload are kept.
-    if [ -f "$apache_rotate" ]; then
+    if [ -f "$apache_rotate" ] && [ ! -f "$apache_rotate.bak" ]; then
         cp -f "$apache_rotate" "$apache_rotate.bak" \
             || { warn "cannot back up ${apache_rotate#/etc/} -alert"; return 0; }
     fi
@@ -2219,7 +2219,7 @@ confirm_install_replacements() {
         esac
     fi
     for existing_config in "${existing_configs[@]}"; do
-        cp -p -- "$existing_config" "${existing_config}.bak" \
+        [ -f "${existing_config}.bak" ] || cp -p -- "$existing_config" "${existing_config}.bak" \
             || abort "cannot back up $(basename "$existing_config") -abort"
     done
 }
