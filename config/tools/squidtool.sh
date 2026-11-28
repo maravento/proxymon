@@ -16,15 +16,15 @@
 
 set -uo pipefail
 
-# ------------------------------------------------------------------------------
-# REQUIREMENTS
-# ------------------------------------------------------------------------------
-
 # root check
 if [ "$(id -u)" != "0" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
     exit 1
 fi
+
+# ------------------------------------------------------------------------------
+# REQUIREMENTS
+# ------------------------------------------------------------------------------
 
 # awk is a command, not a package: check it before its first use
 command -v awk >/dev/null 2>&1 || { echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: awk not found -abort" >&2; exit 1; }
@@ -606,13 +606,12 @@ show_menu() {
     local option
     while true; do
         echo ""
-        echo "Squid Analysis Tool"
-        echo "-------------------"
+        echo "==== Squid Analysis Tool ===="
         echo "1) Traffic report by IP and domain"
         echo "2) Log search in access.log and cache.log"
         echo "3) Exit"
-        echo ""
         read -r -p "Select option (enter for 3): " option
+        echo ""
         option="${option:-3}"
         case "$option" in
             1) report_traffic ;;

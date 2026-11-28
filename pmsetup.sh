@@ -21,15 +21,15 @@
 
 set -Euo pipefail
 
-# ------------------------------------------------------------------------------
-# REQUIREMENTS
-# ------------------------------------------------------------------------------
-
 # root check
 if [ "$(id -u)" != "0" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: This script must be run as root -abort" >&2
     exit 1
 fi
+
+# ------------------------------------------------------------------------------
+# REQUIREMENTS
+# ------------------------------------------------------------------------------
 
 # error handling
 install_php_hardening() (
@@ -441,23 +441,39 @@ PY
     fi
 }
 
-# ------------------------------------------------------------------------------
-# VARIABLES
-# ------------------------------------------------------------------------------
+# check ipv4 interfaces
+list_ifaces() {
+    ip -br link show 2>/dev/null | awk '$1 != "lo" {sub(/@.*/, "", $1); printf "%s %s\n", $1, ($2 == "UP") ? "UP" : "DOWN"}'
+}
 
-proxymon_env="/etc/proxymon/proxymon.env"
+list_ipv4_ifaces() {
+    local iface state
+    while read -r iface state; do
+        [ "$state" = UP ] || continue
+        if ip -4 -o addr show dev "$iface" scope global 2>/dev/null \
+            | awk '$4 != "" {found=1} END {exit !found}'; then
+            printf '%s\n' "$iface"
+        fi
+    done < <(list_ifaces)
+}
 
-# validation - one variable per thing validated; use directly with =~
-UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
-UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
-UH_UINT='^(0|[1-9][0-9]*)$'
-UH_SINT='^(0|-?[1-9][0-9]*)$'
-UH_MAX=9223372036854775807
-UH_MIN=-9223372036854775808
+check_ipv4_interfaces() {
+    local max_attempts=24 attempt=1
 
-# ------------------------------------------------------------------------------
-# FUNCTIONS
-# ------------------------------------------------------------------------------
+    while (( attempt <= max_attempts )); do
+        if [ -n "$(list_ipv4_ifaces)" ]; then
+            return 0
+        fi
+        if (( attempt == 1 )); then
+            log "INFO: waiting for an interface with IPv4..."
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+
+    log "ERROR: no interface with IPv4 -abort"
+    exit 1
+}
 
 # check internet
 check_internet() {
@@ -477,6 +493,34 @@ check_internet() {
     log "ERROR: no internet connection -abort"
     exit 1
 }
+
+check_static_lan() {
+    case "$(lan_ipv4_condition "$1" "$2")" in
+        static) return 0 ;;
+        dynamic) log "ERROR: [1/2] LAN $1: $2 uses DHCP" ;;
+        *) log "ERROR: [1/2] LAN $1: cannot verify IPv4 $2" ;;
+    esac
+    log "ERROR: [2/2] configure a static LAN IPv4 -abort"
+    exit 1
+}
+
+# ------------------------------------------------------------------------------
+# VARIABLES
+# ------------------------------------------------------------------------------
+
+proxymon_env="/etc/proxymon/proxymon.env"
+
+# validation - one variable per thing validated; use directly with =~
+UH_CIDR='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])/(3[0-2]|[12][0-9]|[0-9])$'
+UH_DNS='^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])(,(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9]))*$'
+UH_UINT='^(0|[1-9][0-9]*)$'
+UH_SINT='^(0|-?[1-9][0-9]*)$'
+UH_MAX=9223372036854775807
+UH_MIN=-9223372036854775808
+
+# ------------------------------------------------------------------------------
+# FUNCTIONS
+# ------------------------------------------------------------------------------
 
 # UPDATE CHECKS
 update_error() {
@@ -1016,40 +1060,6 @@ check_repo() {
     fi
 }
 
-# check ipv4 interfaces
-list_ifaces() {
-    ip -br link show 2>/dev/null | awk '$1 != "lo" {sub(/@.*/, "", $1); printf "%s %s\n", $1, ($2 == "UP") ? "UP" : "DOWN"}'
-}
-
-list_ipv4_ifaces() {
-    local iface state
-    while read -r iface state; do
-        [ "$state" = UP ] || continue
-        if ip -4 -o addr show dev "$iface" scope global 2>/dev/null \
-            | awk '$4 != "" {found=1} END {exit !found}'; then
-            printf '%s\n' "$iface"
-        fi
-    done < <(list_ifaces)
-}
-
-check_ipv4_interfaces() {
-    local max_attempts=24 attempt=1
-
-    while (( attempt <= max_attempts )); do
-        if [ -n "$(list_ipv4_ifaces)" ]; then
-            return 0
-        fi
-        if (( attempt == 1 )); then
-            log "INFO: waiting for an interface with IPv4..."
-        fi
-        attempt=$((attempt + 1))
-        sleep 5
-    done
-
-    log "ERROR: no interface with IPv4 -abort"
-    exit 1
-}
-
 # LAN SELECTION
 # Select an existing interface and one of its configured IPv4 addresses
 choose_lan_interface() {
@@ -1073,7 +1083,8 @@ choose_lan_interface() {
         log "ERROR: no LAN interface available -abort"
         exit 1
     }
-    echo "Available LAN interfaces:"
+    echo ""
+    echo "==== Available LAN Interfaces ===="
     for iface_index in "${!lan_candidates[@]}"; do
         iface_name="${lan_candidates[$iface_index]}"
         iface_state=$(ip -br link show "$iface_name" | awk '{print $2}')
@@ -1085,6 +1096,7 @@ choose_lan_interface() {
             log "ERROR: cannot read LAN interface selection -abort"
             exit 1
         }
+        echo ""
         if [[ "$iface_choice" =~ $UH_UINT ]] && [ "${#iface_choice}" -le 5 ] \
            && [ "$iface_choice" -ge 1 ] && [ "$iface_choice" -le "${#lan_candidates[@]}" ]; then
             lan_iface_answer="${lan_candidates[$((iface_choice - 1))]}"
@@ -1243,16 +1255,6 @@ lan_ipv4_condition() {
         done <<< "$addresses"
     fi
     printf 'unverified'
-}
-
-check_static_lan() {
-    case "$(lan_ipv4_condition "$1" "$2")" in
-        static) return 0 ;;
-        dynamic) log "ERROR: [1/2] LAN $1: $2 uses DHCP" ;;
-        *) log "ERROR: [1/2] LAN $1: cannot verify IPv4 $2" ;;
-    esac
-    log "ERROR: [2/2] configure a static LAN IPv4 -abort"
-    exit 1
 }
 
 describe_lan_ipv4() {
@@ -1783,7 +1785,8 @@ read_lan_ipv4() {
         lan_cidr_answer="${lan_addresses[0]}"
         return 0
     fi
-    echo "IPv4 addresses on LAN '$selected_iface':"
+    echo ""
+    echo "==== IPv4 Addresses on LAN '$selected_iface' ===="
     for ipv4_index in "${!lan_addresses[@]}"; do
         printf ' [%d] %s (%s)\n' "$((ipv4_index + 1))" \
             "${lan_addresses[$ipv4_index]}" \
@@ -1795,6 +1798,7 @@ read_lan_ipv4() {
             log "ERROR: cannot read LAN IPv4 selection -abort"
             exit 1
         }
+        echo ""
         if [[ "$ipv4_choice" =~ $UH_UINT ]] && [ "${#ipv4_choice}" -le 5 ] \
            && [ "$ipv4_choice" -ge 1 ] && [ "$ipv4_choice" -le "${#lan_addresses[@]}" ]; then
             lan_cidr_answer="${lan_addresses[$((ipv4_choice - 1))]}"
@@ -2948,15 +2952,14 @@ show_menu() {
     local failure_message="cannot read the installer menu choice"
     while true; do
         echo ""
-        echo "proxymon installer"
-        echo "------------------"
+        echo "==== Proxymon Installation Menu ===="
         echo "1) Install"
         echo "2) Update"
         echo "3) Uninstall"
         echo "4) Exit"
-        echo ""
         failure_message="cannot read the installer menu choice"
         read -p "Select option [4]: " menu_option
+        echo ""
         menu_option="${menu_option:-4}"
         case "$menu_option" in
             1) do_install; break ;;
